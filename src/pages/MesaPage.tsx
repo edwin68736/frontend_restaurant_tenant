@@ -1,0 +1,1342 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ArrowLeft, X, Trash2, FileText, UtensilsCrossed, ShoppingCart } from 'lucide-react'
+import { SearchInput } from '@/components/SearchInput'
+import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
+import { useAuth } from '@/contexts/AuthContext'
+import { useBranch } from '@/contexts/BranchContext'
+import { useCashSession } from '@/contexts/CashSessionContext'
+import { restaurantService, type SessionDetail, type Comanda } from '@/services/restaurant.service'
+import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
+import type { PrintData } from '@/types/printData'
+import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
+import { companyService, pickDefaultNotaVentaSeries, sortSeriesNotaVentaFirst, type SeriesRow } from '@/services/company.service'
+import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
+import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { consultaService } from '@/services/consulta.service'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { getConfiguredPrinter, isAutoPrintEnabled, isWindowsDesktop, printComandaAuto, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
+import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
+import { calcItem } from '@/utils/taxCalc'
+import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
+import { REST_PAGE_MODAL_Z, useFlyToCart } from '@/hooks/useFlyToCart'
+
+type MesaCartLine = { product: Product; quantity: number }
+const DEFAULT_POS_CONTACT = { doc_type: '0', doc_number: '99999999' }
+
+export default function MesaPage() {
+  const { canAccess, hasPerm } = useAuth()
+  const { activeBranchId } = useBranch()
+  const { session: myCashSession, canChargeCash } = useCashSession()
+  const canCerrarMesa = canAccess('cerrar_mesa')
+  const canAnularComanda = hasPerm('s.m')
+  const { sessionId } = useParams<{ sessionId: string }>()
+  const navigate = useNavigate()
+  const id = Number(sessionId)
+  const [session, setSession] = useState<SessionDetail | null>(null)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [categoryFilter, setCategoryFilter] = useState<number | null>(null)
+  const [preparationAreaFilter, setPreparationAreaFilter] = useState<string | null>(null)
+  const productsScrollRef = useRef<HTMLDivElement>(null)
+  const productsSentinelRef = useRef<HTMLDivElement>(null)
+  const [series, setSeries] = useState<SeriesRow[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [cart, setCart] = useState<MesaCartLine[]>([])
+  const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
+  const [ordersModalOpen, setOrdersModalOpen] = useState(false)
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [seriesId, setSeriesId] = useState(0)
+  const [docType, setDocType] = useState('NOTA DE VENTA')
+  const [contactId, setContactId] = useState<number | null>(null)
+  const [payments, setPayments] = useState<{ method: string; amount: number }[]>([{ method: 'cash', amount: 0 }])
+  const [precuentaOpen, setPrecuentaOpen] = useState(false)
+  const [anulComanda, setAnulComanda] = useState<Comanda | null>(null)
+  const [anulReason, setAnulReason] = useState('')
+  const [anulPin, setAnulPin] = useState('')
+  const [printData, setPrintData] = useState<PrintData | null>(null)
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [lastSale, setLastSale] = useState<{ number: string; total: number } | null>(null)
+  const [comandaModal, setComandaModal] = useState<{ orderNumber: number; comandas: Comanda[] } | null>(null)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
+  const [clientQuickAdd, setClientQuickAdd] = useState({ doc_type: '6', doc_number: '', business_name: '', address: '' })
+  const [consultaLoading, setConsultaLoading] = useState(false)
+  const [createContactLoading, setCreateContactLoading] = useState(false)
+  const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
+  const cartBtnRef = useRef<HTMLButtonElement>(null)
+  const desktopCartRef = useRef<HTMLDivElement>(null)
+  const { flyToCart, FlyToCartLayer } = useFlyToCart(cartBtnRef, { desktopCartRef })
+
+  const load = () => {
+    if (!id) return
+    setLoading(true)
+    restaurantService.getSession(id).then(setSession).catch(() => toast.error('Sesión no encontrada')).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [id])
+  useEffect(() => {
+    productsService.listCategories().then(setCategories).catch(() => [])
+    companyService.getSunat().then(setSunat).catch(() => setSunat(null))
+    companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }).then((s) => {
+      const ordered = sortSeriesNotaVentaFirst(s)
+      setSeries(ordered)
+      const def = pickDefaultNotaVentaSeries(ordered)
+      if (def) {
+        setSeriesId(def.id)
+        setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+      }
+    })
+    contactsService
+      .list('', 'customer')
+      .then((list) => {
+        setContacts(list)
+        const def = list.find(
+          (c) => String(c.doc_type).trim() === DEFAULT_POS_CONTACT.doc_type && String(c.doc_number).trim() === DEFAULT_POS_CONTACT.doc_number
+        )
+        if (def) setContactId((prev) => prev ?? def.id)
+      })
+      .catch(() => setContacts([]))
+    cashbankService
+      .listPaymentMethods(true)
+      .then((list) => {
+        setPaymentMethods(list && list.length > 0 ? list.filter((m) => m.active) : [])
+      })
+      .catch(() => setPaymentMethods([]))
+    cashbankService.listBankAccounts(true).then(setBankAccounts).catch(() => setBankAccounts([]))
+  }, [])
+
+  const {
+    products,
+    hasMore,
+    loading: productsLoading,
+    loadingMore: productsLoadingMore,
+    isSearching: productsSearching,
+    loadMore: loadMoreProducts,
+    search: productSearch,
+  } = usePosInfiniteProducts({
+    activeBranchId,
+    categoryFilter,
+    preparationAreaFilter,
+    scopeKey: id,
+    enabled: !!id,
+    onError: () => toast.error('No se pudieron cargar los productos'),
+  })
+
+  const search = productSearch.inputValue
+  const setSearch = productSearch.setInputValue
+
+  useEffect(() => {
+    const root = productsScrollRef.current
+    const sentinel = productsSentinelRef.current
+    if (!root || !sentinel || !hasMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreProducts()
+      },
+      { root, rootMargin: '160px', threshold: 0 },
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [hasMore, loadMoreProducts, products.length])
+
+  const categoriesWithProducts = useMemo(() => {
+    return categories
+  }, [categories])
+
+  const preparationAreas = useMemo(() => {
+    const areas = new Set(
+      products
+        .map((p) => p.preparation_area || '')
+        .filter(Boolean)
+    )
+    return Array.from(areas).sort((a, b) => a.localeCompare(b))
+  }, [products])
+
+  const addToCart = (p: Product, sourceEl?: HTMLElement) => {
+    setCart((c) => {
+      const i = c.findIndex((x) => x.product.id === p.id)
+      if (i >= 0) return c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x))
+      return [...c, { product: p, quantity: 1 }]
+    })
+    if (sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
+  }
+  const updateCartQty = (index: number, delta: number) => {
+    setCart((c) => c.map((item, i) => i === index ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item).filter((x) => x.quantity > 0))
+  }
+
+  const taxRate = sunat?.tax_rate ?? 18
+  const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
+  const cartTotal = useMemo(
+    () =>
+      cart.reduce((s, line) => {
+        const { total: t } = calcItem(
+          line.product.sale_price,
+          line.quantity,
+          0,
+          line.product.igv_affectation_type ?? '10',
+          line.product.price_includes_igv ?? false,
+          taxRate,
+          taxConfig
+        )
+        return s + t
+      }, 0),
+    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
+  )
+  const sessionTotal = session?.total_amount ?? 0
+  const totalToPay = cartTotal + sessionTotal
+  const canComanda = cart.length > 0
+  const canGenerarVenta = (cart.length > 0 || sessionTotal > 0) && session?.status === 'open'
+  const soloCerrarMesa = session?.status === 'open' && sessionTotal <= 0 && cart.length === 0
+
+  /** Productos ya en comandas de la mesa + ítems nuevos en carrito. */
+  const sessionItemQty = useMemo(
+    () =>
+      (session?.orders ?? []).reduce(
+        (sum, ord) =>
+          sum + (ord.comandas ?? []).reduce((s, c) => s + (Number(c.quantity) || 0), 0),
+        0,
+      ),
+    [session?.orders],
+  )
+  const newCartQty = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart])
+  const totalCartQty = sessionItemQty + newCartQty
+
+  const defaultContactId = useMemo(() => {
+    const def = contacts.find(
+      (c) => String(c.doc_type).trim() === DEFAULT_POS_CONTACT.doc_type && String(c.doc_number).trim() === DEFAULT_POS_CONTACT.doc_number
+    )
+    return def?.id ?? null
+  }, [contacts])
+
+  const effectiveContactId = contactId ?? defaultContactId
+
+  const sendComanda = async () => {
+    const s = session
+    if (!s) return
+    if (!canComanda) return
+    setAdding(true)
+    try {
+      const items = cart.map((x) => ({
+        product_id: x.product.id,
+        product_code: x.product.code || '',
+        product_name: x.product.name,
+        quantity: x.quantity,
+        unit_price: x.product.sale_price,
+        notes: '',
+      }))
+      const res = await restaurantService.addOrder(id, { items })
+      const order = (res as { data?: { order_number?: number; comandas?: Comanda[] } })?.data
+      const orderNumber = Number(order?.order_number ?? 0) || 0
+      const comandas = Array.isArray(order?.comandas) ? order!.comandas! : []
+      toast.success('Comanda enviada a cocina')
+      setCart([])
+      if (orderNumber > 0 && comandas.length > 0) setComandaModal({ orderNumber, comandas })
+      if (isWindowsDesktop() && isAutoPrintEnabled('comandas') && comandas.length > 0) {
+        const cfg = getConfiguredPrinter('comandas')
+        if (!cfg) {
+          toast.error('Configura la impresora de comandas en Ajustes')
+        } else {
+          try {
+            const msg = await printComandaAuto({
+              tableName: s.table_name ?? null,
+              orderNumber,
+              waiterName: s.waiter_name ?? null,
+              items: comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
+            })
+            toast.success(msg || 'Comanda enviada a la impresora')
+            void Promise.allSettled(comandas.map((c) => restaurantService.printComanda(c.id)))
+          } catch (e) {
+            console.error('[comanda print error]', e)
+            toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
+          }
+        }
+      }
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const closeMesa = async () => {
+    try {
+      await restaurantService.closeSession(id)
+      toast.success('Mesa cerrada')
+      navigate('/salas')
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    }
+  }
+
+  const doCheckout = async () => {
+    const s = session
+    if (!s) { toast.error('No hay una mesa cargada'); return }
+    const paid = payments.reduce((s, p) => s + p.amount, 0)
+    if (paid < totalToPay) { toast.error('El monto pagado debe ser al menos el total'); return }
+    if (!seriesId) { toast.error('Selecciona una serie'); return }
+    const selectedContactId = effectiveContactId
+    if (!selectedContactId) { toast.error('Selecciona un cliente'); return }
+
+    if (paymentMethods.length > 0) {
+      for (const p of payments) {
+        const pm = findPaymentMethodRecord(paymentMethods, p.method)
+        if (!pm) {
+          toast.error('Método de pago no configurado. Revísalo en Caja → Cuentas y métodos.')
+          return
+        }
+        if (!isPaymentMethodLinkedForSale(pm, bankAccounts)) {
+          toast.error(`El método "${pm.name}" no tiene una cuenta vinculada.`)
+          return
+        }
+      }
+    }
+
+    const needsCashSession =
+      payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
+      (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))
+
+    setAdding(true)
+    try {
+      if (cart.length > 0) {
+        const items = cart.map((x) => ({
+          product_id: x.product.id,
+          product_code: x.product.code || '',
+          product_name: x.product.name,
+          quantity: x.quantity,
+          unit_price: x.product.sale_price,
+          notes: '',
+        }))
+        const orderRes = await restaurantService.addOrder(id, { items })
+        const order = (orderRes as { data?: { order_number?: number; comandas?: Comanda[] } })?.data
+        const orderNumber = Number(order?.order_number ?? 0) || 0
+        const comandas = Array.isArray(order?.comandas) ? order!.comandas! : []
+        setCart([])
+        if (orderNumber > 0 && comandas.length > 0) setComandaModal({ orderNumber, comandas })
+        if (isWindowsDesktop() && isAutoPrintEnabled('comandas') && comandas.length > 0) {
+          const cfg = getConfiguredPrinter('comandas')
+          if (!cfg) {
+            toast.error('Configura la impresora de comandas en Ajustes')
+          } else {
+            try {
+              const msg = await printComandaAuto({
+                tableName: s.table_name ?? null,
+                orderNumber,
+                waiterName: s.waiter_name ?? null,
+                items: comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
+              })
+              toast.success(msg || 'Comanda enviada a la impresora')
+              void Promise.allSettled(comandas.map((c) => restaurantService.printComanda(c.id)))
+            } catch (e) {
+              console.error('[comanda print error]', e)
+              toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
+            }
+          }
+        }
+        await load()
+      }
+      if (needsCashSession) {
+        if (!canChargeCash) {
+          toast.error('Los mozos no pueden cobrar en efectivo; use otro método o un cajero')
+          return
+        }
+        if (!myCashSession?.id) {
+          toast.error('Abra su caja para cobrar en efectivo (menú Caja)')
+          return
+        }
+      }
+      const res = await restaurantService.billSession(id, {
+        series_id: seriesId,
+        doc_type: docType,
+        currency: 'PEN',
+        contact_id: selectedContactId,
+        cash_session_id: needsCashSession ? myCashSession?.id ?? null : null,
+        close_session: true,
+        payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: '', notes: '' })),
+      })
+      toast.success('Venta generada. Mesa cerrada.')
+      setCheckoutOpen(false)
+      setPrintData(res.print_data ?? null)
+      setLastSale(res.data ? { number: res.data.number, total: res.data.total } : null)
+      setReceiptModalOpen(true)
+      if (isWindowsDesktop() && isAutoPrintEnabled('documentos') && res.print_data) {
+        const cfg = getConfiguredPrinter('documentos')
+        if (!cfg) {
+          toast.error('Configura la impresora de documentos en Ajustes')
+        } else {
+          try {
+            const msg = await printDocumentAuto(res.print_data)
+            toast.success(msg || 'Comprobante enviado a la impresora')
+          } catch (e) {
+            console.error('[document print error]', e)
+            toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+          }
+        }
+      }
+      // Navegar al cerrar el modal
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const printPrecuenta = async () => {
+    const s = session
+    if (!s) return
+    if (!isWindowsDesktop()) return
+    const cfg = getConfiguredPrinter('precuenta')
+    if (!cfg) {
+      toast.error('Configura la impresora de precuenta en Ajustes')
+      return
+    }
+    if (totalToPay <= 0) return
+    const lines = [
+      ...(s.orders?.flatMap((ord) => ord.comandas ?? []) ?? []).map((c) => ({
+        productName: c.product_name,
+        quantity: c.quantity,
+        unitPrice: c.unit_price,
+      })),
+      ...cart.map((c) => ({
+        productName: c.product.name,
+        quantity: c.quantity,
+        unitPrice: c.product.sale_price,
+      })),
+    ]
+    try {
+      const msg = await printPrecuentaAuto({ tableName: s.table_name ?? null, items: lines, total: totalToPay })
+      toast.success(msg || 'Precuenta enviada a la impresora')
+    } catch (e) {
+      console.error('[precuenta print error]', e)
+      toast.error('No se pudo imprimir la precuenta. Revisa la consola de Tauri (cargo).')
+    }
+  }
+
+  const openPrecuenta = () => {
+    setPrecuentaOpen(true)
+    if (!isAutoPrintEnabled('precuenta')) return
+    void printPrecuenta()
+  }
+
+  const openCheckout = () => {
+    if (!canGenerarVenta) return
+    if (contactId == null && defaultContactId != null) setContactId(defaultContactId)
+    const def = pickDefaultNotaVentaSeries(series)
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    }
+    setPayments([
+      { method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash', amount: totalToPay },
+    ])
+    setCheckoutOpen(true)
+  }
+
+  const confirmAnulComanda = async () => {
+    if (!anulComanda) return
+    if (!anulReason.trim()) { toast.error('Indica el motivo de anulación'); return }
+    if (!anulPin.trim()) { toast.error('Ingresa el PIN de seguridad'); return }
+    setAdding(true)
+    try {
+      await restaurantService.cancelComanda(anulComanda.id, anulReason.trim(), anulPin)
+      toast.success('Comanda anulada')
+      setAnulComanda(null)
+      setAnulReason('')
+      setAnulPin('')
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const renderCartLines = () =>
+    cart.map((item, i) => (
+      <li key={i} className="flex justify-between items-center gap-2 py-2 border-b border-stone-100 last:border-0">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-stone-700 truncate">{item.product.name}</span>
+            <span className="text-xs font-semibold text-rest-600 shrink-0">
+              S/ {Number(item.product.sale_price).toFixed(2)}
+            </span>
+          </div>
+          <div className="text-xs text-stone-400">
+            x{item.quantity} · Importe: S/{' '}
+            {calcItem(
+              item.product.sale_price,
+              item.quantity,
+              0,
+              item.product.igv_affectation_type ?? '10',
+              item.product.price_includes_igv ?? false,
+              taxRate,
+              taxConfig
+            ).total.toFixed(2)}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => updateCartQty(i, -1)}
+            className="w-7 h-7 rounded-lg bg-red-600 text-white hover:bg-red-700 font-bold"
+          >
+            −
+          </button>
+          <span className="w-6 text-center font-medium">{item.quantity}</span>
+          <button
+            type="button"
+            onClick={() => updateCartQty(i, 1)}
+            className="w-7 h-7 rounded-lg bg-rest-600 text-white hover:bg-rest-700 font-bold"
+          >
+            +
+          </button>
+        </div>
+      </li>
+    ))
+
+  const renderCartTotals = () => (
+    <div className="px-3 py-2 border-t border-stone-200 bg-stone-50/30 shrink-0">
+      {sessionTotal > 0 && (
+        <p className="text-xs text-stone-500 mb-1">En mesa: S/ {sessionTotal.toFixed(2)}</p>
+      )}
+      <div className="flex justify-between items-baseline font-bold text-stone-800 text-base">
+        <span>Total</span>
+        <span className="text-rest-600">S/ {totalToPay.toFixed(2)}</span>
+      </div>
+    </div>
+  )
+
+  const renderCartActions = () => {
+    if (session?.status !== 'open') return null
+    return (
+      <div className="px-2 pb-2 pt-1 shrink-0 grid grid-cols-2 gap-1.5">
+        {soloCerrarMesa && canCerrarMesa ? (
+          <div className="col-span-2">
+            <p className="text-xs text-stone-500 mb-1.5 px-1">Mesa pagada. Cierra para liberar.</p>
+            <button
+              type="button"
+              onClick={closeMesa}
+              className="w-full py-2.5 bg-stone-600 text-white rounded-xl text-sm font-medium hover:bg-stone-700"
+            >
+              Cerrar mesa
+            </button>
+          </div>
+        ) : !soloCerrarMesa ? (
+          <>
+            <button
+              type="button"
+              onClick={openPrecuenta}
+              disabled={totalToPay <= 0}
+              className="inline-flex items-center justify-center gap-1 py-2 border border-rest-400 text-rest-700 rounded-xl text-xs font-medium hover:bg-rest-50 disabled:opacity-50"
+            >
+              <FileText size={14} /> Precuenta
+            </button>
+            <button
+              type="button"
+              onClick={sendComanda}
+              disabled={!canComanda || adding}
+              className="inline-flex items-center justify-center gap-1 py-2 bg-stone-200 text-stone-800 rounded-xl text-xs font-medium hover:bg-stone-300 disabled:opacity-50"
+            >
+              {adding ? '...' : 'Comanda'}
+            </button>
+            {canCerrarMesa && (
+              <button
+                type="button"
+                onClick={openCheckout}
+                disabled={!canGenerarVenta || adding}
+                className="col-span-2 inline-flex items-center justify-center gap-1 py-2.5 bg-rest-600 text-white rounded-xl text-xs font-semibold hover:bg-rest-700 disabled:opacity-50"
+              >
+                Generar venta
+              </button>
+            )}
+          </>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (loading || !session) {
+    return (
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-h-0 flex flex-col bg-stone-50/80 overflow-hidden w-full max-w-full h-full lg:-mx-5 lg:-my-3">
+      <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
+        <div className="shrink-0 flex flex-wrap items-center gap-2 px-0 pb-1.5 min-w-0 w-full">
+          <button
+            type="button"
+            onClick={() => navigate('/salas')}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rest-600 text-white text-xs font-medium hover:bg-rest-700 shrink-0"
+          >
+            <ArrowLeft size={16} /> Mesas
+          </button>
+          {!!session.orders?.length && (
+            <button
+              type="button"
+              onClick={() => setOrdersModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-800 text-white text-xs font-medium hover:bg-stone-900 shrink-0"
+            >
+              <FileText size={14} />
+              <span>Pedidos</span>
+              <span className="inline-flex min-w-[1.25rem] h-5 px-1 items-center justify-center rounded-md bg-rest-600 text-white text-xs font-bold">
+                {session.orders.length}
+              </span>
+            </button>
+          )}
+          <div className="flex-1 min-w-0 text-center sm:text-left">
+            <h2 className="text-sm sm:text-base font-bold text-stone-800 truncate">
+              {session.table_name ?? 'Mesa'}
+            </h2>
+            <p className="text-xs text-stone-500 tabular-nums">
+              En mesa S/ {sessionTotal.toFixed(2)}
+              {cart.length > 0 && <> · Nuevo S/ {cartTotal.toFixed(2)}</>}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
+          <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 mx-auto">
+            <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+              <button
+                type="button"
+                onClick={() => setCategoryFilter(null)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                  categoryFilter === null
+                    ? 'bg-rest-600 text-white border-rest-600'
+                    : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                }`}
+              >
+                Todas
+              </button>
+              {categoriesWithProducts.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setCategoryFilter(cat.id)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap ${
+                    categoryFilter === cat.id
+                      ? 'bg-rest-600 text-white border-rest-600'
+                      : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+            {preparationAreas.length > 0 && (
+              <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+                <span className="shrink-0 text-xs text-stone-500 self-center pr-1">Área:</span>
+                  <button
+                    type="button"
+                    onClick={() => setPreparationAreaFilter(null)}
+                    className={`shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium border ${
+                      preparationAreaFilter === null
+                        ? 'bg-stone-600 text-white border-stone-600'
+                        : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                    }`}
+                  >
+                    Todas
+                  </button>
+                  {preparationAreas.map((area) => (
+                    <button
+                      key={area}
+                      type="button"
+                      onClick={() => setPreparationAreaFilter(area)}
+                      className={`shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-medium border whitespace-nowrap ${
+                        preparationAreaFilter === area
+                          ? 'bg-stone-600 text-white border-stone-600'
+                          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  ))}
+              </div>
+            )}
+
+            <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm sm:rounded-2xl">
+              <div className="px-2 py-1.5 sm:px-3 sm:py-2 border-b border-stone-100 shrink-0 flex items-center gap-2">
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  isSearching={productsSearching}
+                  placeholder="Buscar producto..."
+                  className="flex-1 min-w-0"
+                  inputClassName="text-sm py-1.5"
+                />
+              </div>
+              <div ref={productsScrollRef} className="flex-1 min-h-0 overflow-y-auto p-1.5 sm:p-3">
+              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 justify-items-stretch">
+              {products.map((p) => {
+                const imgUrl = getProductImageUrl(p.image_url)
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={(e) => {
+                      const visual = (e.currentTarget as HTMLElement).querySelector(
+                        '[data-product-visual]',
+                      ) as HTMLElement | null
+                      addToCart(p, visual ?? e.currentTarget)
+                    }}
+                    className="group rounded-xl border border-stone-200 bg-stone-50/50 overflow-hidden text-left transition-all duration-200 hover:border-rest-400 hover:shadow-md hover:shadow-rest-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-rest-400/50"
+                  >
+                    <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
+                      {imgUrl ? (
+                        <img
+                          src={imgUrl}
+                          alt={p.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-stone-400">
+                          <UtensilsCrossed className="w-8 h-8" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-2">
+                      <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
+                        {p.name}
+                      </p>
+                      <p className="text-rest-600 font-semibold text-xs mt-1">
+                        S/ {Number(p.sale_price).toFixed(2)}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+              </div>
+              <div ref={productsSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
+              {(productsLoading || productsSearching) && products.length === 0 && (
+                <div className="py-8 text-center text-stone-400 text-sm">
+                  <div className="inline-block w-6 h-6 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              {productsLoadingMore && (
+                <div className="py-3 text-center text-stone-400 text-sm">
+                  <div className="inline-block w-5 h-5 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              {!productsLoading && !productsSearching && products.length === 0 && (
+                <div className="py-8 text-center text-stone-400 text-xs sm:text-sm">
+                  No hay productos con este filtro.
+                </div>
+              )}
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden lg:flex shrink-0 flex-col min-h-0 w-[min(100%,24rem)] xl:w-[28rem] 2xl:w-[32rem]">
+            <div className="flex-1 min-h-0 flex flex-col bg-white rounded-l-xl xl:rounded-l-2xl border border-stone-200/80 border-r-0 shadow-sm overflow-hidden">
+              <div className="px-2 py-2 border-b border-stone-100 shrink-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      ref={desktopCartRef}
+                      className="hidden lg:flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rest-50 text-rest-600"
+                      aria-hidden
+                    >
+                      <ShoppingCart size={18} />
+                    </div>
+                    <h4 className="font-semibold text-stone-800 text-sm">Pedido</h4>
+                  </div>
+                  <span className="text-xs text-stone-500 truncate max-w-[55%]">{session.table_name}</span>
+                </div>
+              </div>
+              <ul className="px-2 py-2 space-y-0.5 text-sm overflow-y-auto flex-1 min-h-0">
+                {renderCartLines()}
+              </ul>
+              {renderCartTotals()}
+              {renderCartActions()}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {!cartDrawerOpen && (
+        <FloatingCartButton
+          ref={cartBtnRef}
+          quantity={totalCartQty}
+          onClick={() => setCartDrawerOpen(true)}
+        />
+      )}
+      <FlyToCartLayer />
+
+      {cartDrawerOpen && (
+        <div className="lg:hidden fixed inset-0 z-[115]">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setCartDrawerOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-h-[85vh] flex flex-col">
+              <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ShoppingCart size={18} className="text-stone-700" />
+                  <h3 className="font-bold text-stone-800 truncate">Carrito</h3>
+                  {totalCartQty > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-rest-600 text-white text-sm font-bold tabular-nums">
+                      {totalCartQty > 99 ? '99+' : totalCartQty}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCartDrawerOpen(false)}
+                  className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
+                  aria-label="Cerrar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <ul className="p-4 pt-2 space-y-0.5 text-sm flex-1 min-h-0 overflow-y-auto">
+                {renderCartLines()}
+              </ul>
+              <div className="shrink-0 border-t border-stone-200">
+                {renderCartTotals()}
+                <div className="p-3 pt-0">{renderCartActions()}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ordersModalOpen && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z}`}>
+          <div className="absolute inset-0 bg-black/40" onClick={() => setOrdersModalOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-x-0 top-0 p-4 sm:p-6 flex justify-center">
+            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-stone-800">Pedidos en mesa</h3>
+                  <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-rest-600 text-white text-sm font-bold">
+                    {session.orders?.length ?? 0}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOrdersModalOpen(false)}
+                  className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
+                  aria-label="Cerrar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+                {session.orders?.map((ord) => (
+                  <div key={ord.id} className="rounded-xl border border-stone-200 overflow-hidden">
+                    <div className="px-3 py-2 bg-stone-50/60 flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold text-stone-800">#{ord.order_number}</span>
+                      <span className="text-sm font-semibold text-rest-700">
+                        S/ {(ord.comandas ?? []).reduce((s, c) => s + c.quantity * c.unit_price, 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="px-3 py-2">
+                      <ul className="space-y-1 text-sm">
+                        {ord.comandas?.map((c) => (
+                          <li key={c.id} className="flex items-start justify-between gap-2 text-stone-600">
+                            <span className="min-w-0">
+                              {c.product_name} x{c.quantity} — S/ {(c.quantity * c.unit_price).toFixed(2)}
+                            </span>
+                            {session.status === 'open' && canAnularComanda && (
+                              <button
+                                type="button"
+                                onClick={() => { setAnulComanda(c); setAnulReason(''); setAnulPin('') }}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs flex items-center gap-1 shrink-0"
+                                title="Anular comanda (requiere PIN)"
+                              >
+                                <Trash2 size={12} /> Anular
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-stone-200 bg-stone-50/30">
+                <button
+                  type="button"
+                  onClick={() => setOrdersModalOpen(false)}
+                  className="w-full py-2.5 rounded-xl bg-stone-800 text-white hover:bg-stone-900 font-medium"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal checkout */}
+      {checkoutOpen && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50`}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+              <h3 className="text-lg font-bold text-stone-800">Checkout</h3>
+              <button onClick={() => setCheckoutOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Tipo de comprobante</label>
+                <SearchableSelect
+                  value={seriesId || null}
+                  onChange={(v) => {
+                    const id = Number(v)
+                    const s = series.find((x) => x.id === id)
+                    setSeriesId(id)
+                    if (s) setDocType(String(s.doc_type || '').trim() || 'NOTA DE VENTA')
+                  }}
+                  options={series.map((s) => ({ value: s.id, label: `${s.doc_type} ${s.series}` }))}
+                  placeholder="Selecciona serie"
+                  searchable={series.length > 8}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Cliente (obligatorio)</label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      value={effectiveContactId ?? null}
+                      onChange={(v) => setContactId(v == null || String(v) === '' ? null : Number(v))}
+                      options={contacts.map((c) => ({ value: c.id, label: c.business_name }))}
+                      placeholder="Selecciona cliente"
+                      searchable
+                      className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setClientQuickAddOpen(true)}
+                    className="px-3 py-2 border border-rest-500 text-rest-600 rounded-xl text-sm font-medium hover:bg-rest-50 shrink-0"
+                  >
+                    Nuevo
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Pagos</label>
+                <div className="space-y-2">
+                  {payments.map((p, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <div className="flex-1 min-w-0">
+                        <SearchableSelect
+                          value={p.method}
+                          onChange={(v) =>
+                            setPayments((ps) => ps.map((x, j) => (j === i ? { ...x, method: String(v ?? '') } : x)))
+                          }
+                          options={(paymentMethods.length > 0
+                            ? paymentMethods
+                            : [
+                                { id: 0, code: 'cash', name: 'Efectivo' },
+                                { id: 0, code: 'yape', name: 'Yape' },
+                                { id: 0, code: 'plin', name: 'Plin' },
+                                { id: 0, code: 'tarjeta', name: 'Tarjeta' },
+                                { id: 0, code: 'transferencia', name: 'Transferencia' },
+                              ]
+                          ).map((pm) => ({ value: pm.code, label: pm.name }))}
+                          searchable={paymentMethods.length > 8}
+                          className="w-full border border-stone-200 rounded-lg px-2 py-1 text-sm bg-white text-left flex items-center justify-between gap-2"
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={p.amount}
+                        onChange={(e) => setPayments((ps) => ps.map((x, j) => j === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
+                        className="w-28 border border-stone-200 rounded-lg px-2 py-1 text-sm shrink-0"
+                      />
+                      {payments.length > 1 && (
+                        <button
+                          type="button"
+                          title="Quitar pago"
+                          onClick={() => setPayments((ps) => ps.filter((_, j) => j !== i))}
+                          className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 shrink-0"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPayments((prev) => [
+                        ...prev,
+                        {
+                          method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+                          amount: 0,
+                        },
+                      ])
+                    }
+                    className="text-xs text-rest-600 hover:underline"
+                  >
+                    + Otro pago
+                  </button>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">
+                  Total: S/ {totalToPay.toFixed(2)} · Pagado: S/ {payments.reduce((s, p) => s + p.amount, 0).toFixed(2)}
+                </p>
+              </div>
+
+              <button
+                onClick={doCheckout}
+                disabled={adding || payments.reduce((s, p) => s + p.amount, 0) < totalToPay}
+                className="w-full py-3 bg-green-600 text-white rounded-xl font-medium disabled:opacity-50 hover:bg-green-700"
+              >
+                {adding ? 'Procesando...' : 'Confirmar venta'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Precuenta */}
+      {precuentaOpen && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+              <h3 className="text-lg font-bold text-stone-800">Precuenta</h3>
+              <button onClick={() => setPrecuentaOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <p className="text-sm text-stone-500 mb-3">Detalle para que el cliente revise antes de pagar.</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-stone-200 text-left text-stone-500">
+                    <th className="py-2 pr-2">Producto</th>
+                    <th className="py-2 text-center w-16">Cant.</th>
+                    <th className="py-2 text-right w-20">P. unit.</th>
+                    <th className="py-2 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {session?.orders?.flatMap((ord) =>
+                    ord.comandas?.map((c) => (
+                      <tr key={c.id} className="border-b border-stone-100">
+                        <td className="py-2 pr-2">{c.product_name}</td>
+                        <td className="py-2 text-center">{c.quantity}</td>
+                        <td className="py-2 text-right">S/ {Number(c.unit_price).toFixed(2)}</td>
+                        <td className="py-2 text-right font-medium">S/ {(c.quantity * c.unit_price).toFixed(2)}</td>
+                      </tr>
+                    )) ?? []
+                  )}
+                  {cart.map((item, i) => (
+                    <tr key={`cart-${i}`} className="border-b border-stone-100">
+                      <td className="py-2 pr-2">{item.product.name}</td>
+                      <td className="py-2 text-center">{item.quantity}</td>
+                      <td className="py-2 text-right">S/ {Number(item.product.sale_price).toFixed(2)}</td>
+                      <td className="py-2 text-right font-medium">
+                        S/{' '}
+                        {calcItem(
+                          item.product.sale_price,
+                          item.quantity,
+                          0,
+                          item.product.igv_affectation_type ?? '10',
+                          item.product.price_includes_igv ?? false,
+                          taxRate,
+                          taxConfig
+                        ).total.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-4 pt-3 border-t-2 border-stone-200 flex justify-between items-center font-bold text-stone-800">
+                <span>Total a pagar</span>
+                <span className="text-lg">S/ {totalToPay.toFixed(2)}</span>
+              </div>
+            </div>
+            <div className="p-4 border-t border-stone-200">
+              <div className="flex gap-2">
+                {isWindowsDesktop() && getConfiguredPrinter('precuenta') && (
+                  <button
+                    type="button"
+                    onClick={() => void printPrecuenta()}
+                    className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl font-medium hover:bg-rest-700"
+                  >
+                    Reimprimir
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setPrecuentaOpen(false)}
+                  className="flex-1 py-2.5 bg-stone-200 text-stone-800 rounded-xl font-medium hover:bg-stone-300"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Comanda */}
+      {comandaModal && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+              <h3 className="text-lg font-bold text-stone-800">Comanda</h3>
+              <button onClick={() => setComandaModal(null)} className="p-1 rounded-lg hover:bg-stone-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <p className="text-sm text-stone-600">
+                {session?.table_name ?? 'Pedido rápido'} · Pedido #{comandaModal.orderNumber}
+              </p>
+              <div className="mt-3 border border-stone-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-stone-200 text-left text-stone-500">
+                      <th className="py-2 px-3">Producto</th>
+                      <th className="py-2 px-3 text-center w-20">Cant.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comandaModal.comandas.map((c) => (
+                      <tr key={c.id} className="border-b border-stone-100 last:border-0">
+                        <td className="py-2 px-3">
+                          <div className="text-stone-700">{c.product_name}</div>
+                          {c.notes && <div className="text-xs text-stone-500">{c.notes}</div>}
+                        </td>
+                        <td className="py-2 px-3 text-center font-semibold text-stone-800">{c.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="p-4 border-t border-stone-200">
+              <div className="flex gap-2">
+                {isWindowsDesktop() && getConfiguredPrinter('comandas') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const msg = await printComandaAuto({
+                          tableName: session.table_name ?? null,
+                          orderNumber: comandaModal.orderNumber,
+                          waiterName: session.waiter_name ?? null,
+                          items: comandaModal.comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
+                        })
+                        toast.success(msg || 'Comanda enviada a la impresora')
+                        void Promise.allSettled(comandaModal.comandas.map((c) => restaurantService.printComanda(c.id)))
+                      } catch (e) {
+                        console.error('[comanda reprint error]', e)
+                        toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
+                      }
+                    }}
+                    className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl font-medium hover:bg-rest-700"
+                  >
+                    Reimprimir
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setComandaModal(null)}
+                  className="flex-1 py-2.5 bg-stone-200 text-stone-800 rounded-xl font-medium hover:bg-stone-300"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Anular comanda */}
+      {anulComanda && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="font-bold text-stone-800 mb-2">Anular comanda</h3>
+            <p className="text-sm text-stone-600 mb-4">
+              {anulComanda.product_name} x{anulComanda.quantity} — S/ {(anulComanda.quantity * anulComanda.unit_price).toFixed(2)}
+            </p>
+            <p className="text-xs text-rest-700 mb-3">Se requiere el PIN de operaciones (Ajustes → Restaurante).</p>
+            <input
+              value={anulReason}
+              onChange={(e) => setAnulReason(e.target.value)}
+              placeholder="Motivo de anulación"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm mb-2"
+            />
+            <input
+              type="password"
+              value={anulPin}
+              onChange={(e) => setAnulPin(e.target.value.replace(/\D/g, ''))}
+              placeholder="PIN"
+              maxLength={6}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm font-mono mb-4"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setAnulComanda(null); setAnulReason(''); setAnulPin('') }}
+                className="flex-1 py-2 border border-stone-200 rounded-xl text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmAnulComanda}
+                disabled={adding || !anulReason.trim() || !anulPin.trim()}
+                className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:bg-red-700"
+              >
+                {adding ? '...' : 'Anular'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Nuevo cliente rápido */}
+      {clientQuickAddOpen && (
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-stone-800">Registrar cliente</h3>
+              <button type="button" onClick={() => setClientQuickAddOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <div className="w-24">
+                  <SearchableSelect
+                    value={clientQuickAdd.doc_type}
+                    onChange={(v) => setClientQuickAdd((q) => ({ ...q, doc_type: String(v) }))}
+                    options={[
+                      { value: '1', label: 'DNI' },
+                      { value: '6', label: 'RUC' },
+                    ]}
+                    searchable={false}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={clientQuickAdd.doc_number}
+                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, doc_number: e.target.value.replace(/\D/g, '').slice(0, clientQuickAdd.doc_type === '6' ? 11 : 8) }))}
+                  placeholder={clientQuickAdd.doc_type === '6' ? 'RUC' : 'DNI'}
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ruc = (await companyService.getConfig()).ruc
+                    if (!ruc) { toast.error('No se pudo obtener RUC de la empresa'); return }
+                    setConsultaLoading(true)
+                    try {
+                      if (clientQuickAdd.doc_type === '6') {
+                        const res = await consultaService.ruc(ruc, clientQuickAdd.doc_number)
+                        if (res.success) {
+                          setClientQuickAdd((q) => ({ ...q, business_name: res.razon_social ?? '', address: res.direccion_completa ?? res.direccion ?? '' }))
+                          toast.success('Datos obtenidos')
+                        } else toast.error('RUC no encontrado')
+                      } else {
+                        const res = await consultaService.dni(ruc, clientQuickAdd.doc_number)
+                        if (res.success) {
+                          setClientQuickAdd((q) => ({ ...q, business_name: res.nombre_completo ?? '', address: '' }))
+                          toast.success('Datos obtenidos')
+                        } else toast.error('DNI no encontrado')
+                      }
+                    } catch {
+                      toast.error('Error al consultar')
+                    } finally {
+                      setConsultaLoading(false)
+                    }
+                  }}
+                  disabled={consultaLoading || clientQuickAdd.doc_number.length < (clientQuickAdd.doc_type === '6' ? 11 : 8)}
+                  className="px-3 py-2 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200 disabled:opacity-50"
+                >
+                  {consultaLoading ? '...' : 'Consultar'}
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">Razón social / Nombre</label>
+                <input
+                  value={clientQuickAdd.business_name}
+                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, business_name: e.target.value }))}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  placeholder="Obligatorio"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">Dirección (opcional)</label>
+                <input
+                  value={clientQuickAdd.address}
+                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, address: e.target.value }))}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button type="button" onClick={() => setClientQuickAddOpen(false)} className="flex-1 py-2 border border-stone-200 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={createContactLoading || !clientQuickAdd.business_name.trim()}
+                onClick={async () => {
+                  setCreateContactLoading(true)
+                  try {
+                    const data: CreateContactInput = {
+                      type: 'customer',
+                      doc_type: clientQuickAdd.doc_type,
+                      doc_number: clientQuickAdd.doc_number,
+                      business_name: clientQuickAdd.business_name.trim(),
+                      address: clientQuickAdd.address || undefined,
+                    }
+                    const created = await contactsService.create(data)
+                    setContacts((c) => [...c, created])
+                    setContactId(created.id)
+                    toast.success('Cliente registrado')
+                    setClientQuickAddOpen(false)
+                    setClientQuickAdd({ doc_type: '6', doc_number: '', business_name: '', address: '' })
+                  } catch (e: unknown) {
+                    toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+                  } finally {
+                    setCreateContactLoading(false)
+                  }
+                }}
+                className="flex-1 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                {createContactLoading ? 'Guardando...' : 'Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ReceiptPrintModal
+        open={receiptModalOpen}
+        onClose={() => {
+          setReceiptModalOpen(false)
+          setPrintData(null)
+          setLastSale(null)
+          navigate('/salas')
+        }}
+        printData={printData}
+        saleNumber={lastSale?.number}
+        total={lastSale?.total}
+      />
+    </div>
+  )
+}

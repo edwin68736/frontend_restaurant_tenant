@@ -1,0 +1,40 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+android/.gradle
+android/.idea
+android/local.properties
+android/app/build
+android/build
+*.keystore
+dist-ssr
+*.local
+.env.local
+.env.*.local
+
+# Generados por npm run icons:generate (fuente: public/logo-tukichef.png)
+assets/icon-only.png
+assets/splash.png
+
+src-tauri/target
+src-tauri/gen
+target-tauri
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

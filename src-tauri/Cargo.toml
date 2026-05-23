@@ -1,0 +1,25 @@
+ [package]
+ name = "bendey-restaurant"
+ version = "0.0.0"
+ description = "Bendey Restaurant Panel"
+ edition = "2021"
+ 
+ [lib]
+ name = "bendey_restaurant"
+ crate-type = ["staticlib", "cdylib", "rlib"]
+ 
+[[bin]]
+name = "bendey-restaurant-app"
+path = "src/main.rs"
+
+ [build-dependencies]
+ tauri-build = { version = "2", features = [] }
+ 
+ [dependencies]
+base64 = "0.22"
+ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+ tauri = { version = "2", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Printing"] }
