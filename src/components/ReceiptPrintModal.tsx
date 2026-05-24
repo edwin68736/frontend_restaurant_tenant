@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 import { formatMoney } from '@/utils/format'
 import type { PrintData } from '@/types/printData'
+import { PortalModal } from '@/components/ui/PortalModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { getConfiguredPrinter, isWindowsDesktop, printDocumentAuto } from '@/services/printers.service'
 
@@ -78,8 +79,8 @@ export function ReceiptPrintModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm px-5 py-4">
+    <PortalModal open={open} onClose={onClose} className="max-w-sm">
+      <div className="bg-white rounded-2xl shadow-xl w-full px-5 py-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-base font-bold text-stone-800">Comprobante registrado</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-stone-100">
@@ -181,6 +182,6 @@ export function ReceiptPrintModal({
           <p className="text-sm text-stone-500">No hay datos de impresión disponibles.</p>
         )}
       </div>
-    </div>
+    </PortalModal>
   )
 }

@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { restaurantService } from '@/services/restaurant.service'
 import type { DeliveryDriver } from '@/types/restaurantOrder'
 import { PageShell } from '@/components/layout/PageShell'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 const empty = (): Omit<DeliveryDriver, 'id' | 'active'> & { active: boolean } => ({
   name: '',
@@ -147,9 +148,9 @@ export default function RepartidoresPage() {
         </div>
       )}
 
-      {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3">
+      <PortalModal open={!!modal} onClose={() => setModal(null)} className="max-w-md">
+        {modal && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-5 space-y-3">
             <h3 className="font-bold text-stone-800">{modal === 'create' ? 'Nuevo repartidor' : 'Editar repartidor'}</h3>
             <input
               value={form.name}
@@ -204,8 +205,8 @@ export default function RepartidoresPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
     </PageShell>
   )
 }

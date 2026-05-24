@@ -7,6 +7,7 @@ import { consultaService } from '@/services/consulta.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 const DOC_TYPES = [
   { code: '0', label: 'Sin RUC' },
@@ -288,9 +289,8 @@ export default function ClientesPage() {
       </div>
 
       {/* Modal Nuevo / Editar cliente */}
-      {show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <PortalModal open={show} onClose={() => setShow(false)} className="max-w-lg">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">{editing ? 'Editar cliente' : 'Nuevo cliente'}</h3>
               <button type="button" onClick={() => setShow(false)} className="p-2 rounded-lg hover:bg-stone-100">
@@ -415,8 +415,7 @@ export default function ClientesPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
     </div>
   )
 }

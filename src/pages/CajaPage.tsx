@@ -16,6 +16,7 @@ import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/ca
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { CashOpenSessionForm } from '@/components/cash/CashOpenSessionForm'
 import { useCashSession } from '@/contexts/CashSessionContext'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 const INCOME_CATEGORIES = [
   { value: 'ingreso_manual', label: 'Ingreso manual' },
@@ -37,18 +38,72 @@ const EXPENSE_CATEGORIES = [
 const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
 
 const ARQUEO_DENOMINATIONS = [
-  { value: '200', label: 'Billete S/ 200' },
-  { value: '100', label: 'Billete S/ 100' },
-  { value: '50', label: 'Billete S/ 50' },
-  { value: '20', label: 'Billete S/ 20' },
-  { value: '10', label: 'Billete S/ 10' },
-  { value: '5', label: 'Billete S/ 5' },
-  { value: '2', label: 'Moneda S/ 2' },
-  { value: '1', label: 'Moneda S/ 1' },
-  { value: '0.5', label: 'Moneda S/ 0.50' },
-  { value: '0.2', label: 'Moneda S/ 0.20' },
-  { value: '0.1', label: 'Moneda S/ 0.10' },
+  { value: '200', label: 'Billete S/ 200', kind: 'bill' as const },
+  { value: '100', label: 'Billete S/ 100', kind: 'bill' as const },
+  { value: '50', label: 'Billete S/ 50', kind: 'bill' as const },
+  { value: '20', label: 'Billete S/ 20', kind: 'bill' as const },
+  { value: '10', label: 'Billete S/ 10', kind: 'bill' as const },
+  { value: '5', label: 'Moneda S/ 5', kind: 'coin' as const },
+  { value: '2', label: 'Moneda S/ 2', kind: 'coin' as const },
+  { value: '1', label: 'Moneda S/ 1', kind: 'coin' as const },
+  { value: '0.5', label: 'Moneda S/ 0.50', kind: 'coin' as const },
+  { value: '0.2', label: 'Moneda S/ 0.20', kind: 'coin' as const },
+  { value: '0.1', label: 'Moneda S/ 0.10', kind: 'coin' as const },
+  { value: '0.05', label: 'Moneda S/ 0.05', kind: 'coin' as const },
+  { value: '0.01', label: 'Moneda S/ 0.01', kind: 'coin' as const },
 ] as const
+
+const ARQUEO_BILLS = ARQUEO_DENOMINATIONS.filter((d) => d.kind === 'bill')
+const ARQUEO_COINS = ARQUEO_DENOMINATIONS.filter((d) => d.kind === 'coin')
+
+function ArqueoDenominationSection({
+  title,
+  items,
+  values,
+  onChangeQty,
+}: {
+  title: string
+  items: readonly (typeof ARQUEO_DENOMINATIONS)[number][]
+  values: Record<string, number>
+  onChangeQty: (key: string, qty: number) => void
+}) {
+  return (
+    <section className="rounded-xl border border-stone-200 overflow-hidden bg-white">
+      <div className="px-3 py-2 border-b border-stone-100 bg-stone-50">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-stone-600">{title}</h4>
+      </div>
+      <div className="divide-y divide-stone-100">
+        {items.map((d) => {
+          const qty = values[d.value] ?? 0
+          const denom = Number(d.value)
+          const amount = qty * denom
+          const denomLabel = denom < 1 ? denom.toFixed(2) : d.value
+          return (
+            <div key={d.value} className="flex items-center gap-2 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-stone-800 truncate">{d.label}</p>
+                <p className="text-[11px] text-stone-400">S/ {denomLabel} c/u</p>
+              </div>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={qty}
+                onChange={(e) => onChangeQty(d.value, Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                className="w-[4.25rem] shrink-0 rounded-lg border border-stone-200 px-2 py-1.5 text-sm text-right tabular-nums focus:border-rest-400 focus:outline-none focus:ring-2 focus:ring-rest-100"
+                aria-label={`Cantidad ${d.label}`}
+              />
+              <p className="w-[5.5rem] shrink-0 text-right text-sm font-semibold text-stone-800 tabular-nums">
+                S/ {amount.toFixed(2)}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
 
 function emptyArqueo() {
   const out: Record<string, number> = {}
@@ -1299,9 +1354,8 @@ export default function CajaPage() {
         </div>
       )}
 
-      {showAccountModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6">
+      <PortalModal open={showAccountModal} onClose={() => setShowAccountModal(false)} className="max-w-xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">{editingAccount ? 'Editar cuenta' : 'Nueva cuenta'}</h3>
               <button type="button" onClick={() => setShowAccountModal(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1429,12 +1483,10 @@ export default function CajaPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {showPaymentMethodModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6">
+      <PortalModal open={showPaymentMethodModal} onClose={() => setShowPaymentMethodModal(false)} className="max-w-xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">{editingPaymentMethod ? 'Editar método' : 'Nuevo método'}</h3>
               <button type="button" onClick={() => setShowPaymentMethodModal(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1526,12 +1578,19 @@ export default function CajaPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {showAccountMovementsModal && selectedAccount && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full p-6">
+      <PortalModal
+        open={showAccountMovementsModal && !!selectedAccount}
+        onClose={() => {
+          setShowAccountMovementsModal(false)
+          setSelectedAccount(null)
+          setBankMovements([])
+        }}
+        className="max-w-4xl"
+      >
+        {selectedAccount && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-stone-800">Movimientos — {selectedAccount.name}</h3>
@@ -1667,12 +1726,11 @@ export default function CajaPage() {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
 
-      {openModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-xl max-w-md w-full p-5 max-h-[96dvh] overflow-y-auto">
+      <PortalModal open={openModal} onClose={() => setOpenModal(false)} className="max-w-md" overlayClassName="items-end sm:items-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 max-h-[96dvh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-stone-800 text-lg">Abrir caja</h3>
               <button type="button" onClick={() => setOpenModal(false)} className="p-2 rounded-xl hover:bg-stone-100 touch-manipulation">
@@ -1688,129 +1746,128 @@ export default function CajaPage() {
               onSubmit={handleOpenSession}
             />
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {closeModal && session && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-stone-800">Cerrar caja</h3>
-              <button type="button" onClick={() => setCloseModal(false)} className="p-1 rounded-lg hover:bg-stone-100">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-stone-200 p-3">
-                  <p className="text-xs text-stone-500">Monto inicial</p>
-                  <p className="text-lg font-bold text-stone-800">S/ {Number(session.opening_balance).toFixed(2)}</p>
+      <PortalModal open={closeModal && !!session} onClose={() => setCloseModal(false)} className="max-w-2xl">
+        {session && (() => {
+          const arqueoTotal = sumArqueo(closeArqueo)
+          const closingAmount = closeWithArqueo ? arqueoTotal : currentBalance
+          const diff = closeWithArqueo ? arqueoTotal - currentBalance : 0
+          const diffOk = !closeWithArqueo || Math.abs(diff) < 0.01
+          const diffClass = diffOk ? 'text-emerald-700' : diff > 0 ? 'text-emerald-700' : 'text-red-700'
+
+          return (
+            <div className="flex max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-5">
+                <div>
+                  <h3 className="text-lg font-bold text-stone-800">Cerrar caja</h3>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    Revise el resumen de la sesión. Puede cerrar con arqueo para registrar el efectivo contado.
+                  </p>
                 </div>
-                <div className="rounded-xl border border-stone-200 p-3">
-                  <p className="text-xs text-stone-500">Saldo esperado</p>
-                  <p className="text-lg font-bold text-stone-900">S/ {Number(currentBalance).toFixed(2)}</p>
+                <button
+                  type="button"
+                  onClick={() => setCloseModal(false)}
+                  className="shrink-0 rounded-lg p-1.5 hover:bg-stone-100"
+                  aria-label="Cerrar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50/60 px-4 py-3 sm:grid-cols-3 sm:px-5">
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Monto inicial</p>
+                  <p className="mt-0.5 text-lg font-bold text-stone-800 tabular-nums">S/ {Number(session.opening_balance).toFixed(2)}</p>
                 </div>
-                <div className="rounded-xl border border-stone-200 p-3">
-                  <p className="text-xs text-stone-500">Cierre</p>
-                  <p className="text-lg font-bold text-stone-900">S/ {Number(closeWithArqueo ? sumArqueo(closeArqueo) : currentBalance).toFixed(2)}</p>
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Saldo esperado</p>
+                  <p className="mt-0.5 text-lg font-bold text-stone-900 tabular-nums">S/ {Number(currentBalance).toFixed(2)}</p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">
+                    {closeWithArqueo ? 'Total contado' : 'Monto de cierre'}
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-stone-900 tabular-nums">S/ {Number(closingAmount).toFixed(2)}</p>
+                  {closeWithArqueo && (
+                    <p className={`mt-0.5 text-[10px] tabular-nums ${diffClass}`}>
+                      {diffOk
+                        ? 'Cuadrado con el saldo esperado'
+                        : `${diff > 0 ? 'Sobra' : 'Falta'} S/ ${Math.abs(diff).toFixed(2)}`}
+                    </p>
+                  )}
+                  {!closeWithArqueo && (
+                    <p className="mt-0.5 text-[10px] text-stone-400">Sin arqueo (saldo del sistema)</p>
+                  )}
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={closeWithArqueo}
-                  onChange={(e) => setCloseWithArqueo(e.target.checked)}
-                />
-                Cerrar con arqueo (recomendado)
-              </label>
+              <div className="shrink-0 border-b border-stone-100 px-4 py-3 sm:px-5">
+                <label className="flex cursor-pointer items-center gap-2.5 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={closeWithArqueo}
+                    onChange={(e) => setCloseWithArqueo(e.target.checked)}
+                    className="h-4 w-4 rounded border-stone-300 text-rest-600 focus:ring-rest-500"
+                  />
+                  Cerrar con arqueo (recomendado)
+                </label>
+              </div>
 
               {closeWithArqueo && (
-                <div className="rounded-xl border border-stone-200 overflow-hidden">
-                  <div className="px-3 py-2 bg-stone-50 border-b border-stone-100">
-                    <p className="text-xs font-semibold text-stone-600 uppercase">Arqueo de efectivo</p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm min-w-[520px]">
-                      <thead className="bg-white">
-                        <tr>
-                          {['Denominación', 'Cantidad', 'Importe'].map((h) => (
-                            <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {ARQUEO_DENOMINATIONS.map((d) => {
-                          const qty = closeArqueo[d.value] ?? 0
-                          const denom = Number(d.value)
-                          const imp = qty * denom
-                          const denomDisplay = denom < 1 ? denom.toFixed(2) : d.value
-                          return (
-                            <tr key={d.value} className="border-t border-stone-100">
-                              <td className="px-3 py-2 text-stone-700">{d.label} ({denomDisplay})</td>
-                              <td className="px-3 py-2">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={qty}
-                                  onChange={(e) =>
-                                    setCloseArqueo((a) => ({
-                                      ...a,
-                                      [d.value]: Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                                    }))
-                                  }
-                                  className="w-20 border border-stone-200 rounded-lg px-2 py-1 text-sm text-right"
-                                />
-                              </td>
-                              <td className="px-3 py-2 font-medium text-stone-800 whitespace-nowrap">S/ {imp.toFixed(2)}</td>
-                            </tr>
-                          )
-                        })}
-                        <tr className="border-t border-stone-200 bg-stone-50">
-                          <td colSpan={2} className="px-3 py-2 font-semibold text-stone-700">
-                            Total arqueado
-                          </td>
-                          <td className="px-3 py-2 font-bold text-stone-900 whitespace-nowrap">S/ {sumArqueo(closeArqueo).toFixed(2)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <ArqueoDenominationSection
+                      title="Billetes"
+                      items={ARQUEO_BILLS}
+                      values={closeArqueo}
+                      onChangeQty={(key, qty) => setCloseArqueo((a) => ({ ...a, [key]: qty }))}
+                    />
+                    <ArqueoDenominationSection
+                      title="Monedas"
+                      items={ARQUEO_COINS}
+                      values={closeArqueo}
+                      onChangeQty={(key, qty) => setCloseArqueo((a) => ({ ...a, [key]: qty }))}
+                    />
                   </div>
                 </div>
               )}
 
-              <div>
+              <div className="shrink-0 border-t border-stone-200 px-4 py-4 sm:px-5">
                 <label className="block text-xs font-medium text-stone-600 mb-1">Notas de cierre (opcional)</label>
                 <input
                   value={closeNotes}
                   onChange={(e) => setCloseNotes(e.target.value)}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm"
                   placeholder="Arqueo, observaciones"
                 />
               </div>
-            </div>
-            <div className="flex gap-2 mt-6">
-              <button type="button" onClick={() => setCloseModal(false)} className="flex-1 py-2 border border-stone-200 rounded-xl text-sm">
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleCloseSession}
-                disabled={saving}
-                className="flex-1 py-2 bg-stone-900 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-              >
-                {saving ? 'Cerrando...' : 'Cerrar caja'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {showMov && session && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+              <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-white px-4 py-4 sm:px-5">
+                <button
+                  type="button"
+                  onClick={() => setCloseModal(false)}
+                  className="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCloseSession}
+                  disabled={saving}
+                  className="flex-1 rounded-xl bg-stone-900 py-2.5 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+                >
+                  {saving ? 'Cerrando...' : 'Cerrar caja'}
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+      </PortalModal>
+
+      <PortalModal open={showMov && !!session} onClose={() => setShowMov(false)} className="max-w-sm">
+        {session && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">{movType === 'income' ? 'Registrar ingreso' : 'Registrar egreso'}</h3>
               <button type="button" onClick={() => setShowMov(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1885,101 +1942,93 @@ export default function CajaPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
 
-      {showArqueoModal && session && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-xl w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-stone-800">Arqueo de caja</h3>
-              <button type="button" onClick={() => setShowArqueoModal(false)} className="p-1 rounded-lg hover:bg-stone-100">
-                <X size={20} />
-              </button>
-            </div>
+      <PortalModal open={showArqueoModal && !!session} onClose={() => setShowArqueoModal(false)} className="max-w-2xl">
+        {session && (() => {
+          const arqueoTotal = sumArqueo(arqueoDraft)
+          const diff = arqueoTotal - currentBalance
+          const diffOk = Math.abs(diff) < 0.01
+          const diffClass = diffOk ? 'text-emerald-700' : diff > 0 ? 'text-emerald-700' : 'text-red-700'
 
-            <div className="rounded-xl border border-stone-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[520px]">
-                  <thead className="bg-stone-50">
-                    <tr>
-                      {['Denominación', 'Cantidad', 'Importe'].map((h) => (
-                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ARQUEO_DENOMINATIONS.map((d) => {
-                      const qty = arqueoDraft[d.value] ?? 0
-                      const denom = Number(d.value)
-                      const imp = qty * denom
-                      const denomDisplay = denom < 1 ? denom.toFixed(2) : d.value
-                      return (
-                        <tr key={d.value} className="border-t border-stone-100">
-                          <td className="px-3 py-2 text-stone-700">{d.label} ({denomDisplay})</td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min={0}
-                              step={1}
-                              value={qty}
-                              onChange={(e) =>
-                                setArqueoDraft((a) => ({
-                                  ...a,
-                                  [d.value]: Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                                }))
-                              }
-                              className="w-20 border border-stone-200 rounded-lg px-2 py-1 text-sm text-right"
-                            />
-                          </td>
-                          <td className="px-3 py-2 font-medium text-stone-800 whitespace-nowrap">S/ {imp.toFixed(2)}</td>
-                        </tr>
-                      )
-                    })}
-                    <tr className="border-t border-stone-200 bg-stone-50">
-                      <td colSpan={2} className="px-3 py-2 font-semibold text-stone-700">
-                        Total arqueado
-                      </td>
-                      <td className="px-3 py-2 font-bold text-stone-900 whitespace-nowrap">S/ {sumArqueo(arqueoDraft).toFixed(2)}</td>
-                    </tr>
-                  </tbody>
-                </table>
+          return (
+            <div className="flex max-h-[min(92dvh,900px)] flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-5">
+                <div>
+                  <h3 className="text-lg font-bold text-stone-800">Arqueo de caja</h3>
+                  <p className="mt-0.5 text-xs text-stone-500">
+                    Cuenta billetes y monedas. El total se compara con el saldo esperado de la sesión.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowArqueoModal(false)}
+                  className="shrink-0 rounded-lg p-1.5 hover:bg-stone-100"
+                  aria-label="Cerrar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50/60 px-4 py-3 sm:grid-cols-3 sm:px-5">
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Total contado</p>
+                  <p className="mt-0.5 text-lg font-bold text-stone-900 tabular-nums">S/ {arqueoTotal.toFixed(2)}</p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Saldo esperado</p>
+                  <p className="mt-0.5 text-lg font-bold text-stone-800 tabular-nums">S/ {Number(currentBalance).toFixed(2)}</p>
+                </div>
+                <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Diferencia</p>
+                  <p className={`mt-0.5 text-lg font-bold tabular-nums ${diffClass}`}>
+                    {diffOk ? 'S/ 0.00' : `${diff > 0 ? '+' : ''}S/ ${diff.toFixed(2)}`}
+                  </p>
+                  <p className="mt-0.5 text-[10px] text-stone-400">
+                    {diffOk ? 'Cuadrado' : diff > 0 ? 'Sobra efectivo' : 'Falta efectivo'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <ArqueoDenominationSection
+                    title="Billetes"
+                    items={ARQUEO_BILLS}
+                    values={arqueoDraft}
+                    onChangeQty={(key, qty) => setArqueoDraft((a) => ({ ...a, [key]: qty }))}
+                  />
+                  <ArqueoDenominationSection
+                    title="Monedas"
+                    items={ARQUEO_COINS}
+                    values={arqueoDraft}
+                    onChangeQty={(key, qty) => setArqueoDraft((a) => ({ ...a, [key]: qty }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-white px-4 py-4 sm:px-5">
+                <button
+                  type="button"
+                  onClick={() => setShowArqueoModal(false)}
+                  className="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveArqueo}
+                  disabled={savingArqueo}
+                  className="flex-1 rounded-xl bg-rest-600 py-2.5 text-sm font-medium text-white hover:bg-rest-700 disabled:opacity-50"
+                >
+                  {savingArqueo ? 'Guardando...' : 'Guardar arqueo'}
+                </button>
               </div>
             </div>
-
-            <div className="mt-4 rounded-xl border border-stone-200 p-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-stone-500">Saldo esperado</p>
-                <p className="text-sm font-semibold text-stone-800">S/ {Number(currentBalance).toFixed(2)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-stone-500">Diferencia</p>
-                {(() => {
-                  const diff = sumArqueo(arqueoDraft) - currentBalance
-                  const cls = Math.abs(diff) < 0.01 ? 'text-green-700' : diff > 0 ? 'text-green-700' : 'text-red-700'
-                  return <p className={`text-sm font-bold ${cls}`}>S/ {diff.toFixed(2)}</p>
-                })()}
-              </div>
-            </div>
-
-            <div className="flex gap-2 mt-6">
-              <button type="button" onClick={() => setShowArqueoModal(false)} className="flex-1 py-2 border border-stone-200 rounded-xl text-sm">
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveArqueo}
-                disabled={savingArqueo}
-                className="flex-1 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-              >
-                {savingArqueo ? 'Guardando...' : 'Guardar arqueo'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )
+        })()}
+      </PortalModal>
     </div>
   )
 }

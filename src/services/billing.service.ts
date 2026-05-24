@@ -29,13 +29,28 @@ export interface BillingStatusResponse {
   async_in_progress: boolean
 }
 
+export type ManualBillingStatus =
+  | 'accepted'
+  | 'rejected'
+  | 'error'
+  | 'processing'
+  | 'already_accepted'
+  | 'queued'
+
 export interface BillingResult {
+  status?: ManualBillingStatus
   success: boolean
   async?: boolean
   safe_to_print?: boolean
-  status?: BillingStatusResponse
+  billing_status?: string
+  sunat_message?: string
+  status_detail?: BillingStatusResponse
+  invoice?: unknown
   message?: string
 }
+
+/** Envío manual síncrono: el backend puede esperar hasta ~90s la respuesta SUNAT. */
+const MANUAL_BILLING_TIMEOUT_MS = 120_000
 
 export const billingService = {
   getInvoice: (saleId: number): Promise<InvoiceInfo> =>
@@ -45,10 +60,10 @@ export const billingService = {
     api.get(`/api/billing/status/${saleId}`).then((r) => r.data),
 
   send: (saleId: number): Promise<BillingResult> =>
-    api.post(`/api/billing/send/${saleId}`).then((r) => r.data),
+    api.post(`/api/billing/send/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then((r) => r.data),
 
   resend: (saleId: number): Promise<BillingResult & { invoice?: unknown }> =>
-    api.post(`/api/billing/resend/${saleId}`).then((r) => r.data),
+    api.post(`/api/billing/resend/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then((r) => r.data),
 
   downloadDocument: async (saleId: number, kind: 'xml' | 'xml-generated' | 'cdr' | 'pdf'): Promise<void> => {
     const res = await api.get(`/api/billing/invoice/${saleId}/document/${kind}`, { responseType: 'blob' })

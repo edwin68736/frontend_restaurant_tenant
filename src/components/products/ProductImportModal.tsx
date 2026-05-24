@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { PortalModal } from '@/components/ui/PortalModal'
 import {
   AlertCircle,
   CheckCircle2,
@@ -121,8 +122,8 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+    <PortalModal open={open} onClose={handleClose} className="max-w-3xl">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-stone-200 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <FileSpreadsheet className="w-5 h-5 text-rest-600 shrink-0" />
@@ -240,7 +241,7 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
           )}
         </div>
       </div>
-    </div>
+    </PortalModal>
   )
 }
 

@@ -8,6 +8,7 @@ import { TableCardFooter, TableWithChairsVisual } from '@/components/restaurant/
 import { useOnBranchChange } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 export default function SalasPage() {
   const navigate = useNavigate()
@@ -230,9 +231,9 @@ export default function SalasPage() {
         </>
       )}
 
-      {openModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+      <PortalModal open={!!openModal} onClose={() => setOpenModal(null)} className="max-w-sm">
+        {openModal && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <h3 className="font-bold text-stone-800 mb-4">Abrir mesa: {openModal.name}</h3>
             <div className="space-y-4">
               {canReassign && (
@@ -279,8 +280,8 @@ export default function SalasPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
     </div>
   )
 }

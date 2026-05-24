@@ -15,6 +15,7 @@ import {
 } from '@/services/products.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
+import { PortalModal } from '@/components/ui/PortalModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 
@@ -547,9 +548,8 @@ export default function ProductosPage() {
       </div>
 
       {/* Modal crear / editar */}
-      {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <PortalModal open={!!modal} onClose={closeProductModal} className="max-w-3xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="font-bold text-stone-800">{modal === 'create' ? 'Agregar producto' : 'Editar producto'}</h3>
               <button onClick={closeProductModal} className="p-2 rounded-lg hover:bg-stone-100">
@@ -759,54 +759,60 @@ export default function ProductosPage() {
               </button>
             </div>
 
-            {categoryModalOpen && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-                <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
-                  <div className="flex items-center justify-between p-4 border-b border-stone-200">
-                    <h4 className="font-bold text-stone-800">Agregar categoría</h4>
-                    <button
-                      type="button"
-                      onClick={() => { setCategoryModalOpen(false); setNewCategoryName('') }}
-                      className="p-2 rounded-lg hover:bg-stone-100"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-stone-700 mb-1">Nombre</label>
-                      <input
-                        ref={categoryModalInputRef}
-                        value={newCategoryName}
-                        onChange={(e) => setNewCategoryName(e.target.value)}
-                        placeholder="Ej. Caldos"
-                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => { setCategoryModalOpen(false); setNewCategoryName('') }}
-                        className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={createCategory}
-                        disabled={addingCategory || !newCategoryName.trim()}
-                        className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-                      >
-                        {addingCategory ? 'Creando...' : 'Crear'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+          </div>
+      </PortalModal>
+
+      <PortalModal
+        open={categoryModalOpen}
+        onClose={() => {
+          setCategoryModalOpen(false)
+          setNewCategoryName('')
+        }}
+        className="max-w-sm"
+      >
+        <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-stone-200">
+            <h4 className="font-bold text-stone-800">Agregar categoría</h4>
+            <button
+              type="button"
+              onClick={() => { setCategoryModalOpen(false); setNewCategoryName('') }}
+              className="p-2 rounded-lg hover:bg-stone-100"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Nombre</label>
+              <input
+                ref={categoryModalInputRef}
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Ej. Caldos"
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setCategoryModalOpen(false); setNewCategoryName('') }}
+                className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={createCategory}
+                disabled={addingCategory || !newCategoryName.trim()}
+                className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                {addingCategory ? 'Creando...' : 'Crear'}
+              </button>
+            </div>
           </div>
         </div>
-      )}
+      </PortalModal>
+
       <ProductImportModal
         open={importModalOpen}
         onClose={() => setImportModalOpen(false)}

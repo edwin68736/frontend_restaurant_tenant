@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { restaurantService, type Floor, type RestaurantTable } from '@/services/restaurant.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 const PAGE_SIZE = 12
 
@@ -290,11 +291,9 @@ export default function MesasPage() {
         </>
       )}
 
-      {/* Modal Pisos */}
-      {floorsModalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between mb-4">
+      <PortalModal open={floorsModalOpen} onClose={() => setFloorsModalOpen(false)} className="max-w-md">
+        <div className="flex max-h-[min(90dvh,800px)] flex-col overflow-hidden rounded-2xl bg-white p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">Registrar o editar piso</h3>
               <button type="button" onClick={() => setFloorsModalOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
                 <X size={20} />
@@ -349,12 +348,11 @@ export default function MesasPage() {
               </ul>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {modal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+      <PortalModal open={!!modal} onClose={() => { setModal(null); setEditing(null) }} className="max-w-sm">
+        {modal && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <h3 className="font-bold text-stone-800 mb-4">{modal === 'create' ? 'Nueva mesa' : 'Editar mesa'}</h3>
             <div className="space-y-4">
               <div>
@@ -393,8 +391,8 @@ export default function MesasPage() {
               <button onClick={save} className="flex-1 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium">Guardar</button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
     </PageShell>
   )
 }

@@ -14,7 +14,7 @@ export interface Sale {
   total: number
   currency: string
   status: string
-  billing_status: 'pending' | 'sent' | 'accepted' | 'rejected' | 'error'
+  billing_status: 'pending' | 'sent' | 'accepted' | 'observed' | 'rejected' | 'error'
   branch_id: number
   created_at: string
   /** Método principal (legacy); si hay `payments`, preferir esa lista. */

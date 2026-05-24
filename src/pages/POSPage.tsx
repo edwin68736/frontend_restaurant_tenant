@@ -20,6 +20,7 @@ import { SearchInput } from '@/components/SearchInput'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { restaurantService } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
+import { PortalModal } from '@/components/ui/PortalModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
 import { companyService, pickDefaultNotaVentaSeries, sortSeriesNotaVentaFirst, type SeriesRow } from '@/services/company.service'
@@ -1136,9 +1137,8 @@ export default function POSPage() {
       )}
 
       {/* Modal para llevar — datos opcionales */}
-      {orderDetailsModal === 'takeaway' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+      <PortalModal open={orderDetailsModal === 'takeaway'} onClose={() => setOrderDetailsModal(null)} className="max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl w-full p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800 flex items-center gap-2">
                 <Package size={18} /> Para llevar
@@ -1205,13 +1205,10 @@ export default function POSPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {/* Modal delivery */}
-      {orderDetailsModal === 'delivery' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto">
+      <PortalModal open={orderDetailsModal === 'delivery'} onClose={() => setOrderDetailsModal(null)} className="max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl w-full p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800 flex items-center gap-2">
                 <Bike size={18} /> Delivery
@@ -1304,13 +1301,10 @@ export default function POSPage() {
               Listo
             </button>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {/* Modal checkout — solo comprobante y pagos */}
-      {checkoutOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+      <PortalModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} className="max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">Cobrar</h3>
               <button onClick={() => setCheckoutOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1414,13 +1408,10 @@ export default function POSPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {/* Modal Nuevo cliente rápido */}
-      {clientQuickAddOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">Registrar cliente</h3>
               <button type="button" onClick={() => setClientQuickAddOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1541,13 +1532,10 @@ export default function POSPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {ordersOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setOrdersOpen(false)} aria-hidden="true" />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <PortalModal open={ordersOpen} onClose={() => setOrdersOpen(false)} className="max-w-lg" overlayClassName="items-end sm:items-center">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[80vh] flex flex-col">
             <div className="p-4 border-b border-stone-200 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-stone-800">Pedidos</h3>
@@ -1606,8 +1594,7 @@ export default function POSPage() {
               ))}
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
       <VoidOrderPinModal
         open={!!voidOrderTarget}
@@ -1637,10 +1624,9 @@ export default function POSPage() {
         }}
       />
 
-      {precuentaOpen && precuentaData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setPrecuentaOpen(false)} aria-hidden="true" />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[85vh] overflow-y-auto p-5">
+      <PortalModal open={precuentaOpen && !!precuentaData} onClose={() => setPrecuentaOpen(false)} className="max-w-md">
+        {precuentaData && (
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[85vh] overflow-y-auto p-5">
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-bold text-stone-800">Precuenta</h3>
@@ -1675,8 +1661,8 @@ export default function POSPage() {
               Reimprimir
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </PortalModal>
 
       <ReceiptPrintModal
         open={receiptModalOpen}

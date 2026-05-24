@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { PortalModal } from '@/components/ui/PortalModal'
 
 type Props = {
   open: boolean
@@ -37,8 +37,8 @@ export function VoidOrderPinModal({ open, title, description, orderLabel, onClos
   }
 
   return (
-    <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
-      <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3 shadow-xl">
+    <PortalModal open={open} onClose={handleClose} className="max-w-sm">
+      <div className="bg-white rounded-2xl p-5 w-full space-y-3 shadow-xl">
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-bold text-stone-800">{title}</h3>
@@ -88,6 +88,6 @@ export function VoidOrderPinModal({ open, title, description, orderLabel, onClos
           </button>
         </div>
       </div>
-    </div>
+    </PortalModal>
   )
 }

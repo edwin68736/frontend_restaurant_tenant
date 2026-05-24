@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -15,41 +15,59 @@ import {
   Ticket,
   ChevronDown,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { salesService, formatSaleDocumentNumber, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
 import { billingService } from '@/services/billing.service'
 import { companyService } from '@/services/company.service'
+import { PageShell } from '@/components/layout/PageShell'
+import { PortalModal } from '@/components/ui/PortalModal'
+import { AnchoredDropdown } from '@/components/ui/AnchoredDropdown'
 import SunatRequiredMessage from '@/components/SunatRequiredMessage'
 import { SearchInput } from '@/components/SearchInput'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import type { PrintData } from '@/types/printData'
 import { downloadReceiptPdf, generateReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { useBillingEvents } from '@/hooks/useBillingEvents'
+import {
+  billingStatusForUI,
+  manualBillingMessage,
+  normalizeBillingStatus,
+  resolveManualBillingStatus,
+} from '@/utils/manualBilling'
+import {
+  BILLING_STATUS,
+  BILLING_STATUS_COLORS,
+  BILLING_STATUS_LABELS,
+  canShowCdr,
+  canShowSunatOfficialPdf,
+  canShowXmlGenerated,
+  canShowXmlSent,
+} from '@/constants/billingStatus'
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  sent: 'bg-blue-100 text-blue-700',
-  accepted: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-600',
-  error: 'bg-orange-100 text-orange-700',
-}
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendiente',
-  sent: 'Enviado',
-  accepted: 'Aceptado',
-  rejected: 'Rechazado',
-  error: 'Error',
-}
+const STATUS_COLORS = BILLING_STATUS_COLORS
+const STATUS_LABELS = BILLING_STATUS_LABELS
 
-const ROW_DROPDOWN_PANEL =
-  'absolute right-0 top-full z-30 mt-1 w-52 rounded-xl border border-stone-200 bg-white py-1 shadow-lg text-left'
 const ROW_DROPDOWN_ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-stone-700 hover:bg-stone-50 disabled:opacity-50'
 
-function closeDetailsFromClick(e: React.MouseEvent<HTMLElement>) {
-  const d = e.currentTarget.closest('details')
-  if (d) (d as HTMLDetailsElement).open = false
-}
+const ICON_BTN = 'p-1.5 rounded-lg disabled:opacity-40 disabled:pointer-events-none shrink-0'
+const PDF_A4_BTN = `${ICON_BTN} text-red-600 hover:bg-red-50`
+const PDF_TICKET_BTN = `${ICON_BTN} text-orange-700 hover:bg-orange-50`
+const DETAIL_BTN = `${ICON_BTN} text-stone-600 hover:bg-stone-100`
+const SUNAT_SEND_BTN =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
+const SUNAT_RESEND_BTN =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 shrink-0'
+const DOWNLOAD_DROPDOWN_TRIGGER =
+  'inline-flex items-center gap-0.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50'
+
+const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+const BILLING_FILTER_STATUSES = ['pending', 'sent', 'accepted', 'rejected', 'error'] as const
 
 type Tab = 'notas' | 'facturacion'
 
@@ -59,7 +77,7 @@ export default function VentasPage() {
   const [tab, setTab] = useState<Tab>(() => (searchParams.get('tab') === 'facturacion' ? 'facturacion' : 'notas'))
   const [sales, setSales] = useState<Sale[]>([])
   const [page, setPage] = useState(1)
-  const [perPage] = useState(25)
+  const [perPage, setPerPage] = useState(25)
   const [total, setTotal] = useState(0)
   const [sending, setSending] = useState<number | null>(null)
   const [resending, setResending] = useState<number | null>(null)
@@ -82,6 +100,7 @@ export default function VentasPage() {
   const [xmlViewerText, setXmlViewerText] = useState<string | null>(null)
   const [xmlViewerTitle, setXmlViewerTitle] = useState<string>('XML')
   const [viewingXmlSaleId, setViewingXmlSaleId] = useState<number | null>(null)
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
 
   useEffect(() => {
     companyService.getSunat().then((d) => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
@@ -97,6 +116,20 @@ export default function VentasPage() {
   }, [])
 
   const billingStatus = searchParams.get('status') || undefined
+
+  const setBillingStatusFilter = (status: string) => {
+    setSearchParams((p) => {
+      p.set('tab', 'facturacion')
+      if (status) p.set('status', status)
+      else p.delete('status')
+      return p
+    })
+    setPage(1)
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / perPage))
+  const from = total === 0 ? 0 : (page - 1) * perPage + 1
+  const to = Math.min(page * perPage, total)
 
   const {
     inputValue: searchInput,
@@ -123,11 +156,21 @@ export default function VentasPage() {
       return salesService.list(params, { signal })
     },
     onSuccess: ({ data, total: t }) => {
-      setSales(data ?? [])
+      setSales((data ?? []).map((s) => ({ ...s, billing_status: normalizeBillingStatus(s.billing_status) })))
       setTotal(t ?? 0)
     },
     onError: () => toast.error('Error al cargar'),
   })
+
+  const applyBillingEvent = useCallback((evt: { sale_id: number; status: string }) => {
+    const billingStatus = normalizeBillingStatus(evt.status)
+    setSales((prev) => prev.map((s) => (s.id === evt.sale_id ? { ...s, billing_status: billingStatus } : s)))
+    setDetail((d) => (d && d.sale.id === evt.sale_id
+      ? { ...d, sale: { ...d.sale, billing_status: billingStatus } }
+      : d))
+  }, [])
+
+  useBillingEvents(applyBillingEvent, tab === 'facturacion' && sunatEnabled === true)
 
   const setTabAndUrl = (t: Tab) => {
     setTab(t)
@@ -137,44 +180,17 @@ export default function VentasPage() {
 
   const handleSend = async (saleId: number) => {
     setSending(saleId)
-    const tid = toast.loading('Factura en proceso…')
+    const tid = toast.loading('Enviando a SUNAT…')
     try {
       const res = await billingService.send(saleId)
-      if (res.async || !res.safe_to_print) {
-        const poll = async () => {
-          const deadline = Date.now() + 120_000
-          while (Date.now() < deadline) {
-            const st = await billingService.getStatus(saleId)
-            const labels: Record<string, string> = {
-              PENDING_QUEUE: 'En cola',
-              PROCESSING: 'Procesando',
-              SENDING_TO_FACTURADOR: 'Enviando al facturador',
-              SENDING_TO_SUNAT: 'Enviando a SUNAT',
-              SUNAT_ACCEPTED: 'Aceptada por SUNAT',
-              SUNAT_REJECTED: 'Rechazada',
-              FAILED: 'Error',
-            }
-            toast.loading(labels[st.status] ?? 'En proceso…', { id: tid })
-            if (st.safe_to_print) {
-              toast.success('Aceptada por SUNAT', { id: tid })
-              return
-            }
-            if (['SUNAT_REJECTED', 'FAILED', 'DEAD_LETTER', 'UNKNOWN'].includes(st.status)) {
-              toast.error(st.sunat_message || labels[st.status] || 'Error', { id: tid })
-              return
-            }
-            if (!st.async_in_progress && st.status !== 'PENDING_QUEUE') break
-            await new Promise((r) => setTimeout(r, 1500))
-          }
-          throw new Error('Tiempo de espera agotado')
-        }
-        await poll()
-      } else if (res.safe_to_print) {
-        toast.success('Aceptada por SUNAT', { id: tid })
-      } else {
-        toast.error(res.message ?? 'Sin confirmación SUNAT', { id: tid })
-      }
-      refresh()
+      const status = resolveManualBillingStatus(res)
+      const msg = manualBillingMessage(res)
+      const uiStatus = billingStatusForUI(res)
+      if (status === 'accepted' || status === 'already_accepted' || uiStatus === BILLING_STATUS.observed) {
+        toast.success(msg, { id: tid })
+      } else if (status === 'rejected' || status === 'error') toast.error(msg, { id: tid })
+      else toast.info(msg, { id: tid })
+      applyBillingEvent({ sale_id: saleId, status: uiStatus })
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (e as Error).message ?? 'Error', { id: tid })
     } finally {
@@ -184,12 +200,19 @@ export default function VentasPage() {
 
   const handleResend = async (saleId: number) => {
     setResending(saleId)
+    const tid = toast.loading('Reenviando a SUNAT…')
     try {
       const res = await billingService.resend(saleId)
-      toast[res.success ? 'success' : 'error'](res.message ?? (res.success ? 'Reenviado a SUNAT' : 'Error'))
-      refresh()
+      const status = resolveManualBillingStatus(res)
+      const msg = manualBillingMessage(res)
+      const uiStatus = billingStatusForUI(res)
+      if (status === 'accepted' || status === 'already_accepted' || uiStatus === BILLING_STATUS.observed) {
+        toast.success(msg, { id: tid })
+      } else if (status === 'rejected' || status === 'error') toast.error(msg, { id: tid })
+      else toast.info(msg, { id: tid })
+      applyBillingEvent({ sale_id: saleId, status: uiStatus })
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+      toast.error((e as { response?: { data?: { error?: string } }; message?: string })?.response?.data?.error ?? (e as Error).message ?? 'Error', { id: tid })
     } finally {
       setResending(null)
     }
@@ -224,7 +247,10 @@ export default function VentasPage() {
   const closeDetail = () => {
     setDetailOpen(false)
     setDetail(null)
+    setOpenDropdownId(null)
   }
+
+  const closeDropdown = () => setOpenDropdownId(null)
 
   const requirePrintData = async (saleId: number): Promise<PrintData> => {
     const d = await salesService.get(saleId)
@@ -378,10 +404,252 @@ export default function VentasPage() {
   }
   const saleNumber = (s: Sale) => formatSaleDocumentNumber(s)
   const itemLineTotal = (it: SaleItem) => Number(it.total ?? 0)
-  const canShowXmlSent = (status: Sale['billing_status']) => status === 'sent' || status === 'accepted' || status === 'rejected'
-  const canShowXmlGenerated = (status: Sale['billing_status']) => status === 'pending' || status === 'error'
-  const canShowCdr = (status: Sale['billing_status']) => status === 'accepted' || status === 'rejected'
-  const canShowSunatOfficialPdf = (status: Sale['billing_status']) => status === 'sent' || status === 'accepted'
+
+  const renderLocalPdfActions = (saleId: number, menuKey: string) => (
+    <div className="flex items-center gap-1 flex-wrap">
+      <button
+        type="button"
+        className={PDF_TICKET_BTN}
+        title="Ver ticket en modal"
+        disabled={localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'ticket'}
+        onClick={() => void openLocalPdfViewer(saleId, 'ticket')}
+      >
+        {localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'ticket' ? (
+          <RefreshCw size={14} className="animate-spin" />
+        ) : (
+          <Ticket size={14} />
+        )}
+      </button>
+      <button
+        type="button"
+        className={PDF_A4_BTN}
+        title="Ver A4 en modal"
+        disabled={localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'a4'}
+        onClick={() => void openLocalPdfViewer(saleId, 'a4')}
+      >
+        {localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'a4' ? (
+          <RefreshCw size={14} className="animate-spin" />
+        ) : (
+          <FileOutput size={14} />
+        )}
+      </button>
+      <button
+        type="button"
+        className={DETAIL_BTN}
+        title="Abrir ticket en pestaña"
+        disabled={localTicketTabBusyId === saleId}
+        onClick={() => void openLocalPdfTicketTab(saleId)}
+      >
+        {localTicketTabBusyId === saleId ? (
+          <RefreshCw size={14} className="animate-spin" />
+        ) : (
+          <ExternalLink size={14} />
+        )}
+      </button>
+      <AnchoredDropdown
+        menuId={`${menuKey}-pdf-dl-${saleId}`}
+        openId={openDropdownId}
+        onOpenChange={setOpenDropdownId}
+        triggerClassName={DOWNLOAD_DROPDOWN_TRIGGER}
+        trigger={
+          <>
+            <Download size={14} className="shrink-0" />
+            <ChevronDown size={14} className="shrink-0 opacity-60" />
+          </>
+        }
+      >
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          disabled={localPdfDownloadBusy?.saleId === saleId && localPdfDownloadBusy?.format === 'ticket'}
+          onClick={() => {
+            closeDropdown()
+            void downloadLocalPdf(saleId, 'ticket')
+          }}
+        >
+          <Download size={14} />
+          Descargar ticket
+        </button>
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          disabled={localPdfDownloadBusy?.saleId === saleId && localPdfDownloadBusy?.format === 'a4'}
+          onClick={() => {
+            closeDropdown()
+            void downloadLocalPdf(saleId, 'a4')
+          }}
+        >
+          <Download size={14} />
+          Descargar A4
+        </button>
+      </AnchoredDropdown>
+    </div>
+  )
+
+  const renderSunatPseActions = (
+    sale: Sale,
+    menuKey: string,
+    options?: { showXmlViewers?: boolean; hideDetailButton?: boolean },
+  ) => {
+    const bs = sale.billing_status
+    const showXmlViewers = options?.showXmlViewers ?? false
+    const hideDetailButton = options?.hideDetailButton ?? false
+    const hasSunatDownloads =
+      canShowSunatOfficialPdf(bs) || canShowXmlSent(bs) || canShowXmlGenerated(bs) || canShowCdr(bs)
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {!hideDetailButton && (
+          <button
+            type="button"
+            className={DETAIL_BTN}
+            title="Ver detalle"
+            onClick={() => openDetail(sale.id)}
+          >
+            <Eye size={14} />
+          </button>
+        )}
+        {bs === 'pending' && (
+          <button
+            type="button"
+            className={SUNAT_SEND_BTN}
+            title="Enviar a SUNAT"
+            disabled={sending === sale.id}
+            onClick={() => void handleSend(sale.id)}
+          >
+            {sending === sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        )}
+        {(bs === 'error' || bs === 'sent') && (
+          <button
+            type="button"
+            className={SUNAT_RESEND_BTN}
+            title="Reenviar a SUNAT"
+            disabled={resending === sale.id}
+            onClick={() => void handleResend(sale.id)}
+          >
+            {resending === sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          </button>
+        )}
+        {hasSunatDownloads && (
+        <AnchoredDropdown
+          menuId={`${menuKey}-sunat-dl-${sale.id}`}
+          openId={openDropdownId}
+          onOpenChange={setOpenDropdownId}
+          triggerClassName={DOWNLOAD_DROPDOWN_TRIGGER}
+          trigger={
+            <>
+              <Download size={14} className="shrink-0" />
+              <ChevronDown size={14} className="shrink-0 opacity-60" />
+            </>
+          }
+        >
+          {canShowSunatOfficialPdf(bs) && (
+            <>
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={viewingPdfSaleId === sale.id}
+                onClick={() => {
+                  closeDropdown()
+                  void openSunatPdfViewer(sale.id)
+                }}
+              >
+                <FileSearch size={14} />
+                Ver PDF oficial
+              </button>
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={downloading?.saleId === sale.id && downloading?.kind === 'pdf'}
+                onClick={() => {
+                  closeDropdown()
+                  void handleDownload(sale.id, 'pdf')
+                }}
+              >
+                <FileText size={14} />
+                Descargar PDF oficial
+              </button>
+            </>
+          )}
+          {canShowXmlSent(bs) && (
+            <>
+              {showXmlViewers && (
+                <button
+                  type="button"
+                  className={ROW_DROPDOWN_ITEM}
+                  disabled={viewingXmlSaleId === sale.id}
+                  onClick={() => {
+                    closeDropdown()
+                    void openXmlViewer(sale.id, 'xml')
+                  }}
+                >
+                  <FileCode size={14} />
+                  Ver XML enviado
+                </button>
+              )}
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml'}
+                onClick={() => {
+                  closeDropdown()
+                  void handleDownload(sale.id, 'xml')
+                }}
+              >
+                <FileCode size={14} />
+                Descargar XML enviado
+              </button>
+            </>
+          )}
+          {canShowXmlGenerated(bs) && (
+            <>
+              {showXmlViewers && (
+                <button
+                  type="button"
+                  className={ROW_DROPDOWN_ITEM}
+                  disabled={viewingXmlSaleId === sale.id}
+                  onClick={() => {
+                    closeDropdown()
+                    void openXmlViewer(sale.id, 'xml-generated')
+                  }}
+                >
+                  <FileCode size={14} />
+                  Ver XML generado
+                </button>
+              )}
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml-generated'}
+                onClick={() => {
+                  closeDropdown()
+                  void handleDownload(sale.id, 'xml-generated')
+                }}
+              >
+                <FileCode size={14} />
+                Descargar XML generado
+              </button>
+            </>
+          )}
+          {canShowCdr(bs) && (
+            <button
+              type="button"
+              className={ROW_DROPDOWN_ITEM}
+              disabled={downloading?.saleId === sale.id && downloading?.kind === 'cdr'}
+              onClick={() => {
+                closeDropdown()
+                void handleDownload(sale.id, 'cdr')
+              }}
+            >
+              <Archive size={14} />
+              Descargar CDR
+            </button>
+          )}
+        </AnchoredDropdown>
+        )}
+      </div>
+    )
+  }
 
   if (sunatEnabled === null) {
     return (
@@ -392,94 +660,90 @@ export default function VentasPage() {
   }
 
   return (
-    <div className="w-full flex flex-col flex-1 min-h-0">
-      <div className="mb-3 shrink-0">
-        <h2 className="text-lg font-bold text-stone-800">Ventas</h2>
-        <p className="text-sm text-stone-500">Notas de venta y facturación electrónica</p>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setTabAndUrl('notas')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
-            tab === 'notas'
-              ? 'bg-rest-600 text-white border-rest-600'
-              : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
-          }`}
-        >
-          Notas de venta
-        </button>
-        <button
-          type="button"
-          onClick={() => setTabAndUrl('facturacion')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
-            tab === 'facturacion'
-              ? 'bg-rest-600 text-white border-rest-600'
-              : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
-          }`}
-        >
-          Facturación (boletas y facturas)
-        </button>
-      </div>
-
+    <PageShell
+      className="flex-1 min-h-0"
+      title="Ventas"
+      subtitle="Notas de venta y facturación electrónica"
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={() => setTabAndUrl('notas')}
+            className={`inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+              tab === 'notas'
+                ? 'bg-rest-600 text-white border-rest-600'
+                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
+            }`}
+          >
+            Notas de venta
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabAndUrl('facturacion')}
+            className={`inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+              tab === 'facturacion'
+                ? 'bg-rest-600 text-white border-rest-600'
+                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
+            }`}
+          >
+            Facturación
+          </button>
+          {tab === 'facturacion' && sunatEnabled && (
+            <div className="w-full sm:w-auto sm:min-w-[11rem]">
+              <SearchableSelect
+                value={searchParams.get('status') ?? ''}
+                onChange={(v) => setBillingStatusFilter(String(v ?? ''))}
+                options={[
+                  { value: '', label: 'Todos los estados' },
+                  ...BILLING_FILTER_STATUSES.map((status) => ({
+                    value: status,
+                    label: STATUS_LABELS[status],
+                  })),
+                ]}
+                placeholder="Estado SUNAT"
+                searchable={false}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+              />
+            </div>
+          )}
+        </>
+      }
+    >
       {tab === 'facturacion' && !sunatEnabled && <SunatRequiredMessage />}
 
       {(tab === 'notas' || sunatEnabled) && (
         <>
-          <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 mb-4 sm:mb-5">
             <SearchInput
               value={searchInput}
-              onChange={setSearchInput}
+              onChange={(v) => {
+                setSearchInput(v)
+                setPage(1)
+              }}
               isSearching={isSearching}
               placeholder="Buscar por número..."
-              className="flex-1 min-w-[180px] max-w-xs"
-          inputClassName="text-sm"
+              className="w-full sm:flex-1 sm:min-w-[260px] order-first"
+              inputClassName="bg-white text-sm"
             />
             <button
               type="button"
               onClick={() => refresh()}
-              className="flex items-center gap-2 px-4 py-2 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 bg-white shrink-0"
             >
               <RefreshCw size={14} /> Actualizar
             </button>
           </div>
 
-          {tab === 'facturacion' && (
-            <div className="flex gap-2 mb-4 overflow-x-auto">
-              {(['pending', 'sent', 'accepted', 'rejected', 'error'] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => {
-                    setSearchParams((p) => {
-                      p.set('tab', 'facturacion')
-                      p.set('status', status)
-                      return p
-                    })
-                    setPage(1)
-                  }}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                    searchParams.get('status') === status
-                      ? 'bg-rest-600 text-white border-rest-600'
-                      : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
-                  }`}
-                >
-                  {STATUS_LABELS[status]}
-                </button>
-              ))}
-            </div>
-          )}
-
+          <div className="flex-1 min-h-0 flex flex-col">
           {loading ? (
-            <div className="flex justify-center py-12">
+            <div className="flex-1 min-h-0 flex items-center justify-center">
               <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-stone-200 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-auto">
                 <table className="w-full text-sm min-w-[720px]">
-                  <thead className="bg-stone-50 border-b border-stone-200">
+                  <thead className="sticky top-0 z-10 bg-stone-50 border-b border-stone-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
                     <tr>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Fecha</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Comprobante</th>
@@ -522,213 +786,8 @@ export default function VentasPage() {
                                 {STATUS_LABELS[s.billing_status] ?? s.billing_status}
                               </span>
                             </td>
-                            <td className="px-4 py-3 relative">
-                              <details className="relative inline-block text-left">
-                                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
-                                  <FileText size={14} className="shrink-0" />
-                                  PDF
-                                  <ChevronDown size={14} className="shrink-0 opacity-60" />
-                                </summary>
-                                <div className={ROW_DROPDOWN_PANEL}>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfPreviewBusy?.saleId === s.id && localPdfPreviewBusy?.format === 'ticket'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfViewer(s.id, 'ticket')
-                                    }}
-                                  >
-                                    <Ticket size={14} />
-                                    Ver ticket
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfPreviewBusy?.saleId === s.id && localPdfPreviewBusy?.format === 'a4'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfViewer(s.id, 'a4')
-                                    }}
-                                  >
-                                    <FileOutput size={14} />
-                                    Ver A4
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfDownloadBusy?.saleId === s.id &&
-                                      localPdfDownloadBusy?.format === 'ticket'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void downloadLocalPdf(s.id, 'ticket')
-                                    }}
-                                  >
-                                    <Download size={14} />
-                                    Descargar ticket
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfDownloadBusy?.saleId === s.id && localPdfDownloadBusy?.format === 'a4'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void downloadLocalPdf(s.id, 'a4')
-                                    }}
-                                  >
-                                    <Download size={14} />
-                                    Descargar A4
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={localTicketTabBusyId === s.id}
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfTicketTab(s.id)
-                                    }}
-                                  >
-                                    <ExternalLink size={14} />
-                                    Ticket en pestaña
-                                  </button>
-                                </div>
-                              </details>
-                            </td>
-                            <td className="px-4 py-3 relative">
-                              <details className="relative inline-block text-left">
-                                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
-                                  Más
-                                  <ChevronDown size={14} className="shrink-0 opacity-60" />
-                                </summary>
-                                <div className={ROW_DROPDOWN_PANEL}>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      openDetail(s.id)
-                                    }}
-                                  >
-                                    <Eye size={14} />
-                                    Ver detalle
-                                  </button>
-                                  {s.billing_status === 'pending' && (
-                                    <button
-                                      type="button"
-                                      className={ROW_DROPDOWN_ITEM}
-                                      disabled={sending === s.id}
-                                      onClick={(e) => {
-                                        closeDetailsFromClick(e)
-                                        void handleSend(s.id)
-                                      }}
-                                    >
-                                      {sending === s.id ? (
-                                        <RefreshCw size={14} className="animate-spin" />
-                                      ) : (
-                                        <Send size={14} />
-                                      )}
-                                      Enviar a SUNAT
-                                    </button>
-                                  )}
-                                  {(s.billing_status === 'error' || s.billing_status === 'sent') && (
-                                    <button
-                                      type="button"
-                                      className={ROW_DROPDOWN_ITEM}
-                                      disabled={resending === s.id}
-                                      onClick={(e) => {
-                                        closeDetailsFromClick(e)
-                                        void handleResend(s.id)
-                                      }}
-                                    >
-                                      {resending === s.id ? (
-                                        <RefreshCw size={14} className="animate-spin" />
-                                      ) : (
-                                        <RefreshCw size={14} />
-                                      )}
-                                      Reenviar a SUNAT
-                                    </button>
-                                  )}
-                                  {canShowSunatOfficialPdf(s.billing_status) && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className={ROW_DROPDOWN_ITEM}
-                                        disabled={viewingPdfSaleId === s.id}
-                                        onClick={(e) => {
-                                          closeDetailsFromClick(e)
-                                          void openSunatPdfViewer(s.id)
-                                        }}
-                                      >
-                                        <FileSearch size={14} />
-                                        Ver PDF oficial
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={ROW_DROPDOWN_ITEM}
-                                        disabled={downloading?.saleId === s.id && downloading?.kind === 'pdf'}
-                                        onClick={(e) => {
-                                          closeDetailsFromClick(e)
-                                          void handleDownload(s.id, 'pdf')
-                                        }}
-                                      >
-                                        <FileText size={14} />
-                                        Descargar PDF oficial
-                                      </button>
-                                    </>
-                                  )}
-                                  {canShowXmlSent(s.billing_status) && (
-                                    <button
-                                      type="button"
-                                      className={ROW_DROPDOWN_ITEM}
-                                      disabled={downloading?.saleId === s.id && downloading?.kind === 'xml'}
-                                      onClick={(e) => {
-                                        closeDetailsFromClick(e)
-                                        void handleDownload(s.id, 'xml')
-                                      }}
-                                    >
-                                      <FileCode size={14} />
-                                      Descargar XML enviado
-                                    </button>
-                                  )}
-                                  {canShowXmlGenerated(s.billing_status) && (
-                                    <button
-                                      type="button"
-                                      className={ROW_DROPDOWN_ITEM}
-                                      disabled={downloading?.saleId === s.id && downloading?.kind === 'xml-generated'}
-                                      onClick={(e) => {
-                                        closeDetailsFromClick(e)
-                                        void handleDownload(s.id, 'xml-generated')
-                                      }}
-                                    >
-                                      <FileCode size={14} />
-                                      Descargar XML generado
-                                    </button>
-                                  )}
-                                  {canShowCdr(s.billing_status) && (
-                                    <button
-                                      type="button"
-                                      className={ROW_DROPDOWN_ITEM}
-                                      disabled={downloading?.saleId === s.id && downloading?.kind === 'cdr'}
-                                      onClick={(e) => {
-                                        closeDetailsFromClick(e)
-                                        void handleDownload(s.id, 'cdr')
-                                      }}
-                                    >
-                                      <Archive size={14} />
-                                      Descargar CDR
-                                    </button>
-                                  )}
-                                </div>
-                              </details>
-                            </td>
+                            <td className="px-4 py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
+                            <td className="px-4 py-3">{renderSunatPseActions(s, 'fact')}</td>
                           </>
                         )}
                         {tab === 'notas' && (
@@ -737,89 +796,12 @@ export default function VentasPage() {
                               <button
                                 type="button"
                                 onClick={() => openDetail(s.id)}
-                                className="p-1.5 rounded-lg text-stone-600 hover:bg-stone-100"
+                                className={DETAIL_BTN}
                                 title="Ver detalle"
                               >
                                 <Eye size={14} />
                               </button>
-                              <details className="relative inline-block text-left">
-                                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
-                                  <FileText size={14} className="shrink-0" />
-                                  PDF
-                                  <ChevronDown size={14} className="shrink-0 opacity-60" />
-                                </summary>
-                                <div className={ROW_DROPDOWN_PANEL}>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfPreviewBusy?.saleId === s.id && localPdfPreviewBusy?.format === 'ticket'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfViewer(s.id, 'ticket')
-                                    }}
-                                  >
-                                    <Ticket size={14} />
-                                    Ver ticket
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfPreviewBusy?.saleId === s.id && localPdfPreviewBusy?.format === 'a4'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfViewer(s.id, 'a4')
-                                    }}
-                                  >
-                                    <FileOutput size={14} />
-                                    Ver A4
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfDownloadBusy?.saleId === s.id &&
-                                      localPdfDownloadBusy?.format === 'ticket'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void downloadLocalPdf(s.id, 'ticket')
-                                    }}
-                                  >
-                                    <Download size={14} />
-                                    Descargar ticket
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={
-                                      localPdfDownloadBusy?.saleId === s.id && localPdfDownloadBusy?.format === 'a4'
-                                    }
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void downloadLocalPdf(s.id, 'a4')
-                                    }}
-                                  >
-                                    <Download size={14} />
-                                    Descargar A4
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={ROW_DROPDOWN_ITEM}
-                                    disabled={localTicketTabBusyId === s.id}
-                                    onClick={(e) => {
-                                      closeDetailsFromClick(e)
-                                      void openLocalPdfTicketTab(s.id)
-                                    }}
-                                  >
-                                    <ExternalLink size={14} />
-                                    Ticket en pestaña
-                                  </button>
-                                </div>
-                              </details>
+                              {renderLocalPdfActions(s.id, 'nota')}
                             </div>
                           </td>
                         )}
@@ -827,30 +809,79 @@ export default function VentasPage() {
                     ))}
                   </tbody>
                 </table>
+                {sales.length === 0 && !loading && (
+                  <div className="px-4 py-12 text-center text-stone-500 text-sm">
+                    No hay comprobantes en esta sección.
+                  </div>
+                )}
               </div>
-              {sales.length === 0 && !loading && (
-                <div className="px-4 py-12 text-center text-stone-500 text-sm">
-                  No hay comprobantes en esta sección.
+
+              <div className="shrink-0 border-t border-stone-200 bg-stone-50/90 px-3 py-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-stone-600">
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-stone-500">Mostrar</span>
+                    <div className="w-[4.5rem]">
+                      <SearchableSelect
+                        value={perPage}
+                        onChange={(v) => {
+                          setPerPage(Number(v))
+                          setPage(1)
+                        }}
+                        options={PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+                        searchable={false}
+                        className="border border-stone-200 rounded-lg px-2 py-1 text-xs bg-white text-left flex items-center justify-between gap-1 min-h-0"
+                      />
+                    </div>
+                    <span className="text-stone-500">por página</span>
+                  </label>
+                  {total > 0 ? (
+                    <span className="text-stone-500">
+                      Mostrando <span className="font-medium text-stone-700">{from}-{to}</span> de{' '}
+                      <span className="font-medium text-stone-700">{total}</span> registros
+                    </span>
+                  ) : (
+                    <span className="text-stone-400">Sin registros</span>
+                  )}
                 </div>
-              )}
-              {total > perPage && (
-                <div className="px-4 py-3 border-t border-stone-100 text-xs text-stone-500">
-                  Mostrando {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} de {total}
-                </div>
-              )}
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+                      title="Anterior"
+                    >
+                      <ChevronLeft size={15} />
+                      <span className="hidden sm:inline">Ant.</span>
+                    </button>
+                    <span className="text-xs text-stone-600 tabular-nums px-1 min-w-[4.5rem] text-center">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+                      title="Siguiente"
+                    >
+                      <span className="hidden sm:inline">Sig.</span>
+                      <ChevronRight size={15} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
             </div>
           )}
+          </div>
         </>
       )}
 
-      {detailOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeDetail()
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+      <PortalModal open={detailOpen} onClose={closeDetail} className="max-w-5xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(92dvh,900px)] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <div>
                 <h3 className="text-lg font-bold text-stone-800">Detalle</h3>
@@ -877,7 +908,7 @@ export default function VentasPage() {
                 <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : detail ? (
-              <div className="p-4 sm:p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-64px)]">
+              <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
                     <div className="text-xs text-stone-500">Cliente</div>
@@ -941,233 +972,12 @@ export default function VentasPage() {
                   <div className="px-4 py-3 border-b border-stone-200 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-sm font-semibold text-stone-800">Items</div>
                     <div className="flex flex-wrap items-center gap-2 justify-end">
-                      <details className="relative inline-block text-left">
-                        <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
-                          <FileText size={14} className="shrink-0" />
-                          PDF local
-                          <ChevronDown size={14} className="shrink-0 opacity-60" />
-                        </summary>
-                        <div className={ROW_DROPDOWN_PANEL}>
-                          <button
-                            type="button"
-                            className={ROW_DROPDOWN_ITEM}
-                            disabled={
-                              localPdfPreviewBusy?.saleId === detail.sale.id &&
-                              localPdfPreviewBusy?.format === 'ticket'
-                            }
-                            onClick={(e) => {
-                              closeDetailsFromClick(e)
-                              void openLocalPdfViewer(detail.sale.id, 'ticket')
-                            }}
-                          >
-                            <Ticket size={14} />
-                            Ver ticket
-                          </button>
-                          <button
-                            type="button"
-                            className={ROW_DROPDOWN_ITEM}
-                            disabled={
-                              localPdfPreviewBusy?.saleId === detail.sale.id &&
-                              localPdfPreviewBusy?.format === 'a4'
-                            }
-                            onClick={(e) => {
-                              closeDetailsFromClick(e)
-                              void openLocalPdfViewer(detail.sale.id, 'a4')
-                            }}
-                          >
-                            <FileOutput size={14} />
-                            Ver A4
-                          </button>
-                          <button
-                            type="button"
-                            className={ROW_DROPDOWN_ITEM}
-                            disabled={
-                              localPdfDownloadBusy?.saleId === detail.sale.id &&
-                              localPdfDownloadBusy?.format === 'ticket'
-                            }
-                            onClick={(e) => {
-                              closeDetailsFromClick(e)
-                              void downloadLocalPdf(detail.sale.id, 'ticket')
-                            }}
-                          >
-                            <Download size={14} />
-                            Descargar ticket
-                          </button>
-                          <button
-                            type="button"
-                            className={ROW_DROPDOWN_ITEM}
-                            disabled={
-                              localPdfDownloadBusy?.saleId === detail.sale.id &&
-                              localPdfDownloadBusy?.format === 'a4'
-                            }
-                            onClick={(e) => {
-                              closeDetailsFromClick(e)
-                              void downloadLocalPdf(detail.sale.id, 'a4')
-                            }}
-                          >
-                            <Download size={14} />
-                            Descargar A4
-                          </button>
-                          <button
-                            type="button"
-                            className={ROW_DROPDOWN_ITEM}
-                            disabled={localTicketTabBusyId === detail.sale.id}
-                            onClick={(e) => {
-                              closeDetailsFromClick(e)
-                              void openLocalPdfTicketTab(detail.sale.id)
-                            }}
-                          >
-                            <ExternalLink size={14} />
-                            Ticket en pestaña
-                          </button>
-                        </div>
-                      </details>
-                      {tab === 'facturacion' && (
-                        <details className="relative inline-block text-left">
-                          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 [&::-webkit-details-marker]:hidden">
-                            SUNAT / PSE
-                            <ChevronDown size={14} className="shrink-0 opacity-60" />
-                          </summary>
-                          <div className={ROW_DROPDOWN_PANEL}>
-                            {detail.sale.billing_status === 'pending' && (
-                              <button
-                                type="button"
-                                className={ROW_DROPDOWN_ITEM}
-                                disabled={sending === detail.sale.id}
-                                onClick={(e) => {
-                                  closeDetailsFromClick(e)
-                                  void handleSend(detail.sale.id)
-                                }}
-                              >
-                                {sending === detail.sale.id ? (
-                                  <RefreshCw size={14} className="animate-spin" />
-                                ) : (
-                                  <Send size={14} />
-                                )}
-                                Enviar a SUNAT
-                              </button>
-                            )}
-                            {(detail.sale.billing_status === 'error' || detail.sale.billing_status === 'sent') && (
-                              <button
-                                type="button"
-                                className={ROW_DROPDOWN_ITEM}
-                                disabled={resending === detail.sale.id}
-                                onClick={(e) => {
-                                  closeDetailsFromClick(e)
-                                  void handleResend(detail.sale.id)
-                                }}
-                              >
-                                {resending === detail.sale.id ? (
-                                  <RefreshCw size={14} className="animate-spin" />
-                                ) : (
-                                  <RefreshCw size={14} />
-                                )}
-                                Reenviar a SUNAT
-                              </button>
-                            )}
-                            {canShowSunatOfficialPdf(detail.sale.billing_status) && (
-                              <>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={viewingPdfSaleId === detail.sale.id}
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void openSunatPdfViewer(detail.sale.id)
-                                  }}
-                                >
-                                  <FileSearch size={14} />
-                                  Ver PDF oficial
-                                </button>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={downloading?.saleId === detail.sale.id && downloading?.kind === 'pdf'}
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void handleDownload(detail.sale.id, 'pdf')
-                                  }}
-                                >
-                                  <FileText size={14} />
-                                  Descargar PDF oficial
-                                </button>
-                              </>
-                            )}
-                            {canShowXmlSent(detail.sale.billing_status) && (
-                              <>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={viewingXmlSaleId === detail.sale.id}
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void openXmlViewer(detail.sale.id, 'xml')
-                                  }}
-                                >
-                                  <FileCode size={14} />
-                                  Ver XML enviado
-                                </button>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={downloading?.saleId === detail.sale.id && downloading?.kind === 'xml'}
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void handleDownload(detail.sale.id, 'xml')
-                                  }}
-                                >
-                                  <FileCode size={14} />
-                                  Descargar XML enviado
-                                </button>
-                              </>
-                            )}
-                            {canShowXmlGenerated(detail.sale.billing_status) && (
-                              <>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={viewingXmlSaleId === detail.sale.id}
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void openXmlViewer(detail.sale.id, 'xml-generated')
-                                  }}
-                                >
-                                  <FileCode size={14} />
-                                  Ver XML generado
-                                </button>
-                                <button
-                                  type="button"
-                                  className={ROW_DROPDOWN_ITEM}
-                                  disabled={
-                                    downloading?.saleId === detail.sale.id && downloading?.kind === 'xml-generated'
-                                  }
-                                  onClick={(e) => {
-                                    closeDetailsFromClick(e)
-                                    void handleDownload(detail.sale.id, 'xml-generated')
-                                  }}
-                                >
-                                  <FileCode size={14} />
-                                  Descargar XML generado
-                                </button>
-                              </>
-                            )}
-                            {canShowCdr(detail.sale.billing_status) && (
-                              <button
-                                type="button"
-                                className={ROW_DROPDOWN_ITEM}
-                                disabled={downloading?.saleId === detail.sale.id && downloading?.kind === 'cdr'}
-                                onClick={(e) => {
-                                  closeDetailsFromClick(e)
-                                  void handleDownload(detail.sale.id, 'cdr')
-                                }}
-                              >
-                                <Archive size={14} />
-                                Descargar CDR
-                              </button>
-                            )}
-                          </div>
-                        </details>
-                      )}
+                      {renderLocalPdfActions(detail.sale.id, 'detail')}
+                      {tab === 'facturacion' &&
+                        renderSunatPseActions(detail.sale, 'detail', {
+                          showXmlViewers: true,
+                          hideDetailButton: true,
+                        })}
                     </div>
                   </div>
 
@@ -1232,17 +1042,10 @@ export default function VentasPage() {
               <div className="p-6 text-sm text-stone-500">No se pudo cargar el detalle.</div>
             )}
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {pdfViewerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closePdfViewer()
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+      <PortalModal open={pdfViewerOpen} onClose={closePdfViewer} className="max-w-5xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(92dvh,900px)] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">
                 {pdfViewerSource === 'local'
@@ -1311,17 +1114,10 @@ export default function VentasPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
+      </PortalModal>
 
-      {xmlViewerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeXmlViewer()
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden">
+      <PortalModal open={xmlViewerOpen} onClose={closeXmlViewer} className="max-w-5xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(92dvh,900px)] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">{xmlViewerTitle}</h3>
               <button
@@ -1343,8 +1139,7 @@ export default function VentasPage() {
               </div>
             )}
           </div>
-        </div>
-      )}
-    </div>
+      </PortalModal>
+    </PageShell>
   )
 }
