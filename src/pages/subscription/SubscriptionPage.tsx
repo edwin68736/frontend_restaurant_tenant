@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
-  Building2,
-  ChevronRight,
   Clock,
   CreditCard,
   ExternalLink,
@@ -17,13 +15,10 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
-import {
-  assetUrl,
-  subscriptionService,
-  type BillingHub,
-  type SupportConfig,
-} from '@/services/subscription.service'
+import { subscriptionService, type BillingHub } from '@/services/subscription.service'
 import PlanDetailFrame from './PlanDetailFrame'
+import PaymentMethodsPanel from './PaymentMethodsPanel'
+import SupportCard from './SupportCard'
 import {
   STATUS_LABELS,
   billingCyclePaymentTotal,
@@ -35,59 +30,31 @@ import {
 const inputClass =
   'w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rest-300 bg-white'
 
+type TabId = 'pagar' | 'documentos' | 'historial'
+
+const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
+  { id: 'pagar', label: 'Pagar', icon: Wallet },
+  { id: 'documentos', label: 'Documentos', icon: FileText },
+  { id: 'historial', label: 'Historial', icon: History },
+]
+
 function Section({
-  id,
   title,
   icon: Icon,
   children,
 }: {
-  id?: string
   title: string
   icon: React.ElementType
   children: React.ReactNode
 }) {
   return (
-    <section id={id} className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
+    <section className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
         <Icon size={18} className="text-gray-500" />
         <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
       </div>
       <div className="p-5">{children}</div>
     </section>
-  )
-}
-
-function SupportCard({ support }: { support: SupportConfig }) {
-  const wa = support.whatsapp?.replace(/\D/g, '')
-  const links = [
-    wa && { label: 'WhatsApp', href: `https://wa.me/${wa}`, text: support.whatsapp },
-    support.email && { label: 'Email', href: `mailto:${support.email}`, text: support.email },
-    support.phone && { label: 'Teléfono', href: `tel:${support.phone}`, text: support.phone },
-  ].filter(Boolean) as { label: string; href: string; text: string }[]
-
-  if (links.length === 0) {
-    return <p className="text-xs text-gray-500">Contacte a soporte Tukifac.</p>
-  }
-
-  return (
-    <ul className="space-y-2">
-      {links.map(l => (
-        <li key={l.label}>
-          <a
-            href={l.href}
-            target={l.label === 'WhatsApp' ? '_blank' : undefined}
-            rel="noreferrer"
-            className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 py-1"
-          >
-            <Headphones size={15} className="shrink-0 text-gray-400" />
-            <span>
-              <span className="font-medium">{l.label}</span>
-              <span className="block text-xs text-gray-500 truncate">{l.text}</span>
-            </span>
-          </a>
-        </li>
-      ))}
-    </ul>
   )
 }
 
@@ -107,6 +74,7 @@ export default function SubscriptionPage() {
   const [pkgReceipt, setPkgReceipt] = useState<File | null>(null)
   const [pkgReference, setPkgReference] = useState('')
   const [pkgSubmitting, setPkgSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabId>('pagar')
 
   const payableInvoices = useMemo(
     () => (hub?.invoices ?? []).filter(i => i.status === 'pending' || i.status === 'overdue'),
@@ -131,15 +99,11 @@ export default function SubscriptionPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setGlobalHub])
 
   useEffect(() => {
     void load()
   }, [load])
-
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   const onInvoiceChange = (id: string) => {
     setBillingCycleId(id)
@@ -199,13 +163,6 @@ export default function SubscriptionPage() {
   const cfg = hub.payment_config
   const portalAlt = cfg.portal_url_override?.trim()
 
-  const quickLinks = [
-    { id: 'historial-pagos', label: 'Historial de pagos', icon: CreditCard },
-    { id: 'gestionar-pago', label: 'Comprobantes enviados', icon: FileUp },
-    { id: 'metodos-pago', label: 'Métodos de pago', icon: Wallet },
-    { id: 'historial-suscripcion', label: 'Historial de suscripción', icon: History },
-  ]
-
   return (
     <div className="w-full space-y-4 pb-6">
       <div className="flex items-center justify-between gap-4">
@@ -226,132 +183,31 @@ export default function SubscriptionPage() {
         </button>
       </div>
 
-      <PlanDetailFrame hub={hub} onManagePayment={() => scrollTo('gestionar-pago')} />
+      <PlanDetailFrame hub={hub} onManagePayment={() => setActiveTab('pagar')} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
-        <div className="space-y-5 min-w-0">
-          {hub.documents && (
-            <Section title="Documentos electrónicos" icon={FileText}>
-              {hub.documents.is_unlimited ? (
-                <p className="text-sm text-emerald-700 font-medium">Tu plan incluye documentos electrónicos ilimitados.</p>
-              ) : (
-                <>
-                  <div className="flex items-end justify-between gap-2 mb-2">
-                    <p className="text-xs text-gray-500">Uso del cupo del plan</p>
-                    <span className="text-sm font-bold text-gray-800">{hub.documents.usage_percent}%</span>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden mb-4">
-                    <div
-                      className={`h-full transition-all rounded-full ${docProgressColor(
-                        hub.documents.usage_percent,
-                        hub.documents.warning_level,
-                      )}`}
-                      style={{ width: `${Math.min(100, hub.documents.usage_percent)}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: 'Cupo plan', value: hub.documents.plan_limit, sub: `${hub.documents.plan_remaining} restantes` },
-                      { label: 'Usados', value: hub.documents.plan_used, sub: 'del plan' },
-                      { label: 'Paquetes', value: hub.documents.package_remaining, sub: `+${hub.documents.package_bonus} bonus` },
-                      { label: 'Disponibles', value: hub.documents.total_available, sub: 'total', highlight: true },
-                    ].map(c => (
-                      <div
-                        key={c.label}
-                        className={`rounded-xl border p-3 ${c.highlight ? 'border-blue-200 bg-blue-50/50' : 'border-gray-100 bg-gray-50/50'}`}
-                      >
-                        <p className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">{c.label}</p>
-                        <p className={`text-lg font-bold mt-0.5 ${c.highlight ? 'text-blue-700' : 'text-gray-900'}`}>{c.value}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">{c.sub}</p>
-                      </div>
-                    ))}
-                  </div>
-                  {hub.documents.warning_message && (
-                    <p
-                      className={`text-sm mt-3 flex items-start gap-2 ${
-                        hub.documents.warning_level === 'exhausted' ? 'text-red-700' : 'text-amber-800'
-                      }`}
-                    >
-                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                      {hub.documents.warning_message}
-                    </p>
-                  )}
-                  {hub.documents.billing_cycle_end && (
-                    <p className="text-xs text-gray-500 mt-2">Los paquetes vencen con el ciclo ({formatDate(hub.documents.billing_cycle_end)}).</p>
-                  )}
-                </>
-              )}
-              {!hub.documents.is_unlimited && (hub.document_packages?.length ?? 0) > 0 && (
-                <div className="mt-5 pt-5 border-t border-gray-100">
-                  <p className="text-sm font-medium text-gray-800 mb-3 flex items-center gap-2">
-                    <Package size={16} />
-                    Comprar documentos adicionales
-                  </p>
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-                    {hub.document_packages!.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setPkgId(String(p.id))}
-                        className={`text-left p-3 rounded-xl border transition-colors ${
-                          pkgId === String(p.id) ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <p className="font-semibold text-gray-900 text-sm">{p.name}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{p.documents_qty} documentos</p>
-                        <p className="text-sm font-medium text-blue-700 mt-1.5">{formatMoney(p.price, p.currency)}</p>
-                      </button>
-                    ))}
-                  </div>
-                  {pkgId && (
-                    <form
-                      className="space-y-3 max-w-md"
-                      onSubmit={async e => {
-                        e.preventDefault()
-                        if (!pkgReceipt) {
-                          toast.error('Adjunte comprobante')
-                          return
-                        }
-                        const form = new FormData()
-                        form.append('package_id', pkgId)
-                        if (pkgReference.trim()) form.append('reference', pkgReference.trim())
-                        form.append('receipt', pkgReceipt)
-                        setPkgSubmitting(true)
-                        try {
-                          await subscriptionService.purchaseDocumentPackage(form)
-                          toast.success('Solicitud enviada; pendiente de aprobación')
-                          setPkgReceipt(null)
-                          await load()
-                        } catch (err: unknown) {
-                          const apiErr = err as { response?: { data?: { error?: string } } }
-                          toast.error(apiErr?.response?.data?.error ?? 'Error')
-                        } finally {
-                          setPkgSubmitting(false)
-                        }
-                      }}
-                    >
-                      <input
-                        className={inputClass}
-                        placeholder="Referencia de pago"
-                        value={pkgReference}
-                        onChange={e => setPkgReference(e.target.value)}
-                      />
-                      <input type="file" accept=".jpg,.jpeg,.png,.pdf,.webp" onChange={e => setPkgReceipt(e.target.files?.[0] ?? null)} />
-                      <button
-                        type="submit"
-                        disabled={pkgSubmitting}
-                        className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
-                      >
-                        {pkgSubmitting ? 'Enviando…' : 'Enviar comprobante de paquete'}
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
-            </Section>
-          )}
+      <div className="flex gap-1 p-1 rounded-xl bg-gray-100/90 border border-gray-100 overflow-x-auto">
+        {TABS.map(tab => {
+          const Icon = tab.icon
+          const active = activeTab === tab.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 min-w-[100px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <Icon size={16} className={active ? 'text-rest-700' : 'text-gray-400'} />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
 
-          <Section id="gestionar-pago" title="Gestionar pago" icon={FileUp}>
+      {activeTab === 'pagar' && (
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+          <Section title="Enviar comprobante de pago" icon={FileUp}>
             {sub.can_submit_payment ? (
               payableInvoices.length === 0 ? (
                 <p className="text-sm text-gray-500">No hay períodos pendientes de pago en este momento.</p>
@@ -445,7 +301,154 @@ export default function SubscriptionPage() {
             )}
           </Section>
 
-          <Section id="historial-pagos" title="Historial de pagos" icon={CreditCard}>
+          <aside className="space-y-4 xl:sticky xl:top-4">
+            <PaymentMethodsPanel cfg={cfg} />
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+                <Headphones size={14} />
+                Soporte
+              </h3>
+              <SupportCard support={hub.support} />
+            </div>
+            {portalAlt && (
+              <a
+                href={portalAlt}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50 bg-white shadow-sm"
+              >
+                <ExternalLink size={16} />
+                Cambiar plan / portal
+              </a>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {activeTab === 'documentos' && hub.documents && (
+        <Section title="Documentos electrónicos" icon={FileText}>
+          {hub.documents.is_unlimited ? (
+            <p className="text-sm text-emerald-700 font-medium">Tu plan incluye documentos electrónicos ilimitados.</p>
+          ) : (
+            <>
+              <div className="flex items-end justify-between gap-2 mb-2">
+                <p className="text-xs text-gray-500">Uso del cupo del plan</p>
+                <span className="text-sm font-bold text-gray-800">{hub.documents.usage_percent}%</span>
+              </div>
+              <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden mb-4">
+                <div
+                  className={`h-full transition-all rounded-full ${docProgressColor(
+                    hub.documents.usage_percent,
+                    hub.documents.warning_level,
+                  )}`}
+                  style={{ width: `${Math.min(100, hub.documents.usage_percent)}%` }}
+                />
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Cupo plan', value: hub.documents.plan_limit, sub: `${hub.documents.plan_remaining} restantes` },
+                  { label: 'Usados', value: hub.documents.plan_used, sub: 'del plan' },
+                  { label: 'Paquetes', value: hub.documents.package_remaining, sub: `+${hub.documents.package_bonus} bonus` },
+                  { label: 'Disponibles', value: hub.documents.total_available, sub: 'total', highlight: true },
+                ].map(c => (
+                  <div
+                    key={c.label}
+                    className={`rounded-xl border p-3 ${c.highlight ? 'border-blue-200 bg-blue-50/50' : 'border-gray-100 bg-gray-50/50'}`}
+                  >
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500 font-medium">{c.label}</p>
+                    <p className={`text-lg font-bold mt-0.5 ${c.highlight ? 'text-blue-700' : 'text-gray-900'}`}>{c.value}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{c.sub}</p>
+                  </div>
+                ))}
+              </div>
+              {hub.documents.warning_message && (
+                <p
+                  className={`text-sm mt-3 flex items-start gap-2 ${
+                    hub.documents.warning_level === 'exhausted' ? 'text-red-700' : 'text-amber-800'
+                  }`}
+                >
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  {hub.documents.warning_message}
+                </p>
+              )}
+              {hub.documents.billing_cycle_end && (
+                <p className="text-xs text-gray-500 mt-2">Los paquetes vencen con el ciclo ({formatDate(hub.documents.billing_cycle_end)}).</p>
+              )}
+            </>
+          )}
+          {!hub.documents.is_unlimited && (hub.document_packages?.length ?? 0) > 0 && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <p className="text-sm font-medium text-gray-800 mb-3 flex items-center gap-2">
+                <Package size={16} />
+                Comprar documentos adicionales
+              </p>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                {hub.document_packages!.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPkgId(String(p.id))}
+                    className={`text-left p-3 rounded-xl border transition-colors ${
+                      pkgId === String(p.id) ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-900 text-sm">{p.name}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{p.documents_qty} documentos</p>
+                    <p className="text-sm font-medium text-blue-700 mt-1.5">{formatMoney(p.price, p.currency)}</p>
+                  </button>
+                ))}
+              </div>
+              {pkgId && (
+                <form
+                  className="space-y-3 max-w-md"
+                  onSubmit={async e => {
+                    e.preventDefault()
+                    if (!pkgReceipt) {
+                      toast.error('Adjunte comprobante')
+                      return
+                    }
+                    const form = new FormData()
+                    form.append('package_id', pkgId)
+                    if (pkgReference.trim()) form.append('reference', pkgReference.trim())
+                    form.append('receipt', pkgReceipt)
+                    setPkgSubmitting(true)
+                    try {
+                      await subscriptionService.purchaseDocumentPackage(form)
+                      toast.success('Solicitud enviada; pendiente de aprobación')
+                      setPkgReceipt(null)
+                      await load()
+                    } catch (err: unknown) {
+                      const apiErr = err as { response?: { data?: { error?: string } } }
+                      toast.error(apiErr?.response?.data?.error ?? 'Error')
+                    } finally {
+                      setPkgSubmitting(false)
+                    }
+                  }}
+                >
+                  <input
+                    className={inputClass}
+                    placeholder="Referencia de pago"
+                    value={pkgReference}
+                    onChange={e => setPkgReference(e.target.value)}
+                  />
+                  <input type="file" accept=".jpg,.jpeg,.png,.pdf,.webp" onChange={e => setPkgReceipt(e.target.files?.[0] ?? null)} />
+                  <button
+                    type="submit"
+                    disabled={pkgSubmitting}
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium disabled:opacity-50"
+                  >
+                    {pkgSubmitting ? 'Enviando…' : 'Enviar comprobante de paquete'}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+        </Section>
+      )}
+
+      {activeTab === 'historial' && (
+        <div className="space-y-5">
+          <Section title="Historial de pagos" icon={CreditCard}>
             {hub.payments.length === 0 ? (
               <p className="text-sm text-gray-500">Sin pagos registrados.</p>
             ) : (
@@ -477,7 +480,7 @@ export default function SubscriptionPage() {
             )}
           </Section>
 
-          <Section id="historial-suscripcion" title="Historial de suscripción" icon={History}>
+          <Section title="Historial de suscripción" icon={History}>
             {hub.events.length === 0 ? (
               <p className="text-sm text-gray-500">Sin eventos registrados.</p>
             ) : (
@@ -496,87 +499,7 @@ export default function SubscriptionPage() {
             )}
           </Section>
         </div>
-
-        <aside className="space-y-4 xl:sticky xl:top-4">
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Acciones rápidas</h3>
-            <ul className="space-y-1">
-              {quickLinks.map(link => (
-                <li key={link.id}>
-                  <button
-                    type="button"
-                    onClick={() => scrollTo(link.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-gray-50 text-left group"
-                  >
-                    <link.icon size={16} className="text-gray-400 group-hover:text-gray-600" />
-                    <span className="flex-1 font-medium">{link.label}</span>
-                    <ChevronRight size={14} className="text-gray-300" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {portalAlt && (
-              <a
-                href={portalAlt}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50"
-              >
-                <ExternalLink size={16} />
-                Cambiar plan / portal
-              </a>
-            )}
-          </div>
-
-          <div id="metodos-pago" className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
-            <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
-              <CreditCard size={16} className="text-gray-500" />
-              <h3 className="text-sm font-semibold text-gray-800">Métodos de pago</h3>
-            </div>
-            <div className="p-4 space-y-4">
-              {(cfg.yape_qr_url || cfg.plin_qr_url) && (
-                <div className="flex gap-3 flex-wrap justify-center">
-                  {cfg.yape_qr_url && (
-                    <img src={assetUrl(cfg.yape_qr_url)} alt="QR Yape" className="h-28 rounded-lg border" />
-                  )}
-                  {cfg.plin_qr_url && (
-                    <img src={assetUrl(cfg.plin_qr_url)} alt="QR Plin" className="h-28 rounded-lg border" />
-                  )}
-                </div>
-              )}
-              <ul className="flex flex-wrap gap-1.5">
-                {cfg.methods.map(m => (
-                  <li key={m.key} className="px-2 py-0.5 rounded-md bg-gray-100 text-[11px] font-medium text-gray-700">
-                    {m.label}
-                  </li>
-                ))}
-              </ul>
-              {cfg.bank_accounts.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase flex items-center gap-1">
-                    <Building2 size={12} /> Cuentas
-                  </p>
-                  {cfg.bank_accounts.map((b, i) => (
-                    <div key={i} className="rounded-lg bg-gray-50 p-2.5 text-xs text-gray-700">
-                      <p className="font-semibold">{b.bank}</p>
-                      <p className="truncate">{b.account_number}</p>
-                      {b.cci && <p className="text-gray-500">CCI: {b.cci}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
-              <Headphones size={14} />
-              Soporte
-            </h3>
-            <SupportCard support={hub.support} />
-          </div>
-        </aside>
-      </div>
+      )}
     </div>
   )
 }

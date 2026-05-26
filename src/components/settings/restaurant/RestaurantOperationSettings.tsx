@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, RefreshCw, Shield, Users } from 'lucide-react'
+import { Pencil, Plus, RefreshCw, Shield, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { restaurantService, type RestaurantStaffManagementRow } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { RestaurantStaffEditModal } from '../RestaurantStaffEditModal'
+import { RestaurantStaffCreateModal } from '../RestaurantStaffCreateModal'
 
 export function RestaurantOperationSettings() {
   const [loading, setLoading] = useState(true)
@@ -12,6 +13,7 @@ export function RestaurantOperationSettings() {
   const [deletionPin, setDeletionPin] = useState('')
   const [savingPin, setSavingPin] = useState(false)
   const [editing, setEditing] = useState<RestaurantStaffManagementRow | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -108,15 +110,25 @@ export function RestaurantOperationSettings() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50 shrink-0"
-          >
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            Actualizar
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rest-600 text-white text-sm font-medium hover:bg-rest-700"
+            >
+              <Plus size={16} />
+              Nuevo usuario
+            </button>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              Actualizar
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -173,6 +185,9 @@ export function RestaurantOperationSettings() {
 
       {editing && (
         <RestaurantStaffEditModal row={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
+      )}
+      {creating && (
+        <RestaurantStaffCreateModal onClose={() => setCreating(false)} onSaved={() => void load()} />
       )}
     </div>
   )

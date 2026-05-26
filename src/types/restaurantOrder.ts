@@ -49,6 +49,15 @@ export interface DeliveryDriver {
   plate: string
   active: boolean
   notes: string
+  delivery_company_id?: number | null
+  delivery_company?: DeliveryCompany | null
+}
+
+export interface DeliveryCompany {
+  id: number
+  name: string
+  sort_order?: number
+  active: boolean
 }
 
 export interface RestaurantOrderSummary {
@@ -81,6 +90,9 @@ export interface PrecuentaPayload {
   table_name: string
   customer_name: string
   customer_phone: string
+  delivery_address?: string
+  delivery_reference?: string
+  driver_name?: string
   opened_at: string
   notes: string
   subtotal: number

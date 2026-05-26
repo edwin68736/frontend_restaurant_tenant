@@ -43,7 +43,7 @@ export function ComandasViewModeToggle({ value, onChange }: Props) {
         )}
       >
         <LayoutGrid size={16} className="shrink-0" />
-        Por pedido
+        Por pedido (cocina)
       </button>
     </div>
   )

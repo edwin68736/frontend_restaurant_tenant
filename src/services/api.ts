@@ -8,6 +8,20 @@ function normalizeApiOrigin(raw: string): string {
   return base
 }
 
+function isLocalDevHost(hostname: string): boolean {
+  const host = hostname.toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')
+}
+
+/** Origen del backend en desarrollo local (misma convención que frontend_tenant). */
+function getLocalDevApiOrigin(): string {
+  const fromEnv = import.meta.env.VITE_API_URL
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') {
+    return normalizeApiOrigin(fromEnv)
+  }
+  return 'http://localhost:3000'
+}
+
 /** API central (solo bootstrap RUC). Ej: https://api.tukifac.com o app.tukifac.com */
 export function getCentralApiBaseUrl(): string {
   const central = import.meta.env.VITE_CENTRAL_API_URL
@@ -32,29 +46,35 @@ export function getCentralApiBaseUrl(): string {
  * Producción: https://empresa1.tukifac.com — el host identifica el tenant.
  */
 export function getTenantApiBaseUrl(): string {
+  if (typeof window !== 'undefined' && isLocalDevHost(window.location.hostname)) {
+    return getLocalDevApiOrigin()
+  }
+
   const stored = localStorage.getItem(RESTAURANT_STORAGE_KEYS.tenantApiUrl)?.trim()
   if (stored) return normalizeApiOrigin(stored)
 
   const slug = getTenantSlug()
   const appDomain = import.meta.env.VITE_APP_DOMAIN
   if (slug && appDomain && typeof appDomain === 'string') {
-    return `https://${slug}.${appDomain.replace(/^\./, '')}`
+    const domain = appDomain.replace(/^\./, '')
+    if (domain === 'localhost' || domain.endsWith('.localhost')) {
+      return getLocalDevApiOrigin()
+    }
+    return `https://${slug}.${domain}`
   }
 
   return getCentralApiBaseUrl()
 }
 
-/** En dev, si VITE_API_URL apunta fuera de localhost, Vite hace proxy en /api (sin CORS). */
-function shouldUseDevProxy(): boolean {
-  if (!import.meta.env.DEV) return false
-  const fromEnv = import.meta.env.VITE_API_URL
-  if (!fromEnv || typeof fromEnv !== 'string' || fromEnv.trim() === '') return true
-  try {
-    const host = new URL(normalizeApiOrigin(fromEnv)).hostname
-    return host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('.localhost')
-  } catch {
-    return false
-  }
+/** En dev (npm run dev / tauri:dev) Vite proxifica /api → backend (.env). Evita CORS. */
+export function shouldUseDevProxy(): boolean {
+  return import.meta.env.DEV
+}
+
+/** Base URL para peticiones al API central (tenant-by-ruc, etc.). */
+export function getCentralApiRequestBaseUrl(): string {
+  if (shouldUseDevProxy()) return ''
+  return getCentralApiBaseUrl()
 }
 
 function getApiBaseUrl(): string {

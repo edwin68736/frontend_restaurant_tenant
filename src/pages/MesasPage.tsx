@@ -6,9 +6,20 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { restaurantService, type Floor, type RestaurantTable } from '@/services/restaurant.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
+import { TableCardFooter, TableWithChairsVisual } from '@/components/restaurant/TableWithChairsVisual'
 import { PortalModal } from '@/components/ui/PortalModal'
 
 const PAGE_SIZE = 12
+
+function tableDeleteBlockReason(t: RestaurantTable): string | null {
+  if (t.session_id) {
+    return 'Tiene un pedido abierto en esta mesa. Ciérrelo o anúlelo antes de eliminarla.'
+  }
+  if (t.status && t.status !== 'libre') {
+    return `La mesa está ${tableStatusLabel(t.status).toLowerCase()}. Debe quedar libre para poder eliminarla.`
+  }
+  return null
+}
 
 export default function MesasPage() {
   const [floors, setFloors] = useState<Floor[]>([])
@@ -20,6 +31,8 @@ export default function MesasPage() {
   const [form, setForm] = useState({ floor_id: 0, name: '', capacity: 4 })
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<RestaurantTable | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -119,14 +132,27 @@ export default function MesasPage() {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     }
   }
-  const remove = async (id: number) => {
-    if (!confirm('¿Eliminar esta mesa?')) return
+  const requestDelete = (t: RestaurantTable) => {
+    const block = tableDeleteBlockReason(t)
+    if (block) {
+      toast.error(block)
+      return
+    }
+    setDeleteTarget(t)
+  }
+
+  const confirmDeleteTable = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await restaurantService.deleteTable(id)
+      await restaurantService.deleteTable(deleteTarget.id)
       toast.success('Mesa eliminada')
+      setDeleteTarget(null)
       load()
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo eliminar la mesa')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -198,67 +224,63 @@ export default function MesasPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {paginatedTables.map((t) => {
               const st = tableStatusStyles(t.status)
+              const blockReason = tableDeleteBlockReason(t)
               return (
-              <div
-                key={t.id}
-                className={`group relative rounded-2xl border-2 overflow-hidden transition-all duration-200 ${st.card}`}
-              >
-                {/* Mesa (superficie) */}
-                <div
-                  className={`relative mx-3 mt-4 rounded-xl border-2 flex items-center justify-center min-h-[72px] ${st.surface}`}
+                <article
+                  key={t.id}
+                  className={`group relative flex flex-col rounded-2xl border-2 bg-white/95 p-3 sm:p-4 shadow-sm transition-all duration-200 hover:shadow-md ${st.card}`}
                 >
-                  <span className="font-bold text-lg text-stone-800">{t.name}</span>
-                  <div className="absolute top-1.5 right-1.5">
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${st.statusChip}`}>
-                      {tableStatusLabel(t.status)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Sillas (capacidad) */}
-                <div className="flex justify-center gap-1 py-2">
-                  {Array.from({ length: Math.min(t.capacity, 8) }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`w-2 h-2 rounded-full ${st.chair}`}
-                      title={`${t.capacity} personas`}
-                    />
-                  ))}
-                  {t.capacity > 8 && (
-                    <span className="text-xs text-stone-500 self-center">+{t.capacity - 8}</span>
-                  )}
-                </div>
-
-                {/* Piso y acciones */}
-                <div className="px-3 pb-3 pt-0 flex items-center justify-between">
-                  <span className="text-xs text-stone-500 truncate max-w-[60%]" title={t.floor_name}>
-                    {t.floor_name ?? '—'}
+                  <span
+                    className={`absolute top-2 right-2 z-10 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${st.statusChip}`}
+                  >
+                    {tableStatusLabel(t.status)}
                   </span>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                  <TableWithChairsVisual
+                    name={t.name}
+                    capacity={t.capacity}
+                    status={t.status}
+                    size="md"
+                    className="mt-1"
+                  />
+
+                  <p className="text-center font-semibold text-stone-800 text-sm truncate mt-1 px-1">
+                    {t.name}
+                  </p>
+
+                  <TableCardFooter floorName={t.floor_name} />
+
+                  <div className="mt-3 flex items-center justify-center gap-2 pt-2 border-t border-stone-100">
                     <button
-                      onClick={(e) => { e.stopPropagation(); openEdit(t) }}
-                      className="p-1.5 rounded-lg text-stone-500 hover:text-rest-600 hover:bg-white/80"
-                      title="Editar"
+                      type="button"
+                      onClick={() => openEdit(t)}
+                      className="inline-flex items-center justify-center gap-1.5 min-w-[2.75rem] p-2.5 rounded-xl bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 hover:border-amber-400 shadow-sm transition-colors"
+                      title="Editar mesa"
+                      aria-label={`Editar ${t.name}`}
                     >
-                      <Pencil size={14} />
+                      <Pencil size={18} strokeWidth={2.25} />
+                      <span className="hidden sm:inline text-xs font-semibold">Editar</span>
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); remove(t.id) }}
-                      className="p-1.5 rounded-lg text-stone-500 hover:text-red-600 hover:bg-white/80"
-                      title="Eliminar"
+                      type="button"
+                      onClick={() => requestDelete(t)}
+                      disabled={!!blockReason}
+                      className="inline-flex items-center justify-center gap-1.5 min-w-[2.75rem] p-2.5 rounded-xl bg-red-100 text-red-700 border border-red-300 hover:bg-red-200 hover:border-red-400 shadow-sm transition-colors disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-red-100"
+                      title={blockReason ?? 'Eliminar mesa'}
+                      aria-label={`Eliminar ${t.name}`}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={18} strokeWidth={2.25} />
+                      <span className="hidden sm:inline text-xs font-semibold">Eliminar</span>
                     </button>
                   </div>
-                </div>
 
-                {/* Capacidad texto por accesibilidad */}
-                <div className="sr-only">{t.capacity} personas</div>
-              </div>
-            )})}
+                  <span className="sr-only">{t.capacity} personas, {tableStatusLabel(t.status)}</span>
+                </article>
+              )
+            })}
           </div>
 
           {/* Paginación */}
@@ -348,6 +370,39 @@ export default function MesasPage() {
               </ul>
             </div>
           </div>
+      </PortalModal>
+
+      <PortalModal open={!!deleteTarget} onClose={() => { if (!deleting) setDeleteTarget(null) }} className="max-w-sm">
+        {deleteTarget && (
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
+            <h3 className="font-bold text-stone-800">Eliminar mesa</h3>
+            <p className="text-sm text-stone-600 mt-2">
+              ¿Eliminar la mesa <span className="font-semibold text-stone-800">{deleteTarget.name}</span>
+              {deleteTarget.floor_name ? ` (${deleteTarget.floor_name})` : ''}? Esta acción no se puede deshacer.
+            </p>
+            <p className="text-xs text-stone-500 mt-2">
+              Solo se puede eliminar si está libre y sin pedidos ni operaciones abiertas.
+            </p>
+            <div className="flex gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 py-2 border border-stone-200 rounded-xl text-sm disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDeleteTable()}
+                disabled={deleting}
+                className="flex-1 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        )}
       </PortalModal>
 
       <PortalModal open={!!modal} onClose={() => { setModal(null); setEditing(null) }} className="max-w-sm">

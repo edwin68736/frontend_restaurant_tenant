@@ -16,7 +16,15 @@ import { contactsService, type Contact, type CreateContactInput } from '@/servic
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
-import { getConfiguredPrinter, isAutoPrintEnabled, isWindowsDesktop, printComandaAuto, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
+import { getConfiguredPrinter, isAutoPrintEnabled, isWindowsDesktop, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
+import {
+  getActiveKitchenRounds,
+  getOrderRoundHistory,
+  sumSessionComandaQty,
+  type KitchenRound,
+} from '@/utils/posOrderHelpers'
+import { printKitchenRound } from '@/utils/kitchenPrint'
+import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
 import { calcItem } from '@/utils/taxCalc'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
@@ -59,7 +67,8 @@ export default function MesaPage() {
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ number: string; total: number } | null>(null)
-  const [comandaModal, setComandaModal] = useState<{ orderNumber: number; comandas: Comanda[] } | null>(null)
+  const [comandaModal, setComandaModal] = useState<{ orderId: number; orderNumber: number; comandas: Comanda[] } | null>(null)
+  const [kitchenHistoryOpen, setKitchenHistoryOpen] = useState(false)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
@@ -193,16 +202,9 @@ export default function MesaPage() {
   const canGenerarVenta = (cart.length > 0 || sessionTotal > 0) && session?.status === 'open'
   const soloCerrarMesa = session?.status === 'open' && sessionTotal <= 0 && cart.length === 0
 
-  /** Productos ya en comandas de la mesa + ítems nuevos en carrito. */
-  const sessionItemQty = useMemo(
-    () =>
-      (session?.orders ?? []).reduce(
-        (sum, ord) =>
-          sum + (ord.comandas ?? []).reduce((s, c) => s + (Number(c.quantity) || 0), 0),
-        0,
-      ),
-    [session?.orders],
-  )
+  const sessionItemQty = useMemo(() => sumSessionComandaQty(session), [session])
+  const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(session), [session])
+  const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(session), [session])
   const newCartQty = useMemo(() => cart.reduce((s, i) => s + i.quantity, 0), [cart])
   const totalCartQty = sessionItemQty + newCartQty
 
@@ -214,6 +216,89 @@ export default function MesaPage() {
   }, [contacts])
 
   const effectiveContactId = contactId ?? defaultContactId
+
+  const reprintKitchenRound = async (round: KitchenRound) => {
+    if (round.comandas.length === 0 || !session) return
+    const printed = await printKitchenRound({
+      sessionDetail: session,
+      orderCode: session.order_code ?? '',
+      orderNumber: round.orderNumber,
+      tableOrderId: round.orderId,
+      comandas: round.comandas,
+      markPrinted: false,
+    })
+    if (!printed) {
+      setComandaModal({ orderId: round.orderId, orderNumber: round.orderNumber, comandas: round.comandas })
+      toast.info('Vista previa de comanda (impresión automática desactivada)')
+    }
+  }
+
+  const printNewKitchenRound = async (
+    order: { id?: number; order_number?: number; comandas?: Comanda[] },
+    sessionSnapshot: SessionDetail,
+  ) => {
+    const tableOrderId = Number(order?.id ?? 0) || 0
+    const orderNumber = Number(order?.order_number ?? 0) || 0
+    const comandas = Array.isArray(order?.comandas) ? order.comandas : []
+    if (tableOrderId <= 0 || orderNumber <= 0 || comandas.length === 0) return
+    setComandaModal({ orderId: tableOrderId, orderNumber, comandas })
+    const printed = await printKitchenRound({
+      sessionDetail: sessionSnapshot,
+      orderCode: sessionSnapshot.order_code ?? '',
+      orderNumber,
+      tableOrderId,
+      comandas,
+    })
+    if (!printed) {
+      toast.info('Revisa impresora de comandas en Ajustes o usa Reimprimir')
+    }
+  }
+
+  const renderSentKitchenBlock = () => {
+    if (activeKitchenRounds.length === 0) return null
+    return (
+      <div className="px-2 py-2 border-b border-amber-200/80 bg-amber-50/50 shrink-0">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className="text-xs font-semibold text-amber-900">Ya en cocina</p>
+          {kitchenRoundHistory.some((r) => r.comandas.length > 0) && (
+            <button
+              type="button"
+              onClick={() => setKitchenHistoryOpen(true)}
+              className="text-[10px] font-semibold text-rest-600 hover:underline"
+            >
+              Historial
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 max-h-32 overflow-y-auto">
+          {activeKitchenRounds.map((round) => (
+            <div key={round.orderId} className="rounded-lg border border-amber-200/60 bg-white/90 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-medium text-stone-700">Comanda #{round.orderNumber}</span>
+                <button
+                  type="button"
+                  onClick={() => void reprintKitchenRound(round)}
+                  className="text-[10px] font-semibold text-rest-600 hover:underline"
+                >
+                  Reimprimir
+                </button>
+              </div>
+              <ul className="text-[11px] text-stone-600 space-y-0.5">
+                {round.comandas.map((c) => (
+                  <li key={c.id} className="truncate">
+                    {c.quantity}x {c.product_name}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-stone-500 mt-1 leading-snug">
+          El carrito solo tiene ítems nuevos para la siguiente comanda.
+        </p>
+      </div>
+    )
+  }
 
   const sendComanda = async () => {
     const s = session
@@ -230,33 +315,13 @@ export default function MesaPage() {
         notes: '',
       }))
       const res = await restaurantService.addOrder(id, { items })
-      const order = (res as { data?: { order_number?: number; comandas?: Comanda[] } })?.data
-      const orderNumber = Number(order?.order_number ?? 0) || 0
-      const comandas = Array.isArray(order?.comandas) ? order!.comandas! : []
+      const order = (res as { data?: { id?: number; order_number?: number; comandas?: Comanda[] } })?.data
       toast.success('Comanda enviada a cocina')
       setCart([])
-      if (orderNumber > 0 && comandas.length > 0) setComandaModal({ orderNumber, comandas })
-      if (isWindowsDesktop() && isAutoPrintEnabled('comandas') && comandas.length > 0) {
-        const cfg = getConfiguredPrinter('comandas')
-        if (!cfg) {
-          toast.error('Configura la impresora de comandas en Ajustes')
-        } else {
-          try {
-            const msg = await printComandaAuto({
-              tableName: s.table_name ?? null,
-              orderNumber,
-              waiterName: s.waiter_name ?? null,
-              items: comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
-            })
-            toast.success(msg || 'Comanda enviada a la impresora')
-            void Promise.allSettled(comandas.map((c) => restaurantService.printComanda(c.id)))
-          } catch (e) {
-            console.error('[comanda print error]', e)
-            toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
-          }
-        }
-      }
-      load()
+      const refreshed = await restaurantService.getSession(id)
+      setSession(refreshed)
+      if (order) await printNewKitchenRound(order, refreshed)
+      else load()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     } finally {
@@ -313,32 +378,12 @@ export default function MesaPage() {
           notes: '',
         }))
         const orderRes = await restaurantService.addOrder(id, { items })
-        const order = (orderRes as { data?: { order_number?: number; comandas?: Comanda[] } })?.data
-        const orderNumber = Number(order?.order_number ?? 0) || 0
-        const comandas = Array.isArray(order?.comandas) ? order!.comandas! : []
+        const order = (orderRes as { data?: { id?: number; order_number?: number; comandas?: Comanda[] } })?.data
         setCart([])
-        if (orderNumber > 0 && comandas.length > 0) setComandaModal({ orderNumber, comandas })
-        if (isWindowsDesktop() && isAutoPrintEnabled('comandas') && comandas.length > 0) {
-          const cfg = getConfiguredPrinter('comandas')
-          if (!cfg) {
-            toast.error('Configura la impresora de comandas en Ajustes')
-          } else {
-            try {
-              const msg = await printComandaAuto({
-                tableName: s.table_name ?? null,
-                orderNumber,
-                waiterName: s.waiter_name ?? null,
-                items: comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
-              })
-              toast.success(msg || 'Comanda enviada a la impresora')
-              void Promise.allSettled(comandas.map((c) => restaurantService.printComanda(c.id)))
-            } catch (e) {
-              console.error('[comanda print error]', e)
-              toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
-            }
-          }
-        }
-        await load()
+        const refreshed = await restaurantService.getSession(id)
+        setSession(refreshed)
+        if (order) await printNewKitchenRound(order, refreshed)
+        else await load()
       }
       if (needsCashSession) {
         if (!canChargeCash) {
@@ -754,6 +799,7 @@ export default function MesaPage() {
                   <span className="text-xs text-stone-500 truncate max-w-[55%]">{session.table_name}</span>
                 </div>
               </div>
+              {renderSentKitchenBlock()}
               <ul className="px-2 py-2 space-y-0.5 text-sm overflow-y-auto flex-1 min-h-0">
                 {renderCartLines()}
               </ul>
@@ -798,6 +844,7 @@ export default function MesaPage() {
                 </button>
               </div>
 
+              {renderSentKitchenBlock()}
               <ul className="p-4 pt-2 space-y-0.5 text-sm flex-1 min-h-0 overflow-y-auto">
                 {renderCartLines()}
               </ul>
@@ -1129,21 +1176,14 @@ export default function MesaPage() {
                 {isWindowsDesktop() && getConfiguredPrinter('comandas') && (
                   <button
                     type="button"
-                    onClick={async () => {
-                      try {
-                        const msg = await printComandaAuto({
-                          tableName: session.table_name ?? null,
-                          orderNumber: comandaModal.orderNumber,
-                          waiterName: session.waiter_name ?? null,
-                          items: comandaModal.comandas.map((c) => ({ productName: c.product_name, quantity: c.quantity, notes: c.notes ?? null })),
-                        })
-                        toast.success(msg || 'Comanda enviada a la impresora')
-                        void Promise.allSettled(comandaModal.comandas.map((c) => restaurantService.printComanda(c.id)))
-                      } catch (e) {
-                        console.error('[comanda reprint error]', e)
-                        toast.error('No se pudo imprimir la comanda. Revisa la consola de Tauri (cargo).')
-                      }
-                    }}
+                    onClick={() =>
+                      void reprintKitchenRound({
+                        orderId: comandaModal.orderId,
+                        orderNumber: comandaModal.orderNumber,
+                        comandas: comandaModal.comandas,
+                        allDelivered: false,
+                      })
+                    }
                     className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl font-medium hover:bg-rest-700"
                   >
                     Reimprimir
@@ -1324,6 +1364,14 @@ export default function MesaPage() {
           </div>
         </div>
       )}
+
+      <KitchenRoundHistoryModal
+        open={kitchenHistoryOpen}
+        onClose={() => setKitchenHistoryOpen(false)}
+        rounds={kitchenRoundHistory}
+        orderCode={session?.order_code}
+        onReprint={(round) => void reprintKitchenRound(round)}
+      />
 
       <ReceiptPrintModal
         open={receiptModalOpen}

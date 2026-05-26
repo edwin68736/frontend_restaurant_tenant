@@ -74,7 +74,15 @@ export interface SessionDetail {
   estimated_minutes?: number
   total_amount: number
   notes?: string
-  orders: { id: number; order_number: number; notes: string; comandas: Comanda[] }[]
+  orders: {
+    id: number
+    order_number: number
+    notes: string
+    printed_at?: string | null
+    printed_by_id?: number | null
+    created_at?: string
+    comandas: Comanda[]
+  }[]
 }
 
 export interface Comanda {
@@ -88,8 +96,27 @@ export interface Comanda {
   unit_price: number
   notes?: string
   status: string
+  preparation_area?: string
   printed?: boolean
+  printed_at?: string | null
   created_at?: string
+}
+
+/** Línea de cocina con contexto del pedido (GET /kitchen). */
+export interface KitchenComanda extends Comanda {
+  order_number?: number
+  order_code?: string
+  order_type?: string
+  order_status?: string
+  table_id?: number | null
+  table_name?: string
+  floor_name?: string
+  customer_name?: string
+  customer_phone?: string
+  delivery_address?: string
+  waiter_name?: string
+  driver_name?: string
+  session_opened_at?: string
 }
 
 export interface OrderItemInput {
@@ -111,6 +138,17 @@ export const restaurantService = {
     api
       .get<{ data: RestaurantStaffManagementRow[] }>('/api/restaurant/staff/management')
       .then((r) => r.data.data ?? r.data ?? []),
+
+  createStaffUser: (body: {
+    name: string
+    email: string
+    phone?: string
+    employee_type: string
+    pin: string
+    staff_code?: string
+    display_name?: string
+  }) =>
+    api.post<{ success: boolean; data: RestaurantStaffManagementRow }>('/api/restaurant/staff/users', body).then((r) => r.data),
 
   setUserStaff: (
     userId: number,
@@ -209,12 +247,44 @@ export const restaurantService = {
       })
       .then((r) => r.data.data ?? []),
 
-  createDeliveryDriver: (data: { name: string; phone?: string; vehicle_type?: string; plate?: string; notes?: string }) =>
-    api.post('/api/restaurant/delivery-drivers', data).then((r) => r.data),
+  listDeliveryCompanies: (activeOnly = true) =>
+    api
+      .get<{ data: import('@/types/restaurantOrder').DeliveryCompany[] }>('/api/restaurant/delivery-companies', {
+        params: { active_only: activeOnly ? 'true' : 'false' },
+      })
+      .then((r) => r.data.data ?? []),
+
+  createDeliveryCompany: (data: { name: string }) =>
+    api.post('/api/restaurant/delivery-companies', data).then((r) => r.data),
+
+  updateDeliveryCompany: (
+    id: number,
+    data: { name: string; active?: boolean; sort_order?: number },
+  ) => api.put(`/api/restaurant/delivery-companies/${id}`, data).then((r) => r.data),
+
+  deleteDeliveryCompany: (id: number) =>
+    api.delete(`/api/restaurant/delivery-companies/${id}`).then((r) => r.data),
+
+  createDeliveryDriver: (data: {
+    name: string
+    phone?: string
+    vehicle_type?: string
+    plate?: string
+    notes?: string
+    delivery_company_id?: number | null
+  }) => api.post('/api/restaurant/delivery-drivers', data).then((r) => r.data),
 
   updateDeliveryDriver: (
     id: number,
-    data: { name: string; phone?: string; vehicle_type?: string; plate?: string; notes?: string; active?: boolean },
+    data: {
+      name: string
+      phone?: string
+      vehicle_type?: string
+      plate?: string
+      notes?: string
+      active?: boolean
+      delivery_company_id?: number | null
+    },
   ) => api.put(`/api/restaurant/delivery-drivers/${id}`, data).then((r) => r.data),
 
   deleteDeliveryDriver: (id: number) => api.delete(`/api/restaurant/delivery-drivers/${id}`).then((r) => r.data),
@@ -241,8 +311,11 @@ export const restaurantService = {
   updateComandaStatus: (comandaId: number, status: string) =>
     api.put(`/api/restaurant/comandas/${comandaId}/status`, { status }).then((r) => r.data),
   printComanda: (comandaId: number) => api.post(`/api/restaurant/comandas/${comandaId}/print`).then((r) => r.data),
+  markTableOrderPrinted: (tableOrderId: number) =>
+    api.post(`/api/restaurant/table-orders/${tableOrderId}/printed`).then((r) => r.data),
   cancelComanda: (comandaId: number, reason: string, pin: string) =>
     api.delete(`/api/restaurant/comandas/${comandaId}`, { data: { reason, pin } }).then((r) => r.data),
 
-  getKitchen: () => api.get<{ data: Comanda[] }>('/api/restaurant/kitchen').then((r) => r.data.data ?? r.data ?? []),
+  getKitchen: () =>
+    api.get<{ data: KitchenComanda[] }>('/api/restaurant/kitchen').then((r) => r.data.data ?? r.data ?? []),
 }

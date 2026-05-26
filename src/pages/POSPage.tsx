@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
-import { restaurantService } from '@/services/restaurant.service'
+import { restaurantService, type Comanda, type SessionDetail } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { PrintData } from '@/types/printData'
@@ -31,13 +31,26 @@ import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
-import { getConfiguredPrinter, isAutoPrintEnabled, isWindowsDesktop, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
+import {
+  getConfiguredPrinter,
+  isAutoPrintEnabled,
+  isWindowsDesktop,
+  printDocumentAuto,
+  printPrecuentaAuto,
+} from '@/services/printers.service'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
 import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, type DeliveryDriver, type PrecuentaPayload, type RestaurantOrderSummary } from '@/types/restaurantOrder'
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
-import { cartToOrderItems, sessionDetailToCart } from '@/utils/posOrderHelpers'
+import {
+  cartToOrderItems,
+  getActiveKitchenRounds,
+  getOrderRoundHistory,
+  type KitchenRound,
+} from '@/utils/posOrderHelpers'
+import { printKitchenRound } from '@/utils/kitchenPrint'
+import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import {
   orderStatusBadgeClasses,
   orderTypeCardAccentClasses,
@@ -100,6 +113,9 @@ export default function POSPage() {
   const { flyToCart, FlyToCartLayer } = useFlyToCart(cartBtnRef)
   const [posOrderType, setPosOrderType] = useState<PosOrderType>('quick_sale')
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
+  const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null)
+  const [comandaModal, setComandaModal] = useState<{ orderId: number; orderNumber: number; comandas: Comanda[] } | null>(null)
+  const [kitchenHistoryOpen, setKitchenHistoryOpen] = useState(false)
   const [orderCode, setOrderCode] = useState('')
   const [orderStatus, setOrderStatus] = useState('')
   const [sessionTotal, setSessionTotal] = useState(0)
@@ -124,29 +140,27 @@ export default function POSPage() {
   const [scanProcessing, setScanProcessing] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
-  const loadSession = useCallback(
-    async (sessionId: number) => {
-      const detail = await restaurantService.getSession(sessionId)
-      setActiveSessionId(detail.id)
-      setOrderCode(detail.order_code ?? '')
-      setOrderStatus(detail.order_status ?? '')
-      setSessionTotal(detail.total_amount ?? 0)
-      setCustomerName(detail.customer_name ?? detail.contact_name ?? '')
-      setCustomerPhone(detail.customer_phone ?? '')
-      setDeliveryAddress(detail.delivery_address ?? '')
-      setDeliveryReference(detail.delivery_reference ?? '')
-      setDeliveryDriverId(detail.delivery_driver_id ?? null)
-      setEstimatedMinutes(detail.estimated_minutes ?? 30)
-      setOrderNotes(detail.notes ?? '')
-      if (detail.order_type === 'delivery' || detail.order_type === 'takeaway' || detail.order_type === 'quick_sale') {
-        setPosOrderType(detail.order_type as PosOrderType)
-      }
-      if (detail.contact_id) setContactId(detail.contact_id)
-      const catalog = await productsService.list('', true, 1, 500, undefined, undefined, activeBranchId ?? undefined)
-      setCart(sessionDetailToCart(detail, catalog.data))
-    },
-    [activeBranchId],
-  )
+  const loadSession = useCallback(async (sessionId: number): Promise<SessionDetail> => {
+    const detail = await restaurantService.getSession(sessionId)
+    setActiveSessionId(detail.id)
+    setOrderCode(detail.order_code ?? '')
+    setOrderStatus(detail.order_status ?? '')
+    setSessionTotal(detail.total_amount ?? 0)
+    setCustomerName(detail.customer_name ?? detail.contact_name ?? '')
+    setCustomerPhone(detail.customer_phone ?? '')
+    setDeliveryAddress(detail.delivery_address ?? '')
+    setDeliveryReference(detail.delivery_reference ?? '')
+    setDeliveryDriverId(detail.delivery_driver_id ?? null)
+    setEstimatedMinutes(detail.estimated_minutes ?? 30)
+    setOrderNotes(detail.notes ?? '')
+    if (detail.order_type === 'delivery' || detail.order_type === 'takeaway' || detail.order_type === 'quick_sale') {
+      setPosOrderType(detail.order_type as PosOrderType)
+    }
+    if (detail.contact_id) setContactId(detail.contact_id)
+    setSessionDetail(detail)
+    setCart([])
+    return detail
+  }, [])
 
   useEffect(() => {
     const sid = searchParams.get('session')
@@ -274,6 +288,8 @@ export default function POSPage() {
     setCart([])
     setCheckoutOpen(false)
     setActiveSessionId(null)
+    setSessionDetail(null)
+    setComandaModal(null)
     setOrderCode('')
     setSessionTotal(0)
     loadPosMeta()
@@ -343,6 +359,8 @@ export default function POSPage() {
   )
 
   const cartQty = cart.reduce((s, i) => s + i.quantity, 0)
+  const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(sessionDetail), [sessionDetail])
+  const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(sessionDetail), [sessionDetail])
   const pendingOrdersCount = openOrdersList.length
   const hasPendingOrders = pendingOrdersCount > 0
   const isDirectSale = posOrderType === 'quick_sale'
@@ -353,6 +371,7 @@ export default function POSPage() {
   const applyPosOrderType = (next: PosOrderType) => {
     if (activeSessionId && posOrderType !== next) {
       setActiveSessionId(null)
+      setSessionDetail(null)
       setOrderCode('')
       setOrderStatus('')
       setSessionTotal(0)
@@ -362,6 +381,126 @@ export default function POSPage() {
     }
     setPosOrderType(next)
     if (next === 'quick_sale') setOrderDetailsModal(null)
+  }
+
+  const deliveryDriverLabel =
+    deliveryDriverId != null
+      ? drivers.find((d) => d.id === deliveryDriverId)?.name ?? sessionDetail?.driver_name
+      : sessionDetail?.driver_name
+
+  const renderOrderCustomerInfo = () => {
+    if (!isRestaurantOrder || !activeSessionId) return null
+    const editBtn = (
+      <button
+        type="button"
+        onClick={() => setOrderDetailsModal(posOrderType === 'delivery' ? 'delivery' : 'takeaway')}
+        className="text-[10px] font-medium text-rest-600 hover:underline shrink-0"
+      >
+        Editar datos
+      </button>
+    )
+    if (posOrderType === 'takeaway') {
+      if (!customerName.trim() && !customerPhone.trim() && !orderNotes.trim()) {
+        return (
+          <button
+            type="button"
+            onClick={() => setOrderDetailsModal('takeaway')}
+            className="w-full text-left text-xs text-rest-600 hover:underline rounded-lg border border-dashed border-stone-300 px-2 py-1.5"
+          >
+            + Datos para llevar (nombre, teléfono, notas)
+          </button>
+        )
+      }
+      return (
+        <div className="text-xs text-stone-600 rounded-lg border border-stone-200 bg-white px-2 py-1.5 space-y-0.5">
+          <div className="flex justify-between gap-2 items-start">
+            <span className="font-semibold text-stone-700">Para llevar</span>
+            {editBtn}
+          </div>
+          {customerName.trim() && <p className="truncate"><span className="text-stone-500">Cliente:</span> {customerName}</p>}
+          {customerPhone.trim() && <p><span className="text-stone-500">Tel.:</span> {customerPhone}</p>}
+          {orderNotes.trim() && <p className="line-clamp-2"><span className="text-stone-500">Notas:</span> {orderNotes}</p>}
+        </div>
+      )
+    }
+    if (posOrderType === 'delivery') {
+      return (
+        <div className="text-xs text-stone-600 rounded-lg border border-violet-200 bg-violet-50/50 px-2 py-1.5 space-y-0.5">
+          <div className="flex justify-between gap-2 items-start">
+            <span className="font-semibold text-violet-900">Delivery</span>
+            {editBtn}
+          </div>
+          {deliveryAddress.trim() && <p className="line-clamp-2"><span className="text-stone-500">Dir.:</span> {deliveryAddress}</p>}
+          {deliveryReference.trim() && <p className="truncate"><span className="text-stone-500">Ref.:</span> {deliveryReference}</p>}
+          {deliveryDriverLabel && <p><span className="text-stone-500">Repartidor:</span> {deliveryDriverLabel}</p>}
+          {customerName.trim() && <p className="truncate"><span className="text-stone-500">Cliente:</span> {customerName}</p>}
+          {customerPhone.trim() && <p><span className="text-stone-500">Tel.:</span> {customerPhone}</p>}
+        </div>
+      )
+    }
+    return null
+  }
+
+  const reprintKitchenRound = async (round: KitchenRound) => {
+    if (round.comandas.length === 0) return
+    const printed = await printKitchenRound({
+      sessionDetail,
+      orderCode,
+      orderNumber: round.orderNumber,
+      tableOrderId: round.orderId,
+      comandas: round.comandas,
+      markPrinted: false,
+    })
+    if (!printed) {
+      setComandaModal({ orderId: round.orderId, orderNumber: round.orderNumber, comandas: round.comandas })
+      toast.info('Vista previa de comanda (impresión automática desactivada)')
+    }
+  }
+
+  const renderSentKitchenBlock = () => {
+    if (!isRestaurantOrder || activeKitchenRounds.length === 0) return null
+    return (
+      <div className="px-2 py-2 border-b border-amber-200/80 bg-amber-50/50 shrink-0">
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <p className="text-xs font-semibold text-amber-900">Ya en cocina</p>
+          {kitchenRoundHistory.some((r) => r.comandas.length > 0) && (
+            <button
+              type="button"
+              onClick={() => setKitchenHistoryOpen(true)}
+              className="text-[10px] font-semibold text-rest-600 hover:underline"
+            >
+              Historial
+            </button>
+          )}
+        </div>
+        <div className="space-y-2 max-h-36 overflow-y-auto">
+          {activeKitchenRounds.map((round) => (
+            <div key={round.orderId} className="rounded-lg border border-amber-200/60 bg-white/90 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-medium text-stone-700">Comanda #{round.orderNumber}</span>
+                <button
+                  type="button"
+                  onClick={() => void reprintKitchenRound(round)}
+                  className="text-[10px] font-semibold text-rest-600 hover:underline"
+                >
+                  Reimprimir
+                </button>
+              </div>
+              <ul className="text-[11px] text-stone-600 space-y-0.5">
+                {round.comandas.map((c) => (
+                  <li key={c.id} className="flex justify-between gap-1">
+                    <span className="truncate">{c.quantity}x {c.product_name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-stone-500 mt-1.5 leading-snug">
+          El carrito solo tiene ítems nuevos. Comanda envía otra ronda sin repetir lo ya impreso.
+        </p>
+      </div>
+    )
   }
 
   const renderCartHeader = () => (
@@ -418,6 +557,7 @@ export default function POSPage() {
           </span>
         </button>
       </div>
+      {renderOrderCustomerInfo()}
       <div className="grid grid-cols-3 gap-1.5">
         <button
           type="button"
@@ -634,10 +774,27 @@ export default function POSPage() {
     setActionLoading(true)
     try {
       const sid = await ensureSession(false)
-      await restaurantService.addOrder(sid, { items: cartToOrderItems(cart) })
+      const res = await restaurantService.addOrder(sid, { items: cartToOrderItems(cart) })
+      const order = (res as { data?: { id?: number; order_number?: number; comandas?: Comanda[] } })?.data
+      const tableOrderId = Number(order?.id ?? 0) || 0
+      const orderNumber = Number(order?.order_number ?? 0) || 0
+      const comandas = Array.isArray(order?.comandas) ? order!.comandas! : []
       toast.success('Comanda enviada a cocina')
       setCart([])
-      await loadSession(sid)
+      const refreshed = await loadSession(sid)
+      if (tableOrderId > 0 && orderNumber > 0 && comandas.length > 0) {
+        setComandaModal({ orderId: tableOrderId, orderNumber, comandas })
+        const printed = await printKitchenRound({
+          sessionDetail: refreshed,
+          orderCode: refreshed.order_code ?? orderCode,
+          orderNumber,
+          tableOrderId,
+          comandas,
+        })
+        if (!printed && comandas.length > 0) {
+          toast.info('Revisa impresora de comandas en Ajustes o usa Reimprimir en el historial')
+        }
+      }
       void loadPendingOrders({ silent: true })
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
@@ -776,6 +933,8 @@ export default function POSPage() {
       toast.success('Venta registrada')
       setCart([])
       setActiveSessionId(null)
+      setSessionDetail(null)
+      setComandaModal(null)
       setOrderCode('')
       setSessionTotal(0)
       setSearchParams({})
@@ -1002,7 +1161,11 @@ export default function POSPage() {
           <div className="hidden lg:flex shrink-0 flex-col min-h-0 w-[min(100%,24rem)] xl:w-[28rem] 2xl:w-[32rem]">
             <div className="flex-1 min-h-0 flex flex-col bg-white rounded-l-xl xl:rounded-l-2xl border border-stone-200/80 border-r-0 shadow-sm overflow-hidden">
               {renderCartHeader()}
+              {renderSentKitchenBlock()}
               <ul className="px-2 py-2 space-y-0.5 text-sm overflow-y-auto flex-1 min-h-0">
+                {cart.length === 0 && activeKitchenRounds.length > 0 && (
+                  <li className="py-3 text-center text-xs text-stone-400">Agrega productos para una nueva ronda</li>
+                )}
                 {cart.map((item, i) => (
                   <li key={i} className="flex justify-between items-center gap-2 py-2 border-b border-stone-100 last:border-0">
                     <div className="flex-1 min-w-0">
@@ -1084,8 +1247,12 @@ export default function POSPage() {
               </div>
 
               <div className="border-b border-stone-100">{renderCartHeader()}</div>
+              {renderSentKitchenBlock()}
               <div className="p-4 flex-1 min-h-0 overflow-y-auto">
                 <ul className="space-y-1 text-sm mb-4">
+                  {cart.length === 0 && activeKitchenRounds.length > 0 && (
+                    <li className="py-3 text-center text-xs text-stone-400">Agrega productos para una nueva ronda</li>
+                  )}
                   {cart.map((item, i) => (
                     <li key={i} className="flex justify-between items-center gap-2 py-2 border-b border-stone-100 last:border-0">
                       <div className="flex-1 min-w-0">
@@ -1581,6 +1748,12 @@ export default function POSPage() {
                     {o.customer_name && (
                       <p className="text-xs text-stone-500 mt-0.5 truncate">{o.customer_name}</p>
                     )}
+                    {o.customer_phone && (
+                      <p className="text-xs text-stone-500 truncate">Tel. {o.customer_phone}</p>
+                    )}
+                    {o.order_type === 'delivery' && o.delivery_address && (
+                      <p className="text-xs text-stone-500 line-clamp-2">{o.delivery_address}</p>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1611,6 +1784,8 @@ export default function POSPage() {
             setVoidOrderTarget(null)
             if (activeSessionId === voidedId) {
               setActiveSessionId(null)
+              setSessionDetail(null)
+              setComandaModal(null)
               setOrderCode('')
               setSessionTotal(0)
               setCart([])
@@ -1624,6 +1799,54 @@ export default function POSPage() {
         }}
       />
 
+      <PortalModal open={!!comandaModal} onClose={() => setComandaModal(null)} className="max-w-md">
+        {comandaModal && (
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+              <h3 className="font-bold text-stone-800">Comanda · Ronda #{comandaModal.orderNumber}</h3>
+              <button type="button" onClick={() => setComandaModal(null)} className="p-1 rounded-lg hover:bg-stone-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 min-h-0">
+              <ul className="text-sm space-y-2">
+                {comandaModal.comandas.map((c) => (
+                  <li key={c.id} className="flex justify-between gap-2 border-b border-stone-100 pb-2 last:border-0">
+                    <span className="text-stone-700">{c.product_name}</span>
+                    <span className="font-semibold shrink-0">x{c.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="p-4 border-t border-stone-200 flex gap-2">
+              {isWindowsDesktop() && getConfiguredPrinter('comandas') && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void reprintKitchenRound({
+                      orderId: comandaModal.orderId,
+                      orderNumber: comandaModal.orderNumber,
+                      comandas: comandaModal.comandas,
+                      allDelivered: false,
+                    })
+                  }
+                  className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
+                >
+                  Reimprimir
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setComandaModal(null)}
+                className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium hover:bg-stone-50"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+      </PortalModal>
+
       <PortalModal open={precuentaOpen && !!precuentaData} onClose={() => setPrecuentaOpen(false)} className="max-w-md">
         {precuentaData && (
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[85vh] overflow-y-auto p-5">
@@ -1636,8 +1859,26 @@ export default function POSPage() {
                 <X size={18} />
               </button>
             </div>
+            <p className="text-xs text-stone-500 mb-2">
+              {ORDER_TYPE_LABELS[precuentaData.order_type] ?? precuentaData.order_type}
+            </p>
             {precuentaData.customer_name && (
-              <p className="text-sm text-stone-600 mb-2">Cliente: {precuentaData.customer_name}</p>
+              <p className="text-sm text-stone-600 mb-1">Cliente: {precuentaData.customer_name}</p>
+            )}
+            {precuentaData.customer_phone && (
+              <p className="text-sm text-stone-600 mb-1">Tel.: {precuentaData.customer_phone}</p>
+            )}
+            {precuentaData.delivery_address && (
+              <p className="text-sm text-stone-600 mb-1">Dirección: {precuentaData.delivery_address}</p>
+            )}
+            {precuentaData.delivery_reference && (
+              <p className="text-sm text-stone-600 mb-1">Ref.: {precuentaData.delivery_reference}</p>
+            )}
+            {precuentaData.driver_name && (
+              <p className="text-sm text-stone-600 mb-2">Repartidor: {precuentaData.driver_name}</p>
+            )}
+            {precuentaData.notes && (
+              <p className="text-sm text-stone-600 mb-2">Notas: {precuentaData.notes}</p>
             )}
             <ul className="text-sm space-y-1 mb-3 border-t border-stone-100 pt-2">
               {precuentaData.lines.map((l, i) => (
@@ -1663,6 +1904,14 @@ export default function POSPage() {
           </div>
         )}
       </PortalModal>
+
+      <KitchenRoundHistoryModal
+        open={kitchenHistoryOpen}
+        onClose={() => setKitchenHistoryOpen(false)}
+        rounds={kitchenRoundHistory}
+        orderCode={orderCode}
+        onReprint={(round) => void reprintKitchenRound(round)}
+      />
 
       <ReceiptPrintModal
         open={receiptModalOpen}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ComandasViewModeToggle, type ComandasViewMode } from '@/components/comandas/ComandasViewModeToggle'
 import { ComandasItemsView } from '@/components/comandas/ComandasItemsView'
-import { ComandasOrdersView } from '@/components/comandas/ComandasOrdersView'
+import { ComandasKitchenBoardView } from '@/components/comandas/ComandasKitchenBoardView'
 
 const VIEW_STORAGE_KEY = 'tukichef-comandas-view'
 
@@ -36,7 +36,7 @@ export default function ComandasPage() {
             <p className="text-sm text-stone-500 mt-0.5">
               {viewMode === 'items'
                 ? 'Cada línea enviada a cocina. Cambia el estado por ítem.'
-                : 'Pedidos abiertos agrupados. Abre en POS para editar o cobrar.'}
+                : 'Pedidos agrupados por mesa, delivery o llevar. Filtra mesas y cambia estados.'}
             </p>
           </div>
           <ComandasViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -44,7 +44,7 @@ export default function ComandasPage() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        {viewMode === 'items' ? <ComandasItemsView /> : <ComandasOrdersView />}
+        {viewMode === 'items' ? <ComandasItemsView /> : <ComandasKitchenBoardView />}
       </div>
     </div>
   )

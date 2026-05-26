@@ -404,6 +404,7 @@ export default function ProductosPage() {
                   <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700 w-14">Imagen</th>
                   <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Código</th>
                   <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Nombre</th>
+                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700 min-w-[8rem]">Descripción</th>
                   <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Categoría</th>
                   <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Área</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Precio</th>
@@ -433,6 +434,18 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-3 py-2 font-mono text-stone-600">{p.code || '—'}</td>
                     <td className="px-3 py-2 font-medium text-stone-800">{p.name}</td>
+                    <td className="px-3 py-2 text-stone-600 max-w-[14rem]">
+                      {p.description?.trim() ? (
+                        <span
+                          className="text-xs line-clamp-2 leading-snug"
+                          title={p.description.trim()}
+                        >
+                          {p.description.trim()}
+                        </span>
+                      ) : (
+                        <span className="text-stone-400 text-xs">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-stone-600">{p.category_id ? (categoryMap[p.category_id] ?? '—') : '—'}</td>
                     <td className="px-3 py-2 text-stone-600">
                       {p.preparation_area
@@ -490,18 +503,21 @@ export default function ProductosPage() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-stone-600">
                   <label className="flex items-center gap-1.5">
                     <span className="text-stone-500">Mostrar</span>
-                    <div className="w-[4.5rem]">
-                      <SearchableSelect
-                        value={perPage}
-                        onChange={(v) => {
-                          setPerPage(Number(v))
-                          setPage(1)
-                        }}
-                        options={PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
-                        searchable={false}
-                        className="border border-stone-200 rounded-lg px-2 py-1 text-xs bg-white text-left flex items-center justify-between gap-1 min-h-0"
-                      />
-                    </div>
+                    <select
+                      value={perPage}
+                      onChange={(e) => {
+                        setPerPage(Number(e.target.value))
+                        setPage(1)
+                      }}
+                      aria-label="Registros por página"
+                      className="border border-stone-200 rounded-lg px-2 py-1 text-xs bg-white text-stone-800 min-w-[4.5rem] cursor-pointer focus:outline-none focus:ring-2 focus:ring-rest-500/40"
+                    >
+                      {PER_PAGE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
                     <span className="text-stone-500">por página</span>
                   </label>
                   {total > 0 ? (

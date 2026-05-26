@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import { getCentralApiBaseUrl } from './api'
+import { getCentralApiRequestBaseUrl } from './api'
 
 export interface TenantByRucResponse {
   slug: string
@@ -27,7 +27,7 @@ const publicApi = axios.create({
 })
 
 publicApi.interceptors.request.use((config) => {
-  config.baseURL = getCentralApiBaseUrl()
+  config.baseURL = getCentralApiRequestBaseUrl()
   return config
 })
 

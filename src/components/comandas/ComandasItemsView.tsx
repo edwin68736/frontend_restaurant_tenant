@@ -1,20 +1,14 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Trash2 } from 'lucide-react'
-import { restaurantService, type Comanda } from '@/services/restaurant.service'
+import { Check, Package, Play, Trash2 } from 'lucide-react'
+import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
-
-type ComandaStatus = 'pendiente' | 'preparacion' | 'lista' | 'entregada'
-
-const STATUS_LABEL: Record<ComandaStatus, string> = {
-  pendiente: 'Pendiente',
-  preparacion: 'En preparación',
-  lista: 'Listo',
-  entregada: 'Entregado',
-}
-
-const STATUS_FLOW: ComandaStatus[] = ['pendiente', 'preparacion', 'lista', 'entregada']
+import {
+  type ComandaStatus,
+  COMANDA_STATUS_LABEL,
+  getNextComandaStatus,
+} from '@/utils/comandasKitchen'
 
 const STATUS_OPTIONS: {
   value: ComandaStatus
@@ -70,10 +64,10 @@ function statusBadgeClass(status: string): string {
 
 export function ComandasItemsView() {
   const { resetEpoch } = useBranch()
-  const [comandas, setComandas] = useState<Comanda[]>([])
+  const [comandas, setComandas] = useState<KitchenComanda[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<ComandaStatus>('pendiente')
-  const [anullModal, setAnullModal] = useState<Comanda | null>(null)
+  const [anullModal, setAnullModal] = useState<KitchenComanda | null>(null)
   const [anullPin, setAnullPin] = useState('')
   const [anullReason, setAnullReason] = useState('')
 
@@ -101,9 +95,11 @@ export function ComandasItemsView() {
     { pendiente: 0, preparacion: 0, lista: 0, entregada: 0 } as Record<ComandaStatus, number>,
   )
 
-  const updateStatus = async (id: number, status: string) => {
+  const advanceStatus = async (item: KitchenComanda) => {
+    const next = getNextComandaStatus(item.status)
+    if (!next) return
     try {
-      await restaurantService.updateComandaStatus(id, status)
+      await restaurantService.updateComandaStatus(item.id, next)
       toast.success('Estado actualizado')
       load()
     } catch (e: unknown) {
@@ -164,7 +160,7 @@ export function ComandasItemsView() {
         </div>
       ) : filtered.length === 0 ? (
         <p className="text-center py-12 sm:py-16 text-stone-400 text-sm px-4">
-          No hay ítems en estado «{STATUS_LABEL[filter]}».
+          No hay ítems en estado «{COMANDA_STATUS_LABEL[filter]}».
         </p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 md:gap-4 pb-4">
@@ -181,14 +177,27 @@ export function ComandasItemsView() {
                   <p className="text-sm text-stone-600 mt-0.5">
                     Cant. <span className="font-semibold tabular-nums">{c.quantity}</span>
                   </p>
-                  {c.session_id ? (
-                    <p className="text-[10px] sm:text-xs text-stone-400 mt-0.5">Pedido #{c.session_id}</p>
-                  ) : null}
+                  <p className="text-[10px] sm:text-xs text-stone-500 mt-0.5 line-clamp-2">
+                    {c.order_code
+                      ? `${c.order_code}${c.order_number ? ` · Comanda #${c.order_number}` : ''}`
+                      : c.session_id
+                        ? `Pedido #${c.session_id}`
+                        : ''}
+                    {c.table_name ? ` · ${c.table_name}` : ''}
+                    {c.order_type === 'delivery' && c.delivery_address
+                      ? ` · ${c.delivery_address}`
+                      : ''}
+                  </p>
+                  {(c.preparation_area || '').trim() && (
+                    <span className="inline-block mt-1 text-[10px] font-medium text-violet-800 bg-violet-50 px-1.5 py-0.5 rounded capitalize">
+                      {(c.preparation_area || '').trim()}
+                    </span>
+                  )}
                 </div>
                 <span
                   className={`shrink-0 text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-lg border ${statusBadgeClass(c.status)}`}
                 >
-                  {STATUS_LABEL[(c.status as ComandaStatus) || 'pendiente']}
+                  {COMANDA_STATUS_LABEL[(c.status as ComandaStatus) || 'pendiente']}
                 </span>
               </div>
 
@@ -198,25 +207,28 @@ export function ComandasItemsView() {
                 </p>
               ) : null}
 
-              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-1 mt-auto pt-1">
-                {STATUS_FLOW.map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => void updateStatus(c.id, st)}
-                    className={`min-h-[2.5rem] sm:min-h-0 px-2 sm:px-2.5 py-2 sm:py-1 rounded-lg text-[11px] sm:text-xs font-medium border touch-manipulation text-center leading-tight ${
-                      c.status === st
-                        ? 'bg-rest-600 text-white border-rest-600'
-                        : 'border-stone-200 text-stone-700 hover:bg-stone-50 active:bg-stone-100'
-                    }`}
-                  >
-                    {STATUS_LABEL[st]}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-auto pt-1">
+                {(() => {
+                  const st = (c.status as ComandaStatus) || 'pendiente'
+                  const next = getNextComandaStatus(c.status)
+                  if (!next) return null
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => void advanceStatus(c)}
+                      className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg bg-rest-600 text-white text-xs font-semibold hover:bg-rest-700 touch-manipulation min-h-[2.5rem] sm:min-h-0"
+                    >
+                      {st === 'pendiente' && <Play size={14} />}
+                      {st === 'preparacion' && <Package size={14} />}
+                      {st === 'lista' && <Check size={14} />}
+                      {st === 'pendiente' ? 'Preparar' : st === 'preparacion' ? 'Listo' : 'Entregar'}
+                    </button>
+                  )
+                })()}
                 <button
                   type="button"
                   onClick={() => setAnullModal(c)}
-                  className="col-span-2 sm:col-span-1 sm:ml-auto min-h-[2.5rem] sm:min-h-0 flex items-center justify-center gap-1.5 px-2 py-2 sm:p-1.5 rounded-lg text-red-600 border border-red-100 hover:bg-red-50 touch-manipulation text-xs font-medium"
+                  className="inline-flex items-center justify-center gap-1.5 px-2 py-2 sm:p-1.5 rounded-lg text-red-600 border border-red-100 hover:bg-red-50 touch-manipulation text-xs font-medium min-h-[2.5rem] sm:min-h-0 sm:ml-auto"
                   title="Anular comanda"
                 >
                   <Trash2 size={16} />

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
 import {
@@ -13,8 +14,10 @@ import {
 import type { Category } from '@/services/products.service'
 import {
   downloadRestaurantProductTemplate,
+  importProgressPercent,
   importRestaurantProducts,
   validateRestaurantProductExcel,
+  type ImportProgress,
   type ImportRowIssue,
   type ImportValidationResult,
   type ParsedImportRow,
@@ -88,12 +91,19 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     }
   }
 
+  const reportImportProgress = useCallback((p: ImportProgress) => {
+    flushSync(() => setImportProgress(p))
+  }, [])
+
   const handleImport = async () => {
     if (!validation || validation.errors.length > 0 || validation.rows.length === 0) return
-    setStep('importing')
-    setImportProgress({ done: 0, total: validation.rows.length })
+    const total = validation.rows.length
+    flushSync(() => {
+      setStep('importing')
+      setImportProgress({ done: 0, total, current: 'Iniciando…' })
+    })
     try {
-      const result = await importRestaurantProducts(validation.rows, categories, setImportProgress)
+      const result = await importRestaurantProducts(validation.rows, categories, reportImportProgress)
       setImportResult(result)
       setStep('done')
       if (result.created > 0) {
@@ -116,8 +126,7 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
   const canImport =
     validation != null && validation.errors.length === 0 && validation.rows.length > 0 && step === 'validated'
   const isImporting = step === 'importing'
-  const importPct =
-    importProgress.total > 0 ? Math.min(100, Math.round((importProgress.done / importProgress.total) * 100)) : 0
+  const importPct = importProgressPercent(importProgress.done, importProgress.total)
 
   if (!open) return null
 
@@ -208,7 +217,6 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
             <ImportLoadingOverlay
               done={importProgress.done}
               total={importProgress.total}
-              percent={importPct}
               current={importProgress.current}
             />
           )}
@@ -236,7 +244,7 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
           {isImporting && (
             <span className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-rest-700">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Importando…
+              {importPct}% · {importProgress.done}/{importProgress.total}
             </span>
           )}
         </div>
@@ -248,14 +256,15 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
 function ImportLoadingOverlay({
   done,
   total,
-  percent,
   current,
 }: {
   done: number
   total: number
-  percent: number
   current?: string
 }) {
+  const percent = importProgressPercent(done, total)
+  const barWidth = done === 0 && total > 0 ? 4 : percent
+
   return (
     <div
       className="absolute inset-0 z-20 flex items-center justify-center bg-white/90 backdrop-blur-[2px] rounded-b-2xl"
@@ -280,8 +289,14 @@ function ImportLoadingOverlay({
           </div>
           <div className="h-2.5 bg-stone-100 rounded-full overflow-hidden shadow-inner">
             <div
-              className="h-full bg-gradient-to-r from-rest-500 to-rest-600 transition-all duration-300 ease-out"
-              style={{ width: `${percent}%` }}
+              className={`h-full bg-gradient-to-r from-rest-500 to-rest-600 transition-[width] duration-200 ease-out ${
+                done === 0 && total > 0 ? 'animate-pulse' : ''
+              }`}
+              style={{ width: `${barWidth}%` }}
+              role="progressbar"
+              aria-valuenow={done}
+              aria-valuemin={0}
+              aria-valuemax={total}
             />
           </div>
           {current && (

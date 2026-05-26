@@ -17,7 +17,6 @@ type HucreRowError = {
 import type { BulkImportItemPayload, Category, CreateProductInput } from '@/services/products.service'
 import { productsService } from '@/services/products.service'
 
-const PREPARATION_AREA_VALUES = ['', 'cocina', 'bar', 'barra', 'postres', 'otro'] as const
 const IGV_CODES = ['10', '20', '30', '40'] as const
 
 export const IMPORT_COLUMNS = [
@@ -87,14 +86,8 @@ export const RESTAURANT_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   area_preparacion: {
     column: 'area_preparacion',
     type: 'string',
+    max: 50,
     transform: (v) => String(v ?? '').trim().toLowerCase(),
-    validate: (v) => {
-      const s = String(v ?? '').trim().toLowerCase()
-      if (!s) return true
-      return PREPARATION_AREA_VALUES.includes(s as (typeof PREPARATION_AREA_VALUES)[number])
-        ? true
-        : `Área inválida. Use: ${PREPARATION_AREA_VALUES.filter(Boolean).join(', ')}`
-    },
   },
   afectacion_igv: {
     column: 'afectacion_igv',
@@ -367,7 +360,25 @@ export function buildCreateInput(
 
 export type ImportProgress = { done: number; total: number; current?: string }
 
-const BULK_CHUNK_SIZE = 500
+/** Lotes pequeños para que la barra de progreso avance de forma visible entre peticiones. */
+const BULK_CHUNK_SIZE = 25
+
+/** Permite que React pinte la barra antes del siguiente await (petición HTTP). */
+async function reportImportProgress(
+  onProgress: ((p: ImportProgress) => void) | undefined,
+  p: ImportProgress,
+): Promise<void> {
+  if (!onProgress) return
+  onProgress(p)
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
+
+export function importProgressPercent(done: number, total: number): number {
+  if (total <= 0) return 0
+  return Math.min(100, Math.max(0, Math.round((done / total) * 100)))
+}
 
 function rowToBulkPayload(row: ParsedImportRow): BulkImportItemPayload {
   return {
@@ -398,16 +409,33 @@ export async function importRestaurantProducts(
   const failed: { row: number; name: string; error: string }[] = []
   let created = 0
   let stockRegistered = 0
+  const total = rows.length
+
+  if (total === 0) {
+    await reportImportProgress(onProgress, { done: 0, total: 0 })
+    return { created: 0, stockRegistered: 0, failed }
+  }
+
+  await reportImportProgress(onProgress, { done: 0, total, current: 'Preparando envío…' })
 
   for (let offset = 0; offset < rows.length; offset += BULK_CHUNK_SIZE) {
     const chunk = rows.slice(offset, offset + BULK_CHUNK_SIZE)
-    onProgress?.({ done: offset, total: rows.length, current: chunk[0]?.nombre })
+    const chunkEnd = offset + chunk.length
+    await reportImportProgress(onProgress, {
+      done: offset,
+      total,
+      current: chunk[0]?.nombre,
+    })
     try {
       const res = await productsService.bulkImportRestaurant(chunk.map(rowToBulkPayload))
       created += res.created
       stockRegistered += res.stock_registered
       failed.push(...res.failed)
-      onProgress?.({ done: offset + chunk.length, total: rows.length, current: chunk[chunk.length - 1]?.nombre })
+      await reportImportProgress(onProgress, {
+        done: chunkEnd,
+        total,
+        current: chunk[chunk.length - 1]?.nombre,
+      })
     } catch (e: unknown) {
       const msg =
         (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
@@ -415,10 +443,10 @@ export async function importRestaurantProducts(
       for (const row of chunk) {
         failed.push({ row: row.rowNumber, name: row.nombre, error: msg })
       }
-      onProgress?.({ done: offset + chunk.length, total: rows.length })
+      await reportImportProgress(onProgress, { done: chunkEnd, total })
     }
   }
 
-  onProgress?.({ done: rows.length, total: rows.length })
+  await reportImportProgress(onProgress, { done: total, total })
   return { created, stockRegistered, failed }
 }

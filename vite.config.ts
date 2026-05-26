@@ -17,7 +17,7 @@ function normalizeApiOrigin(raw: string | undefined): string {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = normalizeApiOrigin(env.VITE_API_URL)
+  const apiProxyTarget = normalizeApiOrigin(env.VITE_API_URL || env.VITE_CENTRAL_API_URL)
 
   return {
     base: useRelativeBase(mode) ? './' : '/',
@@ -30,9 +30,9 @@ export default defineConfig(({ mode }) => {
       port: 5175,
       strictPort: true,
       proxy: {
-        '/api': { target: apiProxyTarget, changeOrigin: true, secure: true },
-        '/uploads': { target: apiProxyTarget, changeOrigin: true, secure: true },
-        '/storage': { target: apiProxyTarget, changeOrigin: true, secure: true },
+        '/api': { target: apiProxyTarget, changeOrigin: true, secure: apiProxyTarget.startsWith('https://') },
+        '/uploads': { target: apiProxyTarget, changeOrigin: true, secure: apiProxyTarget.startsWith('https://') },
+        '/storage': { target: apiProxyTarget, changeOrigin: true, secure: apiProxyTarget.startsWith('https://') },
       },
     },
   }

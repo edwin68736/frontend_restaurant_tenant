@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getTenantApiBaseUrl } from '@/services/api'
+import { getApiBaseUrl } from '@/services/api'
 
 export interface BillingStatusEvent {
   event: string
@@ -28,7 +28,7 @@ export function useBillingEvents(
     const token = localStorage.getItem('token')
     if (!token) return
 
-    const url = `${getTenantApiBaseUrl()}/api/billing/events?access_token=${encodeURIComponent(token)}`
+    const url = `${getApiBaseUrl()}/api/billing/events?access_token=${encodeURIComponent(token)}`
     const es = new EventSource(url)
 
     const onMessage = (e: MessageEvent) => {
