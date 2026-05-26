@@ -29,7 +29,14 @@ import { SearchInput } from '@/components/SearchInput'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import type { PrintData } from '@/types/printData'
-import { downloadReceiptPdf, generateReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
+import { getConfiguredPrinter } from '@/services/printers.service'
+import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
+import {
+  downloadReceiptPdf,
+  generateReceiptPdf,
+  openReceiptPdfInNewTab,
+  type ReceiptPdfOptions,
+} from '@/utils/receiptPdf'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
@@ -260,7 +267,12 @@ export default function VentasPage() {
     return d.print_data as PrintData
   }
 
-  /** Misma información que la impresión (print_data). `format`: vista previa A4 o ticket (80 mm). */
+  const localTicketPdfOptions = (): ReceiptPdfOptions => {
+    const cfg = getConfiguredPrinter('documentos')
+    return { paperWidthMm: cfg?.paperWidthMm === 58 ? 58 : 80 }
+  }
+
+  /** Misma información que la impresión (print_data). Ticket usa ancho 58/80 mm de configuración. */
   const openLocalPdfViewer = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
     if (pdfViewerUrlRef.current) {
       URL.revokeObjectURL(pdfViewerUrlRef.current)
@@ -277,7 +289,7 @@ export default function VentasPage() {
       const pd = await requirePrintData(saleId)
       localPdfPreviewDataRef.current = pd
       setLocalPdfFormatBarVisible(true)
-      const doc = await generateReceiptPdf(pd, format)
+      const doc = await generateReceiptPdf(pd, format, format === 'ticket' ? localTicketPdfOptions() : undefined)
       const blob = doc.output('blob')
       const url = URL.createObjectURL(blob)
       pdfViewerUrlRef.current = url
@@ -303,7 +315,7 @@ export default function VentasPage() {
     setPdfViewerUrl(null)
     setLocalPdfViewerFormat(format)
     try {
-      const doc = await generateReceiptPdf(pd, format)
+      const doc = await generateReceiptPdf(pd, format, format === 'ticket' ? localTicketPdfOptions() : undefined)
       const blob = doc.output('blob')
       const url = URL.createObjectURL(blob)
       pdfViewerUrlRef.current = url
@@ -317,7 +329,7 @@ export default function VentasPage() {
     setLocalPdfDownloadBusy({ saleId, format })
     try {
       const pd = await requirePrintData(saleId)
-      await downloadReceiptPdf(pd, format)
+      await downloadReceiptPdf(pd, format, format === 'ticket' ? localTicketPdfOptions() : undefined)
       toast.success('PDF descargado')
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo descargar el PDF')
@@ -330,7 +342,7 @@ export default function VentasPage() {
     setLocalTicketTabBusyId(saleId)
     try {
       const pd = await requirePrintData(saleId)
-      await openReceiptPdfInNewTab(pd, 'ticket')
+      await openReceiptPdfInNewTab(pd, 'ticket', localTicketPdfOptions())
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo abrir el PDF ticket')
     } finally {
@@ -1091,21 +1103,11 @@ export default function VentasPage() {
               </div>
             )}
             {pdfViewerUrl ? (
-              <div
-                className={`bg-stone-100 ${
-                  pdfViewerSource === 'local' && localPdfViewerFormat === 'ticket'
-                    ? 'flex justify-center overflow-x-auto'
-                    : ''
-                }`}
-              >
+              <div className="bg-stone-100 p-1">
                 <iframe
-                  src={pdfViewerUrl}
+                  src={pdfEmbedSrc(pdfViewerUrl)}
                   title="Comprobante PDF"
-                  className={
-                    pdfViewerSource === 'local' && localPdfViewerFormat === 'ticket'
-                      ? 'w-[80mm] max-w-full h-[75vh] min-h-[320px] border-0 shadow-sm bg-white'
-                      : 'w-full h-[75vh] min-h-[320px] border-0'
-                  }
+                  className="h-[75vh] min-h-[320px] w-full border-0 bg-white"
                 />
               </div>
             ) : (

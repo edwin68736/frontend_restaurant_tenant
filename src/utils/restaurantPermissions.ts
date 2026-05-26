@@ -38,6 +38,19 @@ export function hasPermission(permissions: string[] | null | undefined, perm: st
   return !!permissions?.includes(perm)
 }
 
+/** Permiso corto backend: cobrar / generar venta (restaurantperm.OrdersCharge). */
+export const PERM_ORDERS_CHARGE = 'o.ch'
+
+/** Descuento en cobro: mismo criterio que generar venta (no usa roles del panel tenant). */
+export function canApplyCheckoutDiscount(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  const et = String(employeeType ?? '').toLowerCase()
+  if (et === 'admin' || et === 'supervisor') return true
+  return hasPermission(permissions, PERM_ORDERS_CHARGE)
+}
+
 export function defaultRouteForPermissions(permissions: string[] | null | undefined): string {
   const order: { feature: RestaurantFeature; route: string }[] = [
     { feature: 'pos', route: '/pos' },

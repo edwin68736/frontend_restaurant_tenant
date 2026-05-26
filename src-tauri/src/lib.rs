@@ -1,3 +1,5 @@
+mod tenant_binding;
+
 mod commands {
   #[cfg(windows)]
   fn to_wide_null(s: &str) -> Vec<u16> {
@@ -156,7 +158,7 @@ mod commands {
 
   #[cfg(windows)]
   fn build_test_ticket(kind: &str, paper_width_mm: u16) -> Vec<u8> {
-    let columns = if paper_width_mm <= 58 { 32 } else { 42 };
+    let columns = if paper_width_mm <= 58 { 32 } else { 48 };
     let mut out: Vec<u8> = Vec::new();
 
     out.extend_from_slice(&[0x1B, 0x40]);
@@ -309,7 +311,7 @@ mod commands {
 
   #[cfg(not(windows))]
   fn build_test_ticket_generic(kind: &str, paper_width_mm: u16) -> Vec<u8> {
-    let columns = if paper_width_mm <= 58 { 32 } else { 42 };
+    let columns = if paper_width_mm <= 58 { 32 } else { 48 };
     let mut out: Vec<u8> = Vec::new();
     out.extend_from_slice(&[0x1B, 0x40]);
     out.extend_from_slice(b"Tukichef\n");
@@ -412,7 +414,10 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       commands::list_printers,
       commands::printers_test_print,
-      commands::printers_print_raw
+      commands::printers_print_raw,
+      tenant_binding::tenant_binding_read,
+      tenant_binding::tenant_binding_write,
+      tenant_binding::tenant_binding_clear,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

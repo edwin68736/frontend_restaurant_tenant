@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { bootstrapCapacitor, teardownCapacitor } from '@/lib/platform/capacitorBootstrap'
+import { clearLegacyLocalStorageBinding } from '@/lib/tenantBinding/persist'
 import { isCapacitorNative, isTauriDesktop } from '@/lib/platform/detect'
 
 type Props = { children: ReactNode }
@@ -17,8 +18,10 @@ export function NativeShellProvider({ children }: Props) {
     const html = document.documentElement
     html.classList.remove('platform-web', 'platform-tauri', 'platform-capacitor')
     if (isCapacitorNative()) {
+      clearLegacyLocalStorageBinding()
       void bootstrapCapacitor().finally(() => setReady(true))
     } else if (isTauriDesktop()) {
+      clearLegacyLocalStorageBinding()
       html.classList.add('platform-tauri')
       setReady(true)
     } else {

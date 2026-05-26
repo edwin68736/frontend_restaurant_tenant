@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { isWindowsDesktop } from '@/services/printers.service'
+import { isNativePrintAvailable } from '@/services/printers.service'
 import { PrintersSettingsTab } from '@/components/settings/PrintersSettingsTab'
 import { RestaurantSettingsTab } from '@/components/settings/RestaurantSettingsTab'
 
@@ -10,7 +10,7 @@ type SettingsTab = 'restaurante' | 'impresoras'
 export default function AjustesPage() {
   const { hasPerm } = useAuth()
   const canManageRestaurant = hasPerm('s.m')
-  const canPrinters = isWindowsDesktop()
+  const canPrinters = isNativePrintAvailable()
 
   const defaultTab = useMemo((): SettingsTab => {
     if (canManageRestaurant) return 'restaurante'

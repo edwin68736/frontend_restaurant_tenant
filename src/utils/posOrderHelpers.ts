@@ -1,7 +1,9 @@
 import type { Product } from '@/services/products.service'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
+import { cartToOrderItems as cartLinesToOrderItems, type PosCartLine } from '@/utils/posCart'
 
-export type PosCartItem = { product: Product; quantity: number }
+/** @deprecated Use PosCartLine from @/utils/posCart */
+export type PosCartItem = PosCartLine
 
 export type KitchenRound = {
   orderId: number
@@ -97,9 +99,9 @@ export function sessionComandaPrintLabels(
  * @deprecated No usar en POS: el carrito es solo para ítems nuevos. Ver getSentKitchenOrders.
  * Reconstruye carrito desde comandas activas (útil solo si se requiere edición explícita).
  */
-export function sessionDetailToCart(detail: SessionDetail, catalog: Product[]): PosCartItem[] {
+export function sessionDetailToCart(detail: SessionDetail, catalog: Product[]): PosCartLine[] {
   const byId = new Map(catalog.map((p) => [p.id, p]))
-  const acc = new Map<number, PosCartItem>()
+  const acc = new Map<number, PosCartLine>()
 
   for (const ord of detail.orders ?? []) {
     for (const c of ord.comandas ?? []) {
@@ -123,7 +125,7 @@ export function sessionDetailToCart(detail: SessionDetail, catalog: Product[]): 
       if (existing) {
         existing.quantity += c.quantity
       } else {
-        acc.set(pid, { product, quantity: c.quantity })
+        acc.set(pid, { kind: 'catalog', product, quantity: c.quantity, notes: c.notes ?? '' })
       }
     }
   }
@@ -139,13 +141,6 @@ export function sumSessionComandaQty(detail: SessionDetail | null): number {
   }, 0)
 }
 
-export function cartToOrderItems(cart: PosCartItem[]) {
-  return cart.map((x) => ({
-    product_id: x.product.id,
-    product_code: x.product.code || '',
-    product_name: x.product.name,
-    quantity: x.quantity,
-    unit_price: x.product.sale_price,
-    notes: '',
-  }))
+export function cartToOrderItems(cart: PosCartLine[]) {
+  return cartLinesToOrderItems(cart)
 }

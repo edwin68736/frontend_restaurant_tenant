@@ -1,135 +1,95 @@
 import type { PrintData } from '@/types/printData'
+import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { isTauriDesktop } from '@/lib/platform/detect'
+import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { buildEscPosLogoRaster } from '@/utils/escposRasterImage'
+import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
+import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
+import {
+  getConfiguredComandaDefaultPrinter,
+  getConfiguredComandaPrinter,
+  isComandaAutoPrintEnabled,
+} from '@/services/printers/comandas'
+import { resolvePrinterConfig } from '@/services/printers/resolve'
+import {
+  clampPort,
+  DEFAULT_TCP_PORT,
+  loadStoredPrinterSettings,
+  normalizeSlot,
+} from '@/services/printers/storage'
+import { sendEscPosPayload, isNativePrintAvailable } from '@/services/printers/transport'
+import type {
+  PrinterConfig,
+  PrinterConnectionMode,
+  PrinterKind,
+  PrinterPaperWidth,
+} from '@/services/printers/types'
 
-export type PrinterPaperWidth = 58 | 80
-export type PrinterKind = 'comandas' | 'precuenta' | 'documentos'
+export type {
+  BluetoothDeviceInfo,
+  PrinterConfig,
+  PrinterConnectionMode,
+  PrinterKind,
+  PrinterPaperWidth,
+  PrinterPlatformCapabilities,
+  StoredPrinterSettings,
+} from '@/services/printers/types'
+export {
+  availableConnectionModes,
+  connectionModeLabel,
+  defaultConnectionForPlatform,
+  getPrinterPlatformCapabilities,
+} from '@/services/printers/platform'
+export {
+  clampPort,
+  DEFAULT_TCP_PORT,
+  emptyPrinterSettings,
+  loadStoredPrinterSettings,
+  normalizeSlot,
+  PRINTER_SETTINGS_STORAGE_KEY_V3,
+  saveStoredPrinterSettings,
+} from '@/services/printers/storage'
+export {
+  connectBluetoothPrinter,
+  disconnectBluetoothPrinter,
+  getBluetoothConnectionStatus,
+  listPairedBluetoothPrinters,
+  scanBluetoothPrinters,
+} from '@/services/printers/bluetooth'
+export {
+  getConfiguredComandaDefaultPrinter,
+  getConfiguredComandaPrinter,
+  isComandaAutoPrintEnabled,
+} from '@/services/printers/comandas'
+export { isPrinterConfigReady, resolvePrinterConfig } from '@/services/printers/resolve'
+export { isNativePrintAvailable, sendEscPosPayload } from '@/services/printers/transport'
 
-/** Impresora instalada en Windows (RAW) o impresora térmica en red (TCP, típ. puerto 9100). */
-export type PrinterConnectionMode = 'windows' | 'network'
-
-export type PrinterConfig = {
-  connection: PrinterConnectionMode
-  printerName: string
-  tcpHost: string
-  tcpPort: number
-  paperWidthMm: PrinterPaperWidth
-  autoPrint: boolean
-}
-
-export type StoredPrinterSettings = {
-  comandas: PrinterConfig
-  precuenta: PrinterConfig
-  documentos: PrinterConfig
-}
-
-export const PRINTER_SETTINGS_STORAGE_KEY = 'tukichef_kitchen_printer_settings_v2'
-const PRINTER_SETTINGS_STORAGE_KEY_V1 = 'tukichef_kitchen_printer_settings_v1'
-const LEGACY_PRINTER_KEY_V2 = 'bendey_kitchen_printer_settings_v2'
-const LEGACY_PRINTER_KEY_V1 = 'bendey_kitchen_printer_settings_v1'
-
-const DEFAULT_TCP_PORT = 9100
-
-function clampPort(n: unknown): number {
-  const p = Math.floor(Number(n))
-  if (!Number.isFinite(p) || p < 1) return DEFAULT_TCP_PORT
-  if (p > 65535) return 65535
-  return p
-}
-
-function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterConfig {
-  const conn = raw?.connection === 'network' ? 'network' : 'windows'
-  return {
-    connection: conn,
-    printerName: String(raw?.printerName ?? '').trim(),
-    tcpHost: String(raw?.tcpHost ?? '').trim(),
-    tcpPort: clampPort(raw?.tcpPort ?? DEFAULT_TCP_PORT),
-    paperWidthMm: raw?.paperWidthMm === 58 ? 58 : 80,
-    autoPrint: raw?.autoPrint !== false,
-  }
-}
-
-export function emptyPrinterSettings(): StoredPrinterSettings {
-  const slot = (): PrinterConfig => ({
-    connection: 'windows',
-    printerName: '',
-    tcpHost: '',
-    tcpPort: DEFAULT_TCP_PORT,
-    paperWidthMm: 80,
-    autoPrint: true,
-  })
-  return {
-    comandas: slot(),
-    precuenta: slot(),
-    documentos: slot(),
-  }
-}
-
-export function loadStoredPrinterSettings(): StoredPrinterSettings {
-  if (typeof window === 'undefined') return emptyPrinterSettings()
-  try {
-    let raw =
-      localStorage.getItem(PRINTER_SETTINGS_STORAGE_KEY) ??
-      localStorage.getItem(PRINTER_SETTINGS_STORAGE_KEY_V1) ??
-      localStorage.getItem(LEGACY_PRINTER_KEY_V2) ??
-      localStorage.getItem(LEGACY_PRINTER_KEY_V1)
-    if (!raw) return emptyPrinterSettings()
-    const parsed = JSON.parse(raw) as Partial<StoredPrinterSettings>
-    return {
-      comandas: normalizeSlot(parsed.comandas),
-      precuenta: normalizeSlot(parsed.precuenta),
-      documentos: normalizeSlot(parsed.documentos),
-    }
-  } catch {
-    return emptyPrinterSettings()
-  }
-}
-
-export function saveStoredPrinterSettings(v: StoredPrinterSettings) {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(PRINTER_SETTINGS_STORAGE_KEY, JSON.stringify(v))
-  } catch {
-  }
-}
+/** @deprecated Usar PRINTER_SETTINGS_STORAGE_KEY_V3 */
+export const PRINTER_SETTINGS_STORAGE_KEY = 'tukichef_kitchen_printer_settings_v3'
 
 /** Configuración lista para imprimir (null = falta completar datos según el modo). */
 export function getConfiguredPrinter(kind: PrinterKind): PrinterConfig | null {
-  const cfg = loadStoredPrinterSettings()[kind]
-  if (cfg.connection === 'network') {
-    if (!cfg.tcpHost?.trim()) return null
-    return {
-      connection: 'network',
-      printerName: '',
-      tcpHost: cfg.tcpHost.trim(),
-      tcpPort: clampPort(cfg.tcpPort),
-      paperWidthMm: cfg.paperWidthMm === 58 ? 58 : 80,
-      autoPrint: Boolean(cfg.autoPrint),
-    }
+  if (kind === 'comandas') {
+    return getConfiguredComandaDefaultPrinter()
   }
-  if (!cfg.printerName?.trim()) return null
-  return {
-    connection: 'windows',
-    printerName: cfg.printerName.trim(),
-    tcpHost: '',
-    tcpPort: DEFAULT_TCP_PORT,
-    paperWidthMm: cfg.paperWidthMm === 58 ? 58 : 80,
-    autoPrint: Boolean(cfg.autoPrint),
-  }
+  const settings = loadStoredPrinterSettings()
+  const cfg = normalizeSlot(kind === 'precuenta' ? settings.precuenta : settings.documentos)
+  return resolvePrinterConfig(cfg)
 }
 
 export function isAutoPrintEnabled(kind: PrinterKind): boolean {
-  const cfg = loadStoredPrinterSettings()[kind]
+  if (kind === 'comandas') return isComandaAutoPrintEnabled()
+  const settings = loadStoredPrinterSettings()
+  const cfg = kind === 'precuenta' ? settings.precuenta : settings.documentos
   return Boolean(cfg.autoPrint)
 }
 
 export function isTauri(): boolean {
-  if (typeof window === 'undefined') return false
-  const w = window as unknown as { __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown }
-  return Boolean(w.__TAURI__ || w.__TAURI_INTERNALS__)
+  return isTauriDesktop()
 }
 
 export function isWindowsDesktop(): boolean {
-  if (!isTauri()) return false
-  return true
+  return isTauriDesktop()
 }
 
 export async function listInstalledPrinters(): Promise<string[]> {
@@ -139,6 +99,19 @@ export async function listInstalledPrinters(): Promise<string[]> {
   return Array.isArray(printers) ? printers : []
 }
 
+function buildTestEscPosTicket(kind: PrinterKind, paperWidthMm: PrinterPaperWidth): Uint8Array {
+  const cols = escposColumnsForPaper(paperWidthMm)
+  const title =
+    kind === 'comandas' ? 'PRUEBA COMANDA' : kind === 'precuenta' ? 'PRUEBA PRECUENTA' : 'PRUEBA DOCUMENTO'
+  const lines = ['Tukichef', '='.repeat(Math.min(cols, 48)), title, '='.repeat(Math.min(cols, 48)), '', '']
+  const out: number[] = [0x1b, 0x40, 0x1b, 0x61, 1]
+  for (const line of lines) {
+    out.push(...Array.from(new TextEncoder().encode(`${line}\n`)))
+  }
+  out.push(0x1d, 0x56, 0x41, 0x10)
+  return new Uint8Array(out)
+}
+
 export async function testPrint(input: {
   kind: PrinterKind
   connection: PrinterConnectionMode
@@ -146,28 +119,40 @@ export async function testPrint(input: {
   tcpHost?: string
   tcpPort?: number
   paperWidthMm: PrinterPaperWidth
+  bluetoothMac?: string
+  bluetoothName?: string
 }): Promise<string> {
-  if (!isTauri()) return 'No disponible en navegador'
-  const { invoke } = await import('@tauri-apps/api/core')
-  const out = await invoke<string>('printers_test_print', {
-    input: {
-      mode: input.connection,
-      printer_name: input.printerName ?? '',
-      tcp_host: input.tcpHost ?? '',
-      tcp_port: clampPort(input.tcpPort ?? DEFAULT_TCP_PORT),
-      paper_width_mm: input.paperWidthMm,
-      kind: input.kind,
-    },
-  })
-  return typeof out === 'string' ? out : 'OK'
-}
+  if (!isNativePrintAvailable()) return 'No disponible en navegador'
 
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]!)
+  const cfg: PrinterConfig = normalizeSlot({
+    connection: input.connection,
+    printerName: input.printerName ?? '',
+    tcpHost: input.tcpHost ?? '',
+    tcpPort: input.tcpPort,
+    paperWidthMm: input.paperWidthMm,
+    autoPrint: true,
+    bluetoothMac: input.bluetoothMac ?? '',
+    bluetoothName: input.bluetoothName ?? '',
+  })
+
+  if (isTauriDesktop() && (input.connection === 'windows' || input.connection === 'network')) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const mode = input.connection === 'network' ? 'network' : 'windows'
+    const out = await invoke<string>('printers_test_print', {
+      input: {
+        mode,
+        printer_name: input.printerName ?? '',
+        tcp_host: input.tcpHost ?? '',
+        tcp_port: clampPort(input.tcpPort ?? DEFAULT_TCP_PORT),
+        paper_width_mm: input.paperWidthMm,
+        kind: input.kind,
+      },
+    })
+    return typeof out === 'string' ? out : 'OK'
   }
-  return btoa(binary)
+
+  const data = buildTestEscPosTicket(input.kind, input.paperWidthMm)
+  return sendEscPosPayload(cfg, data, 'Tukichef - Prueba')
 }
 
 export async function printRawEscPos(input: {
@@ -175,50 +160,36 @@ export async function printRawEscPos(input: {
   printerName?: string
   tcpHost?: string
   tcpPort?: number
+  bluetoothMac?: string
+  bluetoothName?: string
+  paperWidthMm?: PrinterPaperWidth
   data: Uint8Array
   docName?: string
 }): Promise<string> {
-  if (!isTauri()) return 'No disponible en navegador'
-  const { invoke } = await import('@tauri-apps/api/core')
-  const dataBase64 = uint8ToBase64(input.data)
-  const port = clampPort(input.tcpPort ?? DEFAULT_TCP_PORT)
-  console.log('[printRawEscPos] invoke printers_print_raw', {
+  if (!isNativePrintAvailable()) return 'No disponible en navegador'
+  const cfg = normalizeSlot({
     connection: input.connection,
-    printerName: input.printerName,
-    tcpHost: input.tcpHost,
-    tcpPort: port,
-    bytes: input.data.length,
-    docName: input.docName ?? null,
+    printerName: input.printerName ?? '',
+    tcpHost: input.tcpHost ?? '',
+    tcpPort: input.tcpPort ?? DEFAULT_TCP_PORT,
+    paperWidthMm: input.paperWidthMm ?? 80,
+    autoPrint: true,
+    bluetoothMac: input.bluetoothMac ?? '',
+    bluetoothName: input.bluetoothName ?? '',
   })
-  try {
-    const out = await invoke<string>('printers_print_raw', {
-      input: {
-        mode: input.connection,
-        printer_name: input.printerName ?? '',
-        tcp_host: input.tcpHost ?? '',
-        tcp_port: port,
-        data_base64: dataBase64,
-        doc_name: input.docName ?? null,
-      },
-    })
-    console.log('[printRawEscPos] result', out)
-    return typeof out === 'string' ? out : 'OK'
-  } catch (e) {
-    console.error('[printRawEscPos] error', e)
-    throw e
-  }
+  return sendEscPosPayload(cfg, input.data, input.docName)
 }
 
 function columnsForWidth(width: PrinterPaperWidth): number {
-  return width === 58 ? 32 : 42
+  return escposColumnsForPaper(width)
 }
 
 function textBytes(s: string): Uint8Array {
-  return new TextEncoder().encode(s)
+  return new TextEncoder().encode(normalizeTextForTicketPrint(s))
 }
 
 function wrapText(s: string, width: number): string[] {
-  const clean = String(s ?? '').replace(/\s+/g, ' ').trim()
+  const clean = normalizeTextForTicketPrint(String(s ?? '')).replace(/\s+/g, ' ').trim()
   if (!clean) return ['']
   const words = clean.split(' ')
   const out: string[] = []
@@ -384,137 +355,221 @@ export function buildPrecuentaEscPos(input: {
   return new Uint8Array(out)
 }
 
-export function buildSaleDocumentEscPos(printData: PrintData, paperWidthMm: PrinterPaperWidth): Uint8Array {
-  const cols = columnsForWidth(paperWidthMm)
-  const lines: string[] = []
-  const docType = String(printData.doc_type ?? '').toLowerCase()
-  const title =
-    docType === 'boleta' ? 'BOLETA DE VENTA' : docType === 'factura' ? 'FACTURA' : 'NOTA DE VENTA'
+function moneyEsc(currency: string, n: number): string {
+  const sym = currency === 'USD' ? '$' : 'S/'
+  return `${sym}${Number(n ?? 0).toFixed(2)}`
+}
 
-  const currency = String(printData.currency ?? 'PEN').toUpperCase()
-  const moneySymbol = currency === 'USD' ? '$' : 'S/'
-  const money = (n: number) => `${moneySymbol} ${Number(n ?? 0).toFixed(2)}`
+/** Línea compacta etiqueta + monto (sin relleno); alinear a la derecha en impresora. */
+function amountLine(label: string, amount: string, cols: number): string {
+  const line = `${label.trim()} ${amount}`.trim()
+  return line.length > cols ? line.slice(line.length - cols) : line
+}
 
-  const companyName = printData.company?.business_name || 'Empresa'
-  const companyLines = wrapText(companyName, cols)
-  const ruc = printData.company?.ruc || ''
-  const addr = printData.branch?.address || printData.company?.address || ''
-  const branchName = printData.branch?.name || ''
+function itemDetailColWidths(cols: number, narrow: boolean) {
+  const wCant = narrow ? 3 : 5
+  const wMoney = narrow ? 8 : 10
+  const wDesc = Math.max(6, cols - wCant - wMoney * 2 - 1)
+  return { wCant, wMoney, wDesc }
+}
 
-  for (const x of companyLines.slice(1)) lines.push(x)
-  if (ruc) lines.push(`RUC ${ruc}`)
-  if (addr) wrapText(addr, cols).forEach((x) => lines.push(x))
-  if (branchName) wrapText(branchName, cols).forEach((x) => lines.push(x))
+function itemDetailHeaderRow(cols: number, narrow: boolean): string {
+  const { wCant, wMoney, wDesc } = itemDetailColWidths(cols, narrow)
+  const descLabel = narrow ? 'Desc.' : 'Descripcion'
+  const header =
+    'Cant'.padEnd(wCant) +
+    descLabel.padEnd(wDesc) +
+    'P.U.'.padStart(wMoney) +
+    'Imp.'.padStart(wMoney)
+  return header.slice(0, cols)
+}
 
-  lines.push('-'.repeat(cols))
-  lines.push(title)
-  lines.push(`NRO: ${printData.number}`)
-  lines.push(`FECHA: ${printData.issue_date}`)
-  if (printData.sunat_code) lines.push(`COD SUNAT: ${printData.sunat_code}`)
-  lines.push('-'.repeat(cols))
-
-  if (printData.client) {
-    const cliente = printData.client.business_name || 'Cliente'
-    const doc = printData.client.doc_number || ''
-    const docTypeLabel = String(printData.client.doc_type ?? '').trim()
-    wrapText(`CLIENTE: ${cliente}`, cols).forEach((x) => lines.push(x))
-    if (doc) lines.push(`DOC (${docTypeLabel || '-' }): ${doc}`)
-    if (printData.client.address) wrapText(`DIR: ${printData.client.address}`, cols).forEach((x) => lines.push(x))
-    lines.push('-'.repeat(cols))
+function itemDetailRows(
+  cols: number,
+  cant: string,
+  desc: string,
+  pu: string,
+  imp: string,
+  narrow: boolean,
+): string[] {
+  const { wCant, wMoney, wDesc } = itemDetailColWidths(cols, narrow)
+  const rows: string[] = []
+  const descLines = wrapText(desc, wDesc)
+  for (let i = 0; i < descLines.length; i++) {
+    const c = i === 0 ? cant.padEnd(wCant) : ' '.repeat(wCant)
+    const d = (descLines[i] ?? '').padEnd(wDesc).slice(0, wDesc)
+    const p = i === 0 ? pu.padStart(wMoney) : ' '.repeat(wMoney)
+    const im = i === 0 ? imp.padStart(wMoney) : ' '.repeat(wMoney)
+    rows.push((c + d + p + im).slice(0, cols))
   }
+  return rows
+}
 
-  lines.push('DETALLE')
-  lines.push('-'.repeat(cols))
+function escposPushLines(out: number[], lines: string[], align: 'left' | 'center' | 'right') {
+  out.push(...escposAlign(align))
+  for (const l of lines) out.push(...Array.from(textBytes(`${l}\n`)))
+}
+
+export async function buildSaleDocumentEscPos(
+  printData: PrintData,
+  paperWidthMm: PrinterPaperWidth,
+): Promise<Uint8Array> {
+  const cols = columnsForWidth(paperWidthMm)
+  const narrow = paperWidthMm === 58
+  const currency = String(printData.currency ?? 'PEN').toUpperCase()
+  const money = (n: number) => moneyEsc(currency, n)
+  const showQr = isElectronicSunatCode(printData.sunat_code) && Boolean(printData.qr_data)
+
+  const companyLines: string[] = []
+  const companyName = printData.company?.business_name || 'Empresa'
+  wrapText(companyName, cols).forEach((x) => companyLines.push(x))
+  if (printData.company?.trade_name) wrapText(printData.company.trade_name, cols).forEach((x) => companyLines.push(x))
+  if (printData.company?.ruc) companyLines.push(`RUC: ${printData.company.ruc}`)
+  const addr = printData.company?.address || printData.branch?.address || ''
+  if (addr) wrapText(addr, cols).forEach((x) => companyLines.push(x))
+  if (printData.company?.phone) companyLines.push(`Telf: ${printData.company.phone}`)
+  if (printData.company?.email) companyLines.push(`Email: ${printData.company.email}`)
+  if (printData.company?.website) companyLines.push(`Web: ${printData.company.website}`)
+
+  const docHeaderLines: string[] = []
+  wrapText(getTipoComprobanteLabel(printData.sunat_code, printData.doc_type), cols).forEach((x) =>
+    docHeaderLines.push(x),
+  )
+  docHeaderLines.push(printData.number)
+
+  const detailLines: string[] = []
+  detailLines.push(`Fecha Emision: ${printData.issue_date}`)
+  if (printData.issue_time) detailLines.push(`Hora Emision: ${printData.issue_time}`)
+  if (printData.client) {
+    wrapText(`Cliente: ${printData.client.business_name}`, cols).forEach((x) => detailLines.push(x))
+    detailLines.push(`Doc: ${printData.client.doc_number}`)
+    if (printData.client.address) wrapText(`Dir: ${printData.client.address}`, cols).forEach((x) => detailLines.push(x))
+  }
+  detailLines.push('-'.repeat(cols))
+  detailLines.push(itemDetailHeaderRow(cols, narrow))
+  detailLines.push('-'.repeat(cols))
 
   for (const it of printData.items ?? []) {
     const qty = String(it.quantity ?? 0).replace(/\.0+$/, '')
-    const pu = money(it.unit_price ?? 0)
-    const lineTotal = money(it.total ?? 0)
-    wrapText(String(it.description ?? '').trim(), cols).forEach((x) => lines.push(x))
-    lines.push(`${qty} x ${pu}`.padEnd(cols - lineTotal.length - 1) + ` ${lineTotal}`)
-    if (it.discount && Number(it.discount) > 0) {
-      const disc = money(it.discount)
-      lines.push(`DSCTO`.padEnd(cols - disc.length - 1) + ` ${disc}`)
-    }
+    itemDetailRows(
+      cols,
+      qty,
+      String(it.description ?? '').trim(),
+      money(it.unit_price ?? 0),
+      money(it.total ?? 0),
+      narrow,
+    ).forEach((r) => detailLines.push(r))
   }
 
-  lines.push('-'.repeat(cols))
-
+  const totalLines: string[] = []
   const totals = printData.totals_by_affectation ?? {}
-  const gravado = totals['10']?.subtotal ?? 0
-  const exonerado = totals['20']?.subtotal ?? 0
-  const inafecto = totals['30']?.subtotal ?? 0
-  const exportacion = totals['40']?.subtotal ?? 0
+  if (totals['10']?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(totals['10'].subtotal), cols))
+  if (totals['20']?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(totals['20'].subtotal), cols))
+  if (totals['30']?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(totals['30'].subtotal), cols))
+  if (totals['40']?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(totals['40'].subtotal), cols))
+  if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
+  totalLines.push(amountLine('TOTAL A PAGAR:', money(printData.total), cols))
 
-  if (gravado > 0) lines.push(`OP GRAVADA`.padEnd(cols - money(gravado).length - 1) + ` ${money(gravado)}`)
-  if (exonerado > 0) lines.push(`OP EXONERADA`.padEnd(cols - money(exonerado).length - 1) + ` ${money(exonerado)}`)
-  if (inafecto > 0) lines.push(`OP INAFECTA`.padEnd(cols - money(inafecto).length - 1) + ` ${money(inafecto)}`)
-  if (exportacion > 0) lines.push(`OP EXPORTACION`.padEnd(cols - money(exportacion).length - 1) + ` ${money(exportacion)}`)
+  const legendLines: string[] = []
+  if (printData.legend_text) {
+    wrapText(`Son: ${printData.legend_text}`, cols).forEach((x) => legendLines.push(x))
+  }
 
-  lines.push(`IGV`.padEnd(cols - money(printData.tax_amount ?? 0).length - 1) + ` ${money(printData.tax_amount ?? 0)}`)
-  lines.push(`TOTAL`.padEnd(cols - money(printData.total ?? 0).length - 1) + ` ${money(printData.total ?? 0)}`)
+  const tailLines: string[] = []
 
-  if (Array.isArray(printData.payments) && printData.payments.length > 0) {
-    lines.push('-'.repeat(cols))
-    lines.push('PAGOS')
-    for (const p of printData.payments) {
-      const amount = money(p.amount ?? 0)
-      const label = String(p.method ?? '').toUpperCase() || 'PAGO'
-      lines.push(label.padEnd(cols - amount.length - 1) + ` ${amount}`)
+  const banks = printData.bank_accounts ?? []
+  if (banks.length > 0) {
+    tailLines.push('-'.repeat(cols))
+    tailLines.push('INFORMACION BANCARIA')
+    for (const b of banks) {
+      if (b.bank_name) wrapText(b.bank_name, cols).forEach((x) => tailLines.push(x))
+      if (b.account_number) tailLines.push(`Cta: ${b.account_number}`)
     }
   }
 
-  if (printData.legend_text) {
-    lines.push('-'.repeat(cols))
-    wrapText(printData.legend_text, cols).forEach((x) => lines.push(x))
+  if (printData.payment_condition) {
+    tailLines.push('-'.repeat(cols))
+    tailLines.push(`Condicion de pago: ${printData.payment_condition}`)
+  }
+  if (printData.payments?.length) {
+    tailLines.push('Pagos detallados:')
+    for (const p of printData.payments) {
+      const lbl = salePaymentMethodLabelEs(p.method)
+      const ref = p.reference?.trim() ? ` Ref:${p.reference}` : ''
+      tailLines.push(`${lbl}: ${money(p.amount ?? 0)}${ref}`)
+    }
   }
 
-  if (printData.sunat_hash) {
-    lines.push('-'.repeat(cols))
-    wrapText(`HASH: ${printData.sunat_hash}`, cols).forEach((x) => lines.push(x))
+  if (printData.seller_name) {
+    tailLines.push(`Vendedor: ${printData.seller_name}`)
   }
 
-  lines.push('')
-  const shouldQr = docType === 'boleta' || docType === 'factura'
+  const footerLines: string[] = ['Tukichef - Sistema POS']
+
   const out: number[] = []
   out.push(...escposInit())
-  out.push(...escposAlign('center'))
-  out.push(...escposBold(true))
-  out.push(...Array.from(textBytes(`${companyLines[0] ?? companyName}\n`)))
-  out.push(...escposBold(false))
-  for (const l of lines) out.push(...Array.from(textBytes(`${l}\n`)))
-  if (shouldQr && printData.qr_data) {
-    out.push(...escposAlign('center'))
-    out.push(...Array.from(textBytes(`\n`)))
-    out.push(...escposQr(printData.qr_data, {
-      moduleSize: paperWidthMm === 58 ? 6 : 8,
-      ecc: 'M',
-    }))
-    out.push(...Array.from(textBytes(`\n`)))
+
+  const logoUrl = printData.company?.logo_url?.trim()
+  if (logoUrl) {
+    const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)
+    if (logoRaster?.length) {
+      out.push(...escposAlign('center'))
+      out.push(...Array.from(logoRaster))
+      // Sin LF extra: la raster ya avanza el papel; un \n añadía hueco al inicio del texto.
+    }
   }
-  out.push(...escposAlign('left'))
-  out.push(...Array.from(textBytes(`\n\n`)))
+
+  escposPushLines(out, companyLines, 'center')
+  escposPushLines(out, ['-'.repeat(cols)], 'center')
+  escposPushLines(out, docHeaderLines, 'center')
+  escposPushLines(out, ['-'.repeat(cols)], 'left')
+  escposPushLines(out, detailLines, 'left')
+  escposPushLines(out, ['-'.repeat(cols)], 'left')
+  escposPushLines(out, totalLines, 'right')
+  if (legendLines.length) {
+    out.push(...Array.from(textBytes('\n')))
+    escposPushLines(out, legendLines, 'left')
+  }
+  if (tailLines.length) escposPushLines(out, tailLines, 'left')
+
+  if (showQr && printData.qr_data) {
+    out.push(...escposAlign('center'))
+    out.push(...Array.from(textBytes('\n')))
+    out.push(
+      ...escposQr(printData.qr_data, {
+        moduleSize: paperWidthMm === 58 ? 6 : 8,
+        ecc: 'M',
+      }),
+    )
+    out.push(...Array.from(textBytes('\n')))
+    if (printData.sunat_hash) {
+      escposPushLines(out, wrapText(`Hash: ${printData.sunat_hash}`, cols), 'center')
+    }
+    escposPushLines(out, wrapText('Representacion impresa CPE', cols), 'center')
+    escposPushLines(out, wrapText('Consulte en sunat.gob.pe', cols), 'center')
+  }
+
+  out.push(...escposAlign('center'))
+  out.push(...Array.from(textBytes('\n\n\n')))
+  escposPushLines(out, footerLines, 'center')
+  out.push(...Array.from(textBytes('\n\n')))
   out.push(...escposCutPartial())
   return new Uint8Array(out)
 }
 
-export async function printComandaAuto(input: {
-  tableName?: string | null
-  orderNumber?: number | null
-  waiterName?: string | null
-  items: { productName: string; quantity: number; notes?: string | null }[]
-}): Promise<string> {
-  const cfg = getConfiguredPrinter('comandas')
+export async function printComandaAuto(
+  input: {
+    tableName?: string | null
+    orderNumber?: number | null
+    waiterName?: string | null
+    items: { productName: string; quantity: number; notes?: string | null }[]
+  },
+  opts?: { preparationArea?: string | null; printerConfig?: PrinterConfig },
+): Promise<string> {
+  const cfg = opts?.printerConfig ?? getConfiguredComandaPrinter(opts?.preparationArea)
   if (!cfg) return 'Impresora de comandas no configurada'
   const data = buildComandaEscPos({ ...input, paperWidthMm: cfg.paperWidthMm })
-  return printRawEscPos({
-    connection: cfg.connection,
-    printerName: cfg.printerName,
-    tcpHost: cfg.tcpHost,
-    tcpPort: cfg.tcpPort,
-    data,
-    docName: 'Tukichef - Comanda',
-  })
+  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Comanda' })
 }
 
 export async function printPrecuentaAuto(input: {
@@ -525,26 +580,12 @@ export async function printPrecuentaAuto(input: {
   const cfg = getConfiguredPrinter('precuenta')
   if (!cfg) return 'Impresora de precuenta no configurada'
   const data = buildPrecuentaEscPos({ ...input, paperWidthMm: cfg.paperWidthMm })
-  return printRawEscPos({
-    connection: cfg.connection,
-    printerName: cfg.printerName,
-    tcpHost: cfg.tcpHost,
-    tcpPort: cfg.tcpPort,
-    data,
-    docName: 'Tukichef - Precuenta',
-  })
+  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Precuenta' })
 }
 
 export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
-  const data = buildSaleDocumentEscPos(printData, cfg.paperWidthMm)
-  return printRawEscPos({
-    connection: cfg.connection,
-    printerName: cfg.printerName,
-    tcpHost: cfg.tcpHost,
-    tcpPort: cfg.tcpPort,
-    data,
-    docName: 'Tukichef - Documento',
-  })
+  const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm)
+  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Documento' })
 }

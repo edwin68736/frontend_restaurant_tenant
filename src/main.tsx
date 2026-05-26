@@ -6,6 +6,7 @@ import { BranchProvider } from '@/contexts/BranchContext'
 import { CashSessionProvider } from '@/contexts/CashSessionContext'
 import { FeatureProvider } from '@/contexts/FeatureContext'
 import { NativeShellProvider } from '@/providers/NativeShellProvider'
+import { TenantBindingProvider } from '@/contexts/TenantBindingContext'
 import './index.css'
 import App from './App'
 
@@ -13,6 +14,7 @@ import App from './App'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <NativeShellProvider>
+      <TenantBindingProvider>
       <HashRouter>
         <AuthProvider>
           <FeatureProvider>
@@ -24,6 +26,7 @@ createRoot(document.getElementById('root')!).render(
           </FeatureProvider>
         </AuthProvider>
       </HashRouter>
+      </TenantBindingProvider>
     </NativeShellProvider>
   </StrictMode>,
 )

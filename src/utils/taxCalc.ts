@@ -4,6 +4,8 @@
  * Soporta exención global (zona selva, régimen exonerated).
  */
 
+import { roundSunat } from '@/utils/money'
+
 export interface TaxConfig {
   taxRate: number
   igvRegime?: string
@@ -56,9 +58,8 @@ export function getAfectacionGroup(igvAffectationType: string): SunatAfectacionG
 }
 
 /**
- * Calcula subtotal, IGV y total por ítem.
+ * Calcula subtotal, IGV y total por ítem (6 decimales, igual que backend).
  * price = precio unitario ingresado; si priceIncludesIgv es true, se descompone.
- * taxConfig opcional: si tenant tiene exención global (zona selva), rate = 0.
  */
 export function calcItem(
   unitPrice: number,
@@ -73,16 +74,28 @@ export function calcItem(
   const gross = quantity * unitPrice - discount
 
   if (rate === 0) {
-    return { subtotal: gross, taxAmount: 0, total: gross }
+    return {
+      subtotal: roundSunat(gross),
+      taxAmount: 0,
+      total: roundSunat(gross),
+    }
   }
 
   if (priceIncludesIgv) {
     const subtotal = gross / (1 + rate / 100)
     const taxAmount = subtotal * (rate / 100)
-    return { subtotal, taxAmount, total: subtotal + taxAmount }
+    return {
+      subtotal: roundSunat(subtotal),
+      taxAmount: roundSunat(taxAmount),
+      total: roundSunat(subtotal + taxAmount),
+    }
   }
 
   const subtotal = gross
   const taxAmount = gross * (rate / 100)
-  return { subtotal, taxAmount, total: subtotal + taxAmount }
+  return {
+    subtotal: roundSunat(subtotal),
+    taxAmount: roundSunat(taxAmount),
+    total: roundSunat(subtotal + taxAmount),
+  }
 }

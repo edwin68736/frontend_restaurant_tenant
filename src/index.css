@@ -72,6 +72,25 @@ html.platform-capacitor body {
   .scrollbar-thin::-webkit-scrollbar-thumb {
     @apply bg-stone-300 rounded-full;
   }
+
+  /* Modal cobro POS: scroll vertical minimalista verde */
+  .scrollbar-checkout {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(22 163 74 / 0.5) transparent;
+  }
+  .scrollbar-checkout::-webkit-scrollbar {
+    width: 5px;
+  }
+  .scrollbar-checkout::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-checkout::-webkit-scrollbar-thumb {
+    background-color: rgb(22 163 74 / 0.45);
+    border-radius: 9999px;
+  }
+  .scrollbar-checkout::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(22 163 74 / 0.7);
+  }
 }
 
 /* Fly-to-cart: producto → carrito (móvil) */

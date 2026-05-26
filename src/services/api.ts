@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { RESTAURANT_STORAGE_KEYS } from './public.service'
+import { getTenantBinding } from '@/lib/tenantBinding/store'
 import { isTauriDesktop } from '@/lib/app'
 
 function normalizeApiOrigin(raw: string): string {
@@ -8,21 +8,7 @@ function normalizeApiOrigin(raw: string): string {
   return base
 }
 
-function isLocalDevHost(hostname: string): boolean {
-  const host = hostname.toLowerCase()
-  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')
-}
-
-/** Origen del backend en desarrollo local (misma convención que frontend_tenant). */
-function getLocalDevApiOrigin(): string {
-  const fromEnv = import.meta.env.VITE_API_URL
-  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') {
-    return normalizeApiOrigin(fromEnv)
-  }
-  return 'http://localhost:3000'
-}
-
-/** API central (solo bootstrap RUC). Ej: https://api.tukifac.com o app.tukifac.com */
+/** API central: solo bootstrap (tenant-by-ruc). */
 export function getCentralApiBaseUrl(): string {
   const central = import.meta.env.VITE_CENTRAL_API_URL
   if (central && typeof central === 'string' && central.trim() !== '') {
@@ -32,46 +18,29 @@ export function getCentralApiBaseUrl(): string {
   if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') {
     return normalizeApiOrigin(fromEnv)
   }
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname
-    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) {
-      return 'http://localhost:3000'
-    }
-  }
   return 'https://api.tukifac.cloud'
 }
 
 /**
- * API del tenant (subdominio persistido tras RUC).
- * Producción: https://empresa1.tukifac.com — el host identifica el tenant.
+ * API del tenant desde vinculación persistida.
+ * En DEV siempre relativa (proxy Vite); en release usa la URL guardada.
  */
 export function getTenantApiBaseUrl(): string {
-  if (typeof window !== 'undefined' && isLocalDevHost(window.location.hostname)) {
-    return getLocalDevApiOrigin()
+  if (import.meta.env.DEV) {
+    return ''
   }
-
-  const stored = localStorage.getItem(RESTAURANT_STORAGE_KEYS.tenantApiUrl)?.trim()
-  if (stored) return normalizeApiOrigin(stored)
-
-  const slug = getTenantSlug()
-  const appDomain = import.meta.env.VITE_APP_DOMAIN
-  if (slug && appDomain && typeof appDomain === 'string') {
-    const domain = appDomain.replace(/^\./, '')
-    if (domain === 'localhost' || domain.endsWith('.localhost')) {
-      return getLocalDevApiOrigin()
-    }
-    return `https://${slug}.${domain}`
+  const binding = getTenantBinding()
+  if (binding?.apiUrl) {
+    return normalizeApiOrigin(binding.apiUrl)
   }
-
-  return getCentralApiBaseUrl()
+  return ''
 }
 
-/** En dev (npm run dev / tauri:dev) Vite proxifica /api → backend (.env). Evita CORS. */
+/** En DEV todas las peticiones van por proxy local (sin CORS). */
 export function shouldUseDevProxy(): boolean {
   return import.meta.env.DEV
 }
 
-/** Base URL para peticiones al API central (tenant-by-ruc, etc.). */
 export function getCentralApiRequestBaseUrl(): string {
   if (shouldUseDevProxy()) return ''
   return getCentralApiBaseUrl()
@@ -79,14 +48,15 @@ export function getCentralApiRequestBaseUrl(): string {
 
 function getApiBaseUrl(): string {
   if (shouldUseDevProxy()) return ''
-  return getTenantApiBaseUrl()
+  const tenantUrl = getTenantApiBaseUrl()
+  if (tenantUrl) return tenantUrl
+  return ''
 }
 
 const API_BASE_URL = getApiBaseUrl()
 
-/** Slug del tenant (RUC). Se envía como redundancia; el host del subdominio es la fuente de verdad. */
 export function getTenantSlug(): string {
-  return localStorage.getItem(RESTAURANT_STORAGE_KEYS.tenantSlug)?.trim() || ''
+  return getTenantBinding()?.slug?.trim() ?? ''
 }
 
 const api = axios.create({
@@ -96,14 +66,25 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  config.baseURL = getApiBaseUrl()
+  if (import.meta.env.DEV) {
+    config.baseURL = ''
+    const binding = getTenantBinding()
+    if (binding?.apiUrl) {
+      config.headers['X-Tenant-Api-Origin'] = normalizeApiOrigin(binding.apiUrl)
+    }
+  } else {
+    const tenantUrl = getTenantApiBaseUrl()
+    config.baseURL = tenantUrl || ''
+  }
+
+  if (!getTenantBinding()?.apiUrl && !config.url?.includes('/api/public/')) {
+    console.warn('[Tukichef] Sin URL de tenant: vincule el RUC primero.')
+  }
+
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
 
   const slug = getTenantSlug()
-  if (!slug && !config.url?.includes('/api/public/')) {
-    console.warn('[Tukichef] Falta tenant: ingrese el RUC de la empresa primero.')
-  }
   if (slug) config.headers['X-Tenant-Slug'] = slug
 
   return config

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { authService, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
-import { getStoredTenant } from '@/services/public.service'
+import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { featureAllowed, type RestaurantFeature } from '@/utils/restaurantPermissions'
 import { toast } from 'sonner'
@@ -40,6 +40,7 @@ function readUserMeta(user: AuthUser | null): { employeeType: string; staffId: n
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { stored: tenantBinding } = useTenantBinding()
   const [state, setState] = useState<AuthState>({
     user: null,
     token: null,
@@ -144,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const login = async (payload: LoginPayload) => {
-    const slug = payload.slug?.trim() || getStoredTenant()?.slug
+    const slug = payload.slug?.trim() || tenantBinding?.slug
     if (!slug) {
       toast.error('Primero vincule la empresa con su RUC')
       throw new Error('tenant_slug_missing')

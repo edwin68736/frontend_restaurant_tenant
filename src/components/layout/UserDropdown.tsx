@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
-import { isWindowsDesktop } from '@/services/printers.service'
+import { isNativePrintAvailable } from '@/services/printers.service'
 import { BranchSelectorMenu } from './RestaurantBranchBadge'
 
 export default function UserDropdown() {
@@ -18,7 +18,7 @@ export default function UserDropdown() {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const isAdmin = employeeType === 'admin' || employeeType === 'supervisor'
-  const showSettings = isWindowsDesktop() || hasPerm('s.m')
+  const showSettings = isNativePrintAvailable() || hasPerm('s.m')
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {

@@ -302,11 +302,15 @@ export const restaurantService = {
     cash_session_id?: number | null
     issue_date?: string
     close_session?: boolean
+    discount_amount?: number
     payments: { method: string; amount: number; reference?: string; notes?: string }[]
   }) => api.post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(`/api/restaurant/sessions/${sessionId}/bill`, data).then((r) => r.data),
 
   closeSession: (sessionId: number) =>
     api.post(`/api/restaurant/sessions/${sessionId}/close`).then((r) => r.data),
+
+  updateComandaNotes: (comandaId: number, notes: string) =>
+    api.patch(`/api/restaurant/comandas/${comandaId}/notes`, { notes }).then((r) => r.data),
 
   updateComandaStatus: (comandaId: number, status: string) =>
     api.put(`/api/restaurant/comandas/${comandaId}/status`, { status }).then((r) => r.data),

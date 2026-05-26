@@ -2,25 +2,25 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Building2 } from 'lucide-react'
-import { publicService, getStoredTenant, storeTenant } from '@/services/public.service'
-import { getApiBaseUrl } from '@/services/api'
+import { publicService, storeTenant } from '@/services/public.service'
+import { getCentralApiBaseUrl } from '@/services/api'
+import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { BRAND_LOGO_H } from '@/config/branding'
 
 /**
- * Pantalla inicial de Tukichef (Tauri): vincula la app al tenant por RUC.
- * El slug se guarda en localStorage y todas las peticiones usan X-Tenant-Slug.
+ * Vinculación única por instalación: RUC → slug + URL del tenant (persistido en disco).
  */
 export default function RucPage() {
   const navigate = useNavigate()
-  const stored = getStoredTenant()
+  const { isBound, stored, reload } = useTenantBinding()
   const [ruc, setRuc] = useState(stored?.ruc ?? '')
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (stored?.slug) {
+    if (isBound) {
       navigate('/home', { replace: true })
     }
-  }, [stored?.slug, navigate])
+  }, [isBound, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,19 +32,22 @@ export default function RucPage() {
     setLoading(true)
     try {
       const data = await publicService.getTenantByRuc(rucTrim)
-      storeTenant(data, rucTrim)
+      await storeTenant(data, rucTrim)
+      await reload()
       toast.success(`Empresa vinculada: ${data.name}`)
       navigate('/home', { replace: true })
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { error?: string } }; message?: string; code?: string }
+      const e = err as { response?: { status?: number; data?: { error?: string } }; message?: string }
       const serverMsg = e?.response?.data?.error
-      if (serverMsg) {
+      const localMsg = e?.message
+      if (localMsg && !serverMsg) {
+        toast.error(localMsg)
+      } else if (serverMsg) {
         toast.error(serverMsg)
       } else if (e?.response?.status) {
         toast.error(`Error ${e.response.status} al consultar la empresa`)
       } else {
-        const base = getApiBaseUrl()
-        toast.error(`No se pudo conectar con la API (${base}). Verifica tu conexión.`)
+        toast.error(`No se pudo conectar con la API central (${getCentralApiBaseUrl()}). Verifica tu conexión.`)
       }
     } finally {
       setLoading(false)
@@ -59,7 +62,8 @@ export default function RucPage() {
         </div>
         <p className="text-sm text-stone-500 text-center mb-1">Gestión de restaurante</p>
         <p className="text-xs text-stone-400 text-center mb-6">
-          Ingrese el RUC de su negocio para conectar con su cuenta Tukifac.
+          Ingrese el RUC de su negocio. Esta vinculación queda guardada en el dispositivo y no se puede
+          cambiar de empresa sin desinstalar la aplicación.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

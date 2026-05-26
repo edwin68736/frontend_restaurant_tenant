@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
-import { getStoredTenant } from '@/services/public.service'
+import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import RestaurantLayout from '@/layouts/RestaurantLayout'
 import LoginPage from '@/pages/LoginPage'
 import HomePage from '@/pages/HomePage'
@@ -27,9 +27,9 @@ import SubscriptionPage from '@/pages/subscription/SubscriptionPage'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const tenant = getStoredTenant()
+  const { isBound } = useTenantBinding()
   const { isAuthenticated, isLoading, restaurantPermissions } = useAuth()
-  if (!tenant?.slug) return <Navigate to="/ruc" replace />
+  if (!isBound) return <Navigate to="/ruc" replace />
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-stone-100">
@@ -48,6 +48,11 @@ function DefaultRedirect() {
   const { restaurantPermissions } = useAuth()
   const route = defaultRouteForPermissions(restaurantPermissions)
   return <Navigate to={route} replace />
+}
+
+function DefaultEntryRedirect() {
+  const { isBound } = useTenantBinding()
+  return <Navigate to={isBound ? '/home' : '/ruc'} replace />
 }
 
 function RequireFeature({ feature, children }: { feature: 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
@@ -69,8 +74,8 @@ function RequireSettingsAccess({ children }: { children: React.ReactNode }) {
 }
 
 function RequireTenant({ children }: { children: React.ReactNode }) {
-  const tenant = getStoredTenant()
-  if (!tenant) return <Navigate to="/ruc" replace />
+  const { isBound } = useTenantBinding()
+  if (!isBound) return <Navigate to="/ruc" replace />
   return <>{children}</>
 }
 
@@ -79,6 +84,7 @@ export default function App() {
     <>
       <Toaster position="top-right" richColors closeButton />
       <Routes>
+        <Route path="/" element={<DefaultEntryRedirect />} />
         <Route path="/ruc" element={<RucPage />} />
         <Route path="/home" element={<RequireTenant><HomePage /></RequireTenant>} />
         <Route path="/login" element={<RequireTenant><LoginPage /></RequireTenant>} />
@@ -117,7 +123,7 @@ export default function App() {
           <Route path="suscripcion" element={<RequireRestaurantAdmin><SubscriptionPage /></RequireRestaurantAdmin>} />
           <Route path="*" element={<DefaultRedirect />} />
         </Route>
-        <Route path="*" element={<Navigate to={getStoredTenant()?.slug ? '/home' : '/ruc'} replace />} />
+        <Route path="*" element={<DefaultEntryRedirect />} />
       </Routes>
     </>
   )

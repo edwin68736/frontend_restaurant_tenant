@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Shield, UserRound, Wallet, ChefHat, Bike } from 'lucide-react'
-import { getStoredTenant } from '@/services/public.service'
+import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { BRAND_BG } from '@/config/branding'
 
@@ -22,12 +22,12 @@ const STATIONS: StationCard[] = [
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const tenant = getStoredTenant()
+  const { isBound, stored: tenant } = useTenantBinding()
   const [pinEnabled, setPinEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!tenant?.slug) {
+    if (!isBound) {
       navigate('/ruc', { replace: true })
       return
     }
@@ -36,9 +36,9 @@ export default function HomePage() {
       .then((c) => setPinEnabled(c.pin_login_enabled))
       .catch(() => setPinEnabled(false))
       .finally(() => setLoading(false))
-  }, [tenant?.slug, navigate])
+  }, [isBound, navigate])
 
-  if (!tenant?.slug) return null
+  if (!isBound || !tenant) return null
 
   return (
     <div

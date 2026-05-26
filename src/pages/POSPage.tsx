@@ -15,6 +15,7 @@ import {
   Bike,
   Zap,
   ScanBarcode,
+  Plus,
 } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
@@ -29,12 +30,14 @@ import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/s
 import { consultaService } from '@/services/consulta.service'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
+import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
 import {
   getConfiguredPrinter,
   isAutoPrintEnabled,
-  isWindowsDesktop,
+  isNativePrintAvailable,
   printDocumentAuto,
   printPrecuentaAuto,
 } from '@/services/printers.service'
@@ -43,14 +46,28 @@ import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, type DeliveryDriver, type Precu
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
-import {
-  cartToOrderItems,
-  getActiveKitchenRounds,
-  getOrderRoundHistory,
-  type KitchenRound,
-} from '@/utils/posOrderHelpers'
+import { cartToOrderItems, getActiveKitchenRounds, getOrderRoundHistory, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printKitchenRound } from '@/utils/kitchenPrint'
+import {
+  cartLineKey,
+  cartLineTotal,
+  isManualCartLine,
+  sumCartQty,
+  type ManualCartLine,
+  type PosCartLine,
+} from '@/utils/posCart'
+import { ManualProductModal } from '@/components/pos/ManualProductModal'
+import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
+import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
+import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
+import {
+  calcCheckoutDiscountAmount,
+  calcPayableTotal,
+  type CheckoutDiscountMode,
+} from '@/utils/checkoutDiscount'
+import { paidCoversTotal, roundSunat } from '@/utils/money'
+import { formatMoney } from '@/utils/format'
 import {
   orderStatusBadgeClasses,
   orderTypeCardAccentClasses,
@@ -61,12 +78,6 @@ import {
   pendingQueueLargeBadgeClasses,
   posOrderTypeButtonClasses,
 } from '@/utils/restaurantUiColors'
-
-/** Ítem del carrito con producto completo para cálculo IGV por tipo de afectación. */
-interface CartItem {
-  product: Product
-  quantity: number
-}
 
 const DEFAULT_POS_CONTACT = { doc_type: '0', doc_number: '99999999' }
 const POS_SCANNER_STORAGE_KEY = 'tukichef-pos-scanner-mode'
@@ -82,8 +93,10 @@ function readScannerModePreference(): boolean {
 
 export default function POSPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { employeeType, restaurantPermissions } = useAuth()
   const { activeBranchId, resetEpoch } = useBranch()
   const { session: myCashSession, canChargeCash } = useCashSession()
+  const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null)
   const [preparationAreaFilter, setPreparationAreaFilter] = useState<string | null>(null)
@@ -91,7 +104,8 @@ export default function POSPage() {
   const productsSentinelRef = useRef<HTMLDivElement>(null)
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<PosCartLine[]>([])
+  const [manualProductOpen, setManualProductOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [seriesId, setSeriesId] = useState(0)
@@ -100,7 +114,11 @@ export default function POSPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
-  const [payments, setPayments] = useState<{ method: string; amount: number }[]>([{ method: 'cash', amount: 0 }])
+  const [payments, setPayments] = useState<{ method: string; amount: number; reference?: string }[]>([
+    { method: 'cash', amount: 0, reference: '' },
+  ])
+  const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
+  const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ number: string; total: number } | null>(null)
@@ -110,7 +128,8 @@ export default function POSPage() {
   const [createContactLoading, setCreateContactLoading] = useState(false)
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
   const cartBtnRef = useRef<HTMLButtonElement>(null)
-  const { flyToCart, FlyToCartLayer } = useFlyToCart(cartBtnRef)
+  const desktopCartRef = useRef<HTMLDivElement>(null)
+  const { flyToCart, FlyToCartLayer } = useFlyToCart(cartBtnRef, { desktopCartRef })
   const [posOrderType, setPosOrderType] = useState<PosOrderType>('quick_sale')
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null)
   const [sessionDetail, setSessionDetail] = useState<SessionDetail | null>(null)
@@ -318,7 +337,18 @@ export default function POSPage() {
   const taxRate = sunat?.tax_rate ?? 18
   const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
 
-  const getCartItemTotals = (item: CartItem) => {
+  const getCartItemTotals = (item: PosCartLine) => {
+    if (isManualCartLine(item)) {
+      return calcItem(
+        item.unit_price,
+        item.quantity,
+        0,
+        item.igv_affectation_type,
+        item.price_includes_igv,
+        taxRate,
+        taxConfig,
+      )
+    }
     const p = item.product
     return calcItem(
       p.sale_price,
@@ -327,7 +357,7 @@ export default function POSPage() {
       p.igv_affectation_type ?? '10',
       p.price_includes_igv ?? false,
       taxRate,
-      taxConfig
+      taxConfig,
     )
   }
 
@@ -336,13 +366,22 @@ export default function POSPage() {
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
   )
   const total = cartTotal + sessionTotal
+  const checkoutDiscountAmount = useMemo(
+    () => calcCheckoutDiscountAmount(total, checkoutDiscountMode, checkoutDiscountValue),
+    [total, checkoutDiscountMode, checkoutDiscountValue],
+  )
+  const payableTotal = useMemo(
+    () => calcPayableTotal(total, checkoutDiscountMode, checkoutDiscountValue),
+    [total, checkoutDiscountMode, checkoutDiscountValue],
+  )
 
   const totalsByAfectacion = useMemo(
     () =>
       cart.reduce(
         (acc, i) => {
           const { subtotal, taxAmount, total: t } = getCartItemTotals(i)
-          const group = getAfectacionGroup(i.product.igv_affectation_type ?? '10')
+          const aff = isManualCartLine(i) ? i.igv_affectation_type : (i.product.igv_affectation_type ?? '10')
+          const group = getAfectacionGroup(aff)
           acc[group].subtotal += subtotal
           acc[group].taxAmount += taxAmount
           acc[group].total += t
@@ -358,7 +397,7 @@ export default function POSPage() {
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
   )
 
-  const cartQty = cart.reduce((s, i) => s + i.quantity, 0)
+  const cartQty = sumCartQty(cart)
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(sessionDetail), [sessionDetail])
   const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(sessionDetail), [sessionDetail])
   const pendingOrdersCount = openOrdersList.length
@@ -545,17 +584,26 @@ export default function POSPage() {
             <span className="text-sm text-stone-500">0 pedidos pendientes</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setOrdersOpen(true)}
-          className={pendingOrdersButtonClasses(hasPendingOrders)}
-          title={hasPendingOrders ? `${pendingOrdersCount} pedidos pendientes` : 'Ver pedidos'}
-        >
-          <Menu size={18} className={`shrink-0 ${pendingOrdersButtonIconClasses(hasPendingOrders)}`} />
-          <span className={`text-xs font-semibold leading-none whitespace-nowrap ${pendingOrdersButtonIconClasses(hasPendingOrders)}`}>
-            Pedidos
-          </span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div
+            ref={desktopCartRef}
+            className="hidden lg:flex h-9 w-9 items-center justify-center rounded-full bg-rest-50 text-rest-600"
+            aria-hidden
+          >
+            <ShoppingCart size={18} />
+          </div>
+          <button
+            type="button"
+            onClick={() => setOrdersOpen(true)}
+            className={pendingOrdersButtonClasses(hasPendingOrders)}
+            title={hasPendingOrders ? `${pendingOrdersCount} pedidos pendientes` : 'Ver pedidos'}
+          >
+            <Menu size={18} className={`shrink-0 ${pendingOrdersButtonIconClasses(hasPendingOrders)}`} />
+            <span className={`text-xs font-semibold leading-none whitespace-nowrap ${pendingOrdersButtonIconClasses(hasPendingOrders)}`}>
+              Pedidos
+            </span>
+          </button>
+        </div>
       </div>
       {renderOrderCustomerInfo()}
       <div className="grid grid-cols-3 gap-1.5">
@@ -628,7 +676,14 @@ export default function POSPage() {
   const renderCartActions = (onCobrar?: () => void) => {
     if (isDirectSale) {
       return (
-        <div className="px-2 pb-3 pt-1 shrink-0">
+        <div className="px-2 pb-3 pt-1 shrink-0 space-y-1.5">
+          <button
+            type="button"
+            onClick={() => setManualProductOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-1 py-2 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
+          >
+            <Plus size={14} /> Producto manual
+          </button>
           <button
             type="button"
             onClick={onCobrar ?? openCheckout}
@@ -641,7 +696,15 @@ export default function POSPage() {
       )
     }
     return (
-      <div className="px-2 pb-3 pt-1 shrink-0 grid grid-cols-2 gap-1.5">
+      <div className="px-2 pb-3 pt-1 shrink-0 space-y-1.5">
+        <button
+          type="button"
+          onClick={() => setManualProductOpen(true)}
+          className="w-full inline-flex items-center justify-center gap-1 py-2 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
+        >
+          <Plus size={14} /> Producto manual
+        </button>
+        <div className="grid grid-cols-2 gap-1.5">
         <button
           type="button"
           disabled={actionLoading || cart.length === 0}
@@ -674,6 +737,7 @@ export default function POSPage() {
         >
           Cobrar
         </button>
+        </div>
       </div>
     )
   }
@@ -681,14 +745,32 @@ export default function POSPage() {
   const addProduct = useCallback(
     (p: Product, sourceEl?: HTMLElement) => {
       setCart((c) => {
-        const i = c.findIndex((x) => x.product.id === p.id)
-        if (i >= 0) return c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x))
-        return [...c, { product: p, quantity: 1 }]
+        const i = c.findIndex((x) => x.kind === 'catalog' && x.product.id === p.id)
+        if (i >= 0) return c.map((x, j) => (j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + 1 } : x))
+        return [...c, { kind: 'catalog' as const, product: p, quantity: 1, notes: '' }]
       })
       if (sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
     },
     [flyToCart],
   )
+
+  const patchComandaNote = (comandaId: number, notes: string) => {
+    setComandaModal((prev) =>
+      prev
+        ? { ...prev, comandas: prev.comandas.map((c) => (c.id === comandaId ? { ...c, notes } : c)) }
+        : null,
+    )
+    setSessionDetail((prev) => {
+      if (!prev?.orders) return prev
+      return {
+        ...prev,
+        orders: prev.orders.map((ord) => ({
+          ...ord,
+          comandas: (ord.comandas ?? []).map((c) => (c.id === comandaId ? { ...c, notes } : c)),
+        })),
+      }
+    })
+  }
 
   useEffect(() => {
     try {
@@ -733,6 +815,31 @@ export default function POSPage() {
     else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
   }
 
+  const setCartNotes = (index: number, notes: string) => {
+    setCart((c) => c.map((x, i) => (i === index ? { ...x, notes } : x)))
+  }
+
+  const renderCartLineItems = () =>
+    cart.map((item, i) => (
+      <PosCartLineRow
+        key={cartLineKey(item, i)}
+        line={item}
+        subtotalLabel={`Subtotal: S/ ${cartLineTotal(item, taxRate, taxConfig).toFixed(2)}`}
+        onQtyChange={(d) => setQty(i, item.quantity + d)}
+        onNotesChange={(n) => setCartNotes(i, n)}
+        showNotes={isRestaurantOrder}
+      />
+    ))
+
+  const resolveOrderItems = () => {
+    try {
+      return cartToOrderItems(cart)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Revisa el carrito')
+      return null
+    }
+  }
+
   const buildSessionPayload = () => ({
     table_id: null as null,
     order_type: posOrderType,
@@ -774,7 +881,9 @@ export default function POSPage() {
     setActionLoading(true)
     try {
       const sid = await ensureSession(false)
-      const res = await restaurantService.addOrder(sid, { items: cartToOrderItems(cart) })
+      const items = resolveOrderItems()
+      if (!items) return
+      const res = await restaurantService.addOrder(sid, { items })
       const order = (res as { data?: { id?: number; order_number?: number; comandas?: Comanda[] } })?.data
       const tableOrderId = Number(order?.id ?? 0) || 0
       const orderNumber = Number(order?.order_number ?? 0) || 0
@@ -809,7 +918,9 @@ export default function POSPage() {
     try {
       if (cart.length > 0) {
         const sid = await ensureSession(true)
-        await restaurantService.addOrder(sid, { items: cartToOrderItems(cart) })
+        const items = resolveOrderItems()
+        if (!items) return
+        await restaurantService.addOrder(sid, { items })
         setCart([])
         await loadSession(sid)
       } else {
@@ -830,7 +941,9 @@ export default function POSPage() {
     try {
       if (!sid && cart.length > 0) {
         sid = await ensureSession(true)
-        await restaurantService.addOrder(sid, { items: cartToOrderItems(cart) })
+        const items = resolveOrderItems()
+        if (!items) return
+        await restaurantService.addOrder(sid, { items })
         setCart([])
         await loadSession(sid)
       }
@@ -841,7 +954,7 @@ export default function POSPage() {
       const data = await restaurantService.getPrecuenta(sid)
       setPrecuentaData(data)
       setPrecuentaOpen(true)
-      if (isWindowsDesktop() && isAutoPrintEnabled('precuenta') && getConfiguredPrinter('precuenta')) {
+      if (isNativePrintAvailable() && isAutoPrintEnabled('precuenta') && getConfiguredPrinter('precuenta')) {
         await printPrecuentaAuto({
           tableName: data.table_name || null,
           items: data.lines.map((l) => ({
@@ -868,13 +981,39 @@ export default function POSPage() {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
     }
-    setPayments([{ method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash', amount: total }])
+    setCheckoutDiscountMode('percent')
+    setCheckoutDiscountValue(0)
+    setPayments([
+      {
+        method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+        amount: total,
+        reference: '',
+      },
+    ])
     setCheckoutOpen(true)
   }
 
+  useEffect(() => {
+    if (!checkoutOpen || allowCheckoutDiscount) return
+    setCheckoutDiscountValue(0)
+  }, [checkoutOpen, allowCheckoutDiscount])
+
+  useEffect(() => {
+    if (!checkoutOpen || payments.length !== 1) return
+    setPayments((prev) => {
+      if (prev.length !== 1) return prev
+      const nextAmount = payableTotal
+      if (Math.abs((prev[0]?.amount ?? 0) - nextAmount) < 0.009) return prev
+      return [{ ...prev[0], amount: nextAmount }]
+    })
+  }, [checkoutOpen, payableTotal, payments.length])
+
   const doCheckout = async () => {
     const paid = payments.reduce((s, p) => s + p.amount, 0)
-    if (paid < total) { toast.error('El monto pagado debe ser al menos el total'); return }
+    if (!paidCoversTotal(paid, payableTotal)) {
+      toast.error('El monto pagado debe ser al menos el total')
+      return
+    }
     if (!seriesId) { toast.error('Selecciona una serie'); return }
     const selectedContactId = effectiveContactId
     if (!selectedContactId) { toast.error('Selecciona un cliente'); return }
@@ -909,7 +1048,9 @@ export default function POSPage() {
         sid = (res as { data: { id: number } }).data.id
       }
       if (cart.length > 0) {
-        await restaurantService.addOrder(sid!, { items: cartToOrderItems(cart) })
+        const items = resolveOrderItems()
+        if (!items) return
+        await restaurantService.addOrder(sid!, { items })
       }
       if (needsCashSession) {
         if (!canChargeCash) {
@@ -928,7 +1069,16 @@ export default function POSPage() {
         contact_id: selectedContactId,
         cash_session_id: needsCashSession ? myCashSession?.id ?? null : null,
         close_session: true,
-        payments: payments.map((p) => ({ method: p.method, amount: p.amount, reference: '', notes: '' })),
+        discount_amount:
+          allowCheckoutDiscount && checkoutDiscountAmount > 0
+            ? roundSunat(checkoutDiscountAmount)
+            : undefined,
+        payments: payments.map((p) => ({
+          method: p.method,
+          amount: roundSunat(p.amount),
+          reference: p.reference?.trim() ?? '',
+          notes: '',
+        })),
       })
       toast.success('Venta registrada')
       setCart([])
@@ -939,12 +1089,18 @@ export default function POSPage() {
       setSessionTotal(0)
       setSearchParams({})
       setCheckoutOpen(false)
-      setPayments([{ method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash', amount: 0 }])
+      setPayments([
+        {
+          method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+          amount: 0,
+          reference: '',
+        },
+      ])
       setPrintData(billRes.print_data ?? null)
       setLastSale(billRes.data ? { number: billRes.data.number, total: billRes.data.total } : null)
       setReceiptModalOpen(true)
       void loadPendingOrders({ silent: true })
-      if (isWindowsDesktop() && isAutoPrintEnabled('documentos') && billRes.print_data) {
+      if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && billRes.print_data) {
         const cfg = getConfiguredPrinter('documentos')
         if (!cfg) {
           toast.error('Configura la impresora de documentos en Ajustes')
@@ -1166,43 +1322,12 @@ export default function POSPage() {
                 {cart.length === 0 && activeKitchenRounds.length > 0 && (
                   <li className="py-3 text-center text-xs text-stone-400">Agrega productos para una nueva ronda</li>
                 )}
-                {cart.map((item, i) => (
-                  <li key={i} className="flex justify-between items-center gap-2 py-2 border-b border-stone-100 last:border-0">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-stone-700 truncate">{item.product.name}</span>
-                        <span className="text-xs font-semibold text-rest-600 shrink-0">
-                          S/ {Number(item.product.sale_price).toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="text-xs text-stone-400">
-                        x{item.quantity} · Subtotal: S/ {(Number(item.product.sale_price) * item.quantity).toFixed(2)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setQty(i, item.quantity - 1)}
-                        className="w-7 h-7 rounded-lg bg-red-600 text-white hover:bg-red-700 font-bold"
-                      >
-                        −
-                      </button>
-                      <span className="w-6 text-center font-medium">{item.quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => setQty(i, item.quantity + 1)}
-                        className="w-7 h-7 rounded-lg bg-rest-600 text-white hover:bg-rest-700 font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {renderCartLineItems()}
               </ul>
               <div className="px-3 py-2 border-t border-stone-200 bg-stone-50/30 shrink-0">
                 <div className="flex justify-between items-baseline font-bold text-stone-800 text-base">
                   <span>Total</span>
-                  <span className="text-rest-600">S/ {total.toFixed(2)}</span>
+                  <span className="text-rest-600">{formatMoney(total)}</span>
                 </div>
               </div>
 
@@ -1253,44 +1378,13 @@ export default function POSPage() {
                   {cart.length === 0 && activeKitchenRounds.length > 0 && (
                     <li className="py-3 text-center text-xs text-stone-400">Agrega productos para una nueva ronda</li>
                   )}
-                  {cart.map((item, i) => (
-                    <li key={i} className="flex justify-between items-center gap-2 py-2 border-b border-stone-100 last:border-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-stone-700 truncate">{item.product.name}</span>
-                          <span className="text-xs font-semibold text-rest-600 shrink-0">
-                            S/ {Number(item.product.sale_price).toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="text-xs text-stone-400">
-                          x{item.quantity} · Subtotal: S/ {(Number(item.product.sale_price) * item.quantity).toFixed(2)}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setQty(i, item.quantity - 1)}
-                          className="w-7 h-7 rounded-lg bg-red-600 text-white hover:bg-red-700 font-bold"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center font-medium">{item.quantity}</span>
-                        <button
-                          type="button"
-                          onClick={() => setQty(i, item.quantity + 1)}
-                          className="w-7 h-7 rounded-lg bg-rest-600 text-white hover:bg-rest-700 font-bold"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                  {renderCartLineItems()}
                 </ul>
 
                 <div className="border-t border-stone-200 pt-3">
                   <div className="flex justify-between items-baseline font-bold text-stone-800 text-lg">
                     <span>Total</span>
-                    <span className="text-rest-600">S/ {total.toFixed(2)}</span>
+                    <span className="text-rest-600">{formatMoney(total)}</span>
                   </div>
                 </div>
               </div>
@@ -1470,112 +1564,30 @@ export default function POSPage() {
           </div>
       </PortalModal>
 
-      <PortalModal open={checkoutOpen} onClose={() => setCheckoutOpen(false)} className="max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-stone-200">
-              <h3 className="text-lg font-bold text-stone-800">Cobrar</h3>
-              <button onClick={() => setCheckoutOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Tipo de comprobante</label>
-                <SearchableSelect
-                  value={seriesId || null}
-                  onChange={(v) => {
-                    const id = Number(v)
-                    const s = series.find((x) => x.id === id)
-                    setSeriesId(id)
-                    if (s) setDocType(String(s.doc_type || '').trim() || 'NOTA DE VENTA')
-                  }}
-                  options={series.map((s) => ({ value: s.id, label: `${s.doc_type} ${s.series}` }))}
-                  placeholder="Selecciona serie"
-                  searchable={series.length > 8}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Pagos</label>
-                <div className="space-y-2">
-                  {payments.map((p, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <div className="flex-1 min-w-0">
-                        <SearchableSelect
-                          value={p.method}
-                          onChange={(v) =>
-                            setPayments((ps) => ps.map((x, j) => (j === i ? { ...x, method: String(v ?? '') } : x)))
-                          }
-                          options={(paymentMethods.length > 0
-                            ? paymentMethods
-                            : [
-                                { id: 0, code: 'cash', name: 'Efectivo' },
-                                { id: 0, code: 'yape', name: 'Yape' },
-                                { id: 0, code: 'plin', name: 'Plin' },
-                                { id: 0, code: 'tarjeta', name: 'Tarjeta' },
-                                { id: 0, code: 'transferencia', name: 'Transferencia' },
-                              ]
-                          ).map((pm) => ({ value: pm.code, label: pm.name }))}
-                          searchable={paymentMethods.length > 8}
-                          className="w-full border border-stone-200 rounded-lg px-2 py-1 text-sm bg-white text-left flex items-center justify-between gap-2"
-                        />
-                      </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={p.amount}
-                        onChange={(e) => setPayments((ps) => ps.map((x, j) => j === i ? { ...x, amount: Number(e.target.value) || 0 } : x))}
-                        className="w-28 border border-stone-200 rounded-lg px-2 py-1 text-sm shrink-0"
-                      />
-                      {payments.length > 1 && (
-                        <button
-                          type="button"
-                          title="Quitar pago"
-                          onClick={() => setPayments((ps) => ps.filter((_, j) => j !== i))}
-                          className="p-2 rounded-lg text-stone-500 hover:bg-red-50 hover:text-red-600 shrink-0"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPayments((prev) => [
-                        ...prev,
-                        {
-                          method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
-                          amount: 0,
-                        },
-                      ])
-                    }
-                    className="text-xs text-rest-600 hover:underline"
-                  >
-                    + Otro pago
-                  </button>
-                </div>
-                <p className="text-xs text-stone-500 mt-1">
-                  Total: S/ {total.toFixed(2)} · Pagado: S/ {payments.reduce((s, p) => s + p.amount, 0).toFixed(2)}
-                </p>
-                {totalsByAfectacion.gravado.taxAmount > 0 && (
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Op. gravada – IGV: S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}
-                  </p>
-                )}
-              </div>
-
-              <button
-                onClick={doCheckout}
-                disabled={loading || !effectiveContactId || payments.reduce((s, p) => s + p.amount, 0) < total - 0.01}
-                className="w-full py-3 bg-green-600 text-white rounded-xl font-medium disabled:opacity-50 hover:bg-green-700"
-              >
-                {loading ? 'Procesando...' : 'Confirmar venta'}
-              </button>
-            </div>
-          </div>
-      </PortalModal>
+      <POSCheckoutModal
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        loading={loading}
+        rawTotal={total}
+        payableTotal={payableTotal}
+        discountMode={checkoutDiscountMode}
+        discountValue={checkoutDiscountValue}
+        onDiscountModeChange={setCheckoutDiscountMode}
+        onDiscountValueChange={setCheckoutDiscountValue}
+        igvAmount={totalsByAfectacion.gravado.taxAmount}
+        series={series}
+        seriesId={seriesId}
+        onSeriesChange={(id, dt) => {
+          setSeriesId(id)
+          setDocType(dt)
+        }}
+        paymentMethods={paymentMethods}
+        payments={payments}
+        onPaymentsChange={setPayments}
+        onConfirm={doCheckout}
+        confirmDisabled={!effectiveContactId}
+        allowDiscount={allowCheckoutDiscount}
+      />
 
       <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md">
           <div className="bg-white rounded-2xl shadow-xl w-full p-6">
@@ -1809,17 +1821,20 @@ export default function POSPage() {
               </button>
             </div>
             <div className="p-4 overflow-y-auto flex-1 min-h-0">
-              <ul className="text-sm space-y-2">
+              <ul className="text-sm space-y-3">
                 {comandaModal.comandas.map((c) => (
-                  <li key={c.id} className="flex justify-between gap-2 border-b border-stone-100 pb-2 last:border-0">
-                    <span className="text-stone-700">{c.product_name}</span>
-                    <span className="font-semibold shrink-0">x{c.quantity}</span>
+                  <li key={c.id} className="border-b border-stone-100 pb-3 last:border-0">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-stone-700 font-medium">{c.product_name}</span>
+                      <span className="font-semibold shrink-0">x{c.quantity}</span>
+                    </div>
+                    <ComandaNoteEditor comanda={c} onUpdated={patchComandaNote} />
                   </li>
                 ))}
               </ul>
             </div>
             <div className="p-4 border-t border-stone-200 flex gap-2">
-              {isWindowsDesktop() && getConfiguredPrinter('comandas') && (
+              {isNativePrintAvailable() && getConfiguredPrinter('comandas') && (
                 <button
                   type="button"
                   onClick={() =>
@@ -1919,6 +1934,12 @@ export default function POSPage() {
         printData={printData}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
+      />
+
+      <ManualProductModal
+        open={manualProductOpen}
+        onClose={() => setManualProductOpen(false)}
+        onAdd={(line: ManualCartLine) => setCart((c) => [...c, line])}
       />
     </div>
   )
