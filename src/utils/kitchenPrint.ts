@@ -10,11 +10,13 @@ import {
   printComandaAuto,
 } from '@/services/printers.service'
 import { sessionComandaPrintLabels } from '@/utils/posOrderHelpers'
+import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 
 export type KitchenPrintLine = {
   productName: string
   quantity: number
   notes?: string | null
+  modifierLines?: string[]
   preparationArea?: string
 }
 
@@ -35,6 +37,7 @@ export function comandasToPrintLines(comandas: Comanda[]): KitchenPrintLine[] {
     productName: c.product_name,
     quantity: c.quantity,
     notes: c.notes ?? null,
+    modifierLines: formatModifierLines(parseStoredModifiers(c.modifiers_json)),
     preparationArea: (c as Comanda & { preparation_area?: string }).preparation_area,
   }))
 }
@@ -99,6 +102,7 @@ export async function printKitchenRound(params: {
             productName: l.productName,
             quantity: l.quantity,
             notes: l.notes,
+            modifierLines: l.modifierLines,
           })),
         },
         { preparationArea: prepArea, printerConfig: cfg },

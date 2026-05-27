@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { Check, Package, Play, Trash2 } from 'lucide-react'
 import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
-import { useBranch } from '@/contexts/BranchContext'
+import type { ComandasKitchenProps } from '@/components/comandas/comandasKitchenProps'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import {
   type ComandaStatus,
   COMANDA_STATUS_LABEL,
   getNextComandaStatus,
 } from '@/utils/comandasKitchen'
+import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 
 const STATUS_OPTIONS: {
   value: ComandaStatus
@@ -62,28 +63,11 @@ function statusBadgeClass(status: string): string {
   return map[status] ?? 'bg-stone-100 text-stone-700 border-stone-200'
 }
 
-export function ComandasItemsView() {
-  const { resetEpoch } = useBranch()
-  const [comandas, setComandas] = useState<KitchenComanda[]>([])
-  const [loading, setLoading] = useState(true)
+export function ComandasItemsView({ comandas, loading, onReload }: ComandasKitchenProps) {
   const [filter, setFilter] = useState<ComandaStatus>('pendiente')
   const [anullModal, setAnullModal] = useState<KitchenComanda | null>(null)
   const [anullPin, setAnullPin] = useState('')
   const [anullReason, setAnullReason] = useState('')
-
-  const load = () => {
-    setLoading(true)
-    restaurantService
-      .getKitchen()
-      .then(setComandas)
-      .catch(() => toast.error('Error al cargar comandas'))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetEpoch])
 
   const filtered = comandas.filter((c) => (c.status as ComandaStatus) === filter)
   const counts = comandas.reduce(
@@ -101,7 +85,7 @@ export function ComandasItemsView() {
     try {
       await restaurantService.updateComandaStatus(item.id, next)
       toast.success('Estado actualizado')
-      load()
+      onReload()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     }
@@ -123,7 +107,7 @@ export function ComandasItemsView() {
       setAnullModal(null)
       setAnullPin('')
       setAnullReason('')
-      load()
+      onReload()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     }
@@ -200,6 +184,20 @@ export function ComandasItemsView() {
                   {COMANDA_STATUS_LABEL[(c.status as ComandaStatus) || 'pendiente']}
                 </span>
               </div>
+
+              {(() => {
+                const modLines = formatModifierLines(parseStoredModifiers(c.modifiers_json))
+                if (modLines.length === 0) return null
+                return (
+                  <ul className="text-xs text-stone-700 bg-stone-50 border border-stone-100 rounded-lg px-2 py-1.5 space-y-0.5">
+                    {modLines.map((line) => (
+                      <li key={line} className="pl-2 border-l-2 border-rest-400">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                )
+              })()}
 
               {c.notes ? (
                 <p className="text-xs sm:text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">

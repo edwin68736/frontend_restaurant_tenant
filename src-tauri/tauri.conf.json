@@ -1,38 +1,41 @@
- {
-   "$schema": "https://schema.tauri.app/config/2",
-   "productName": "Tukichef",
-   "version": "../package.json",
-   "identifier": "com.tukifac.tukichef",
-   "build": {
-     "beforeDevCommand": "npm run dev",
-     "devUrl": "http://localhost:5175",
-     "beforeBuildCommand": "npm run build",
-     "frontendDist": "../dist"
-   },
-   "app": {
-     "windows": [
-       {
-         "label": "main",
-         "title": "Tukichef",
-         "width": 1280,
-         "height": 800,
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Tukichef",
+  "version": "../package.json",
+  "identifier": "com.tukifac.tukichef",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5175",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Tukichef",
+        "width": 1280,
+        "height": 800,
         "minWidth": 1100,
         "minHeight": 700,
-         "resizable": true
-       }
-     ],
-     "security": {
-       "csp": null,
-       "capabilities": ["default"]
-     }
-   },
-   "bundle": {
-     "active": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
     "targets": "all",
     "icon": [
       "icons/icon.ico",
       "icons/icon.png"
     ]
-   },
-   "plugins": {}
- }
+  },
+  "plugins": {},
+  "mainBinaryName": "tukichef-1.0.0"
+}

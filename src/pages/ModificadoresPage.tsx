@@ -1,20 +1,33 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, X, UtensilsCrossed } from 'lucide-react'
+import { Plus, Pencil, Trash2, UtensilsCrossed } from 'lucide-react'
 import { productsService, type ModifierGroup } from '@/services/products.service'
 import { useAuth } from '@/contexts/AuthContext'
+import { PortalModal } from '@/components/ui/PortalModal'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
+import {
+  createEmptyOptionDraft,
+  draftsFromApiOptions,
+  validateOptionDrafts,
+  type ModifierOptionDraft,
+} from '@/utils/modifierOptionText'
 
 export default function ModificadoresPage() {
   const navigate = useNavigate()
   const { canAccess } = useAuth()
   const [groups, setGroups] = useState<ModifierGroup[]>([])
   const [loading, setLoading] = useState(true)
-  const [modal, setModal] = useState(false)
+  const [modal, setModal] = useState<'create' | 'edit' | null>(null)
+  const [editing, setEditing] = useState<ModifierGroup | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ModifierGroup | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [name, setName] = useState('')
   const [required, setRequired] = useState(false)
-  const [optionsText, setOptionsText] = useState('')
+  const [multiSelect, setMultiSelect] = useState(false)
+  const [optionDrafts, setOptionDrafts] = useState<ModifierOptionDraft[]>([createEmptyOptionDraft()])
 
   const load = () => {
     setLoading(true)
@@ -25,33 +38,61 @@ export default function ModificadoresPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+  }, [])
 
   const openCreate = () => {
+    setEditing(null)
     setName('')
     setRequired(false)
-    setOptionsText('')
-    setModal(true)
+    setMultiSelect(false)
+    setOptionDrafts([createEmptyOptionDraft()])
+    setModal('create')
   }
 
-  const create = async () => {
-    const options = optionsText
-      .split(/[\n,;]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
+  const openEdit = (g: ModifierGroup) => {
+    setEditing(g)
+    setName(g.name)
+    setRequired(!!g.required)
+    setMultiSelect(!!g.multi_select)
+    setOptionDrafts(draftsFromApiOptions(g.options))
+    setModal('edit')
+  }
+
+  const save = async () => {
     if (!name.trim()) {
       toast.error('El nombre del grupo es requerido')
       return
     }
-    if (options.length === 0) {
-      toast.error('Agrega al menos una opción (una por línea o separadas por coma)')
+    const validationErr = validateOptionDrafts(optionDrafts)
+    if (validationErr) {
+      toast.error(validationErr)
       return
     }
+    const options = optionDrafts
+      .map((d) => ({
+        name: d.name.trim(),
+        extra_price: Math.round((Number(d.extra_price) || 0) * 100) / 100,
+      }))
+      .filter((d) => d.name.length > 0)
+
     setSaving(true)
     try {
-      await productsService.createModifierGroup({ name: name.trim(), required, options })
-      toast.success('Grupo de modificadores creado')
-      setModal(false)
+      const payload = {
+        name: name.trim(),
+        required,
+        multi_select: multiSelect,
+        options,
+      }
+      if (modal === 'edit' && editing) {
+        await productsService.updateModifierGroup(editing.id, payload)
+        toast.success('Grupo actualizado')
+      } else {
+        await productsService.createModifierGroup(payload)
+        toast.success('Grupo creado')
+      }
+      setModal(null)
       load()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
@@ -60,12 +101,30 @@ export default function ModificadoresPage() {
     }
   }
 
+  const confirmDeleteGroup = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await productsService.deleteModifierGroup(deleteTarget.id)
+      toast.success('Grupo eliminado')
+      if (editing?.id === deleteTarget.id) setModal(null)
+      setDeleteTarget(null)
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo eliminar')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="w-full flex flex-col flex-1 min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 shrink-0">
         <div>
           <h2 className="text-lg font-bold text-stone-800">Grupos de modificadores</h2>
-          <p className="text-sm text-stone-500">Tamaño, cocción, extras. Asígnelos a productos en Productos.</p>
+          <p className="text-sm text-stone-500">
+            Define variantes y extras con precio. Luego vincúlalos a cada producto en <strong>Productos</strong>.
+          </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {canAccess('productos') && (
@@ -87,6 +146,16 @@ export default function ModificadoresPage() {
         </div>
       </div>
 
+      <div className="mb-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 space-y-1">
+        <p>
+          <strong>Variante</strong> (tamaño, presentación): el cliente elige una · puedes poner +S/ 0 o el monto que
+          suma al precio base.
+        </p>
+        <p>
+          <strong>Extras</strong> (papa, queso, tocino): puede elegir varios · cada uno con su precio adicional.
+        </p>
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
@@ -98,17 +167,56 @@ export default function ModificadoresPage() {
               <thead className="bg-stone-50 border-b border-stone-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-stone-700">Nombre</th>
-                  <th className="text-left px-4 py-3 font-semibold text-stone-700">Obligatorio</th>
+                  <th className="text-left px-4 py-3 font-semibold text-stone-700">Tipo</th>
                   <th className="text-left px-4 py-3 font-semibold text-stone-700">Opciones</th>
+                  <th className="w-24" />
                 </tr>
               </thead>
               <tbody>
                 {groups.map((g) => (
                   <tr key={g.id} className="border-b border-stone-100 hover:bg-stone-50/50">
                     <td className="px-4 py-3 font-medium text-stone-800">{g.name}</td>
-                    <td className="px-4 py-3">{g.required ? 'Sí' : 'No'}</td>
-                    <td className="px-4 py-3 text-stone-600">
-                      {g.options?.map((o) => o.name).join(', ') || '—'}
+                    <td className="px-4 py-3 text-stone-600 text-xs whitespace-nowrap">
+                      {g.multi_select
+                        ? 'Extras (varios)'
+                        : g.required
+                          ? 'Variante (obligatoria)'
+                          : 'Variante (opcional)'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <ul className="space-y-1">
+                        {(g.options ?? []).map((o) => (
+                          <li key={o.id} className="text-xs text-stone-600 flex flex-wrap gap-x-1">
+                            <span className="font-medium text-stone-800">{o.name}</span>
+                            <span className="text-rest-700 tabular-nums">
+                              {Number(o.extra_price) > 0
+                                ? `+ S/ ${Number(o.extra_price).toFixed(2)}`
+                                : '(sin cargo extra)'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="px-2 py-3">
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(g)}
+                          className="p-2.5 rounded-xl text-stone-500 hover:bg-rest-50 hover:text-rest-700"
+                          title="Editar grupo"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(g)}
+                          disabled={deleting && deleteTarget?.id === g.id}
+                          className="p-2.5 rounded-xl text-stone-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+                          title="Eliminar grupo"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -117,71 +225,128 @@ export default function ModificadoresPage() {
           </div>
           {groups.length === 0 && (
             <div className="text-center py-12 text-stone-400 text-sm">
-              No hay grupos. Crea uno para usarlo en productos (ej. Tamaño: Grande, Mediano, Pequeño).
+              No hay grupos. Crea el primero con el botón «Nuevo grupo».
             </div>
           )}
         </div>
       )}
 
-      {modal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-stone-800">Nuevo grupo de modificadores</h3>
-              <button onClick={() => setModal(false)} className="p-2 rounded-lg hover:bg-stone-100">
-                <X size={20} />
-              </button>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null)
+        }}
+        onConfirm={() => void confirmDeleteGroup()}
+        title="¿Eliminar este grupo?"
+        message={
+          deleteTarget ? (
+            <>
+              <p>
+                Vas a eliminar <strong className="text-stone-800">«{deleteTarget.name}»</strong>.
+              </p>
+              <p className="mt-2">
+                Se quitará de los productos vinculados. Los pedidos ya enviados conservan su detalle histórico.
+              </p>
+            </>
+          ) : null
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        loading={deleting}
+        variant="danger"
+      />
+
+      <PortalModal open={modal != null} onClose={() => setModal(null)} className="max-w-lg">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-stone-200 shrink-0">
+            <h3 className="font-bold text-stone-800 text-lg">
+              {modal === 'edit' ? 'Editar grupo' : 'Nuevo grupo'}
+            </h3>
+          </div>
+
+          <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Nombre del grupo *</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej. Tamaño, Extras, Presentación"
+                className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm"
+              />
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Nombre del grupo *</label>
+
+            <div className="rounded-xl border border-stone-200 p-3 space-y-2 bg-white">
+              <p className="text-xs font-semibold text-stone-700">Tipo de grupo</p>
+              <label className="flex items-start gap-3 p-2 rounded-lg hover:bg-stone-50 cursor-pointer">
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej. Tamaño, Cocción, Extras"
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  type="radio"
+                  name="groupType"
+                  checked={!multiSelect}
+                  onChange={() => {
+                    setMultiSelect(false)
+                  }}
+                  className="mt-1"
                 />
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
+                <span className="text-sm">
+                  <span className="font-medium text-stone-800">Variante</span>
+                  <span className="block text-xs text-stone-500">Una sola opción (tamaño, término, presentación)</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 p-2 rounded-lg hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="groupType"
+                  checked={multiSelect}
+                  onChange={() => {
+                    setMultiSelect(true)
+                    setRequired(false)
+                  }}
+                  className="mt-1"
+                />
+                <span className="text-sm">
+                  <span className="font-medium text-stone-800">Extras</span>
+                  <span className="block text-xs text-stone-500">Varias opciones (queso, papa, tocino…)</span>
+                </span>
+              </label>
+              {!multiSelect && (
+                <label className="flex items-center gap-2 text-sm text-stone-700 pl-1 pt-1 border-t border-stone-100">
                   <input
                     type="checkbox"
                     checked={required}
                     onChange={(e) => setRequired(e.target.checked)}
                     className="rounded border-stone-300"
                   />
-                  El cliente debe elegir una opción
+                  Obligatorio en el POS (el mozo debe elegir una)
                 </label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Opciones * (una por línea o separadas por coma)</label>
-                <textarea
-                  value={optionsText}
-                  onChange={(e) => setOptionsText(e.target.value)}
-                  placeholder="Grande&#10;Mediano&#10;Pequeño"
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
-                  rows={4}
-                />
-              </div>
+              )}
             </div>
-            <div className="flex gap-2 mt-6">
-              <button
-                onClick={() => setModal(false)}
-                className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={create}
-                disabled={saving}
-                className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-              >
-                {saving ? 'Guardando...' : 'Crear'}
-              </button>
-            </div>
+
+            <ModifierOptionsEditor
+              options={optionDrafts}
+              onChange={setOptionDrafts}
+              isExtrasGroup={multiSelect}
+            />
+          </div>
+
+          <div className="flex gap-2 p-4 border-t border-stone-200 shrink-0">
+            <button
+              type="button"
+              onClick={() => setModal(null)}
+              className="flex-1 min-h-[48px] py-2.5 border border-stone-200 rounded-xl text-sm font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="flex-1 min-h-[48px] py-2.5 bg-rest-600 text-white rounded-xl text-sm font-semibold hover:bg-rest-700 disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : modal === 'edit' ? 'Guardar cambios' : 'Crear grupo'}
+            </button>
           </div>
         </div>
-      )}
+      </PortalModal>
     </div>
   )
 }

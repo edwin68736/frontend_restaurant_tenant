@@ -95,6 +95,9 @@ export interface Comanda {
   quantity: number
   unit_price: number
   notes?: string
+  modifiers_json?: string
+  igv_affectation_type?: string
+  price_includes_igv?: boolean
   status: string
   preparation_area?: string
   printed?: boolean
@@ -126,6 +129,9 @@ export interface OrderItemInput {
   quantity: number
   unit_price: number
   notes?: string
+  modifiers_json?: string
+  igv_affectation_type?: string
+  price_includes_igv?: boolean
 }
 
 export const restaurantService = {
@@ -181,7 +187,7 @@ export const restaurantService = {
     api.get<{ data: RestaurantTable[] }>('/api/restaurant/tables', { params: { floor_id } }).then((r) => r.data.data ?? r.data ?? []),
   createTable: (data: { floor_id: number; name: string; capacity: number }) =>
     api.post('/api/restaurant/tables', data).then((r) => r.data),
-  updateTable: (id: number, data: { name?: string; capacity?: number; active?: boolean }) =>
+  updateTable: (id: number, data: { floor_id?: number; name?: string; capacity?: number; active?: boolean }) =>
     api.put(`/api/restaurant/tables/${id}`, data).then((r) => r.data),
   deleteTable: (id: number) => api.delete(`/api/restaurant/tables/${id}`).then((r) => r.data),
   getTableSession: (tableId: number) =>

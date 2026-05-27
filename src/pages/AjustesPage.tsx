@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { isNativePrintAvailable } from '@/services/printers.service'
 import { PrintersSettingsTab } from '@/components/settings/PrintersSettingsTab'
 import { RestaurantSettingsTab } from '@/components/settings/RestaurantSettingsTab'
+import { AppVersionBadge } from '@/components/layout/AppVersionBadge'
 
 type SettingsTab = 'restaurante' | 'impresoras'
 
@@ -29,11 +30,14 @@ export default function AjustesPage() {
   return (
     <div className="w-full flex flex-col flex-1 min-h-0 overflow-y-auto">
       <div className="w-full max-w-6xl mx-auto pb-6">
-        <div>
-          <h1 className="text-xl font-bold text-stone-900">Ajustes</h1>
-          <p className="mt-1 text-sm text-stone-600">
-            Configuración del restaurante y del equipo local.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-bold text-stone-900">Ajustes</h1>
+            <p className="mt-1 text-sm text-stone-600">
+              Configuración del restaurante y del equipo local.
+            </p>
+          </div>
+          <AppVersionBadge className="shrink-0 pt-1" />
         </div>
 
         {(canManageRestaurant && canPrinters) && (

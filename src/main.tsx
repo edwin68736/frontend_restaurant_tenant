@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { BranchProvider } from '@/contexts/BranchContext'
+import { BranchCheckoutSeriesProvider } from '@/contexts/BranchCheckoutSeriesContext'
 import { CashSessionProvider } from '@/contexts/CashSessionContext'
+import { BackendConnectivityProvider } from '@/contexts/BackendConnectivityContext'
 import { FeatureProvider } from '@/contexts/FeatureContext'
 import { NativeShellProvider } from '@/providers/NativeShellProvider'
 import { TenantBindingProvider } from '@/contexts/TenantBindingContext'
@@ -19,9 +21,13 @@ createRoot(document.getElementById('root')!).render(
         <AuthProvider>
           <FeatureProvider>
             <BranchProvider>
-              <CashSessionProvider>
-                <App />
-              </CashSessionProvider>
+              <BranchCheckoutSeriesProvider>
+                <BackendConnectivityProvider>
+                  <CashSessionProvider>
+                    <App />
+                  </CashSessionProvider>
+                </BackendConnectivityProvider>
+              </BranchCheckoutSeriesProvider>
             </BranchProvider>
           </FeatureProvider>
         </AuthProvider>

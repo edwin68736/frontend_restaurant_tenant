@@ -1,6 +1,7 @@
 import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
+import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -108,7 +109,8 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
 
   const companyName = (data.company.trade_name || data.company.business_name || '').toUpperCase()
   const centerLines: string[] = [companyName, `RUC ${data.company.ruc}`]
-  if (data.company.address) centerLines.push(data.company.address.toUpperCase())
+  const issuerAddress = getPrintIssuerAddress(data)
+  if (issuerAddress) centerLines.push(issuerAddress.toUpperCase())
   if (data.company.phone) centerLines.push(`Central telefónica: ${data.company.phone}`)
   if (data.company.email) centerLines.push(`Email: ${data.company.email}`)
 

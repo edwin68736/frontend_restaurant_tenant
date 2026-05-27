@@ -24,7 +24,7 @@ import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
-import { companyService, pickDefaultNotaVentaSeries, sortSeriesNotaVentaFirst, type SeriesRow } from '@/services/company.service'
+import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
@@ -32,6 +32,7 @@ import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
 import {
@@ -49,25 +50,34 @@ import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { cartToOrderItems, getActiveKitchenRounds, getOrderRoundHistory, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import {
+  appendCatalogLine,
   cartLineKey,
   cartLineTotal,
+  cartLineUnitPrice,
+  createCatalogCartLine,
   isManualCartLine,
   sumCartQty,
+  type CatalogCartLine,
   type ManualCartLine,
   type PosCartLine,
 } from '@/utils/posCart'
+import { buildConfigureKey, productNeedsConfiguration } from '@/utils/productModifiers'
+import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
+import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
+import { formatModifierSummary, parseStoredModifiers } from '@/utils/productModifiers'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
+import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import {
   calcCheckoutDiscountAmount,
   calcPayableTotal,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
-import { paidCoversTotal, roundSunat } from '@/utils/money'
-import { formatMoney } from '@/utils/format'
+import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import { formatMoney, formatSoles } from '@/utils/format'
 import {
   orderStatusBadgeClasses,
   orderTypeCardAccentClasses,
@@ -95,6 +105,7 @@ export default function POSPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { employeeType, restaurantPermissions } = useAuth()
   const { activeBranchId, resetEpoch } = useBranch()
+  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
   const [categories, setCategories] = useState<Category[]>([])
@@ -102,10 +113,11 @@ export default function POSPage() {
   const [preparationAreaFilter, setPreparationAreaFilter] = useState<string | null>(null)
   const productsScrollRef = useRef<HTMLDivElement>(null)
   const productsSentinelRef = useRef<HTMLDivElement>(null)
-  const [series, setSeries] = useState<SeriesRow[]>([])
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [manualProductOpen, setManualProductOpen] = useState(false)
+  const [configureProduct, setConfigureProduct] = useState<Product | null>(null)
+  const [configureFlySource, setConfigureFlySource] = useState<HTMLElement | undefined>(undefined)
   const [loading, setLoading] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [seriesId, setSeriesId] = useState(0)
@@ -231,15 +243,6 @@ export default function POSPage() {
     if (!activeBranchId) return
     productsService.listCategories().then(setCategories)
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
-    companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }).then((s) => {
-      const ordered = sortSeriesNotaVentaFirst(s)
-      setSeries(ordered)
-      const def = pickDefaultNotaVentaSeries(ordered)
-      if (def) {
-        setSeriesId(def.id)
-        setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
-      }
-    })
     contactsService
       .list('', 'customer')
       .then((list) => {
@@ -262,7 +265,17 @@ export default function POSPage() {
 
   useEffect(() => {
     loadPosMeta()
-  }, [loadPosMeta, resetEpoch])
+  }, [loadPosMeta])
+
+  useEffect(() => {
+    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    } else {
+      setSeriesId(0)
+    }
+  }, [checkoutSeries])
 
   const {
     products,
@@ -302,6 +315,8 @@ export default function POSPage() {
     observer.observe(sentinel)
     return () => observer.disconnect()
   }, [hasMore, loadMoreProducts, products.length])
+
+  const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
 
   useOnBranchChange(() => {
     setCart([])
@@ -351,21 +366,21 @@ export default function POSPage() {
     }
     const p = item.product
     return calcItem(
-      p.sale_price,
+      cartLineUnitPrice(item),
       item.quantity,
       0,
       p.igv_affectation_type ?? '10',
-      p.price_includes_igv ?? false,
+      p.price_includes_igv ?? true,
       taxRate,
       taxConfig,
     )
   }
 
   const cartTotal = useMemo(
-    () => cart.reduce((s, i) => s + getCartItemTotals(i).total, 0),
+    () => sumMoney(...cart.map((i) => getCartItemTotals(i).total)),
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
   )
-  const total = cartTotal + sessionTotal
+  const total = sumMoney(cartTotal, sessionTotal)
   const checkoutDiscountAmount = useMemo(
     () => calcCheckoutDiscountAmount(total, checkoutDiscountMode, checkoutDiscountValue),
     [total, checkoutDiscountMode, checkoutDiscountValue],
@@ -382,9 +397,9 @@ export default function POSPage() {
           const { subtotal, taxAmount, total: t } = getCartItemTotals(i)
           const aff = isManualCartLine(i) ? i.igv_affectation_type : (i.product.igv_affectation_type ?? '10')
           const group = getAfectacionGroup(aff)
-          acc[group].subtotal += subtotal
-          acc[group].taxAmount += taxAmount
-          acc[group].total += t
+          acc[group].subtotal = roundSunat(acc[group].subtotal + subtotal)
+          acc[group].taxAmount = roundSunat(acc[group].taxAmount + taxAmount)
+          acc[group].total = roundSunat(acc[group].total + t)
           return acc
         },
         {
@@ -526,11 +541,18 @@ export default function POSPage() {
                 </button>
               </div>
               <ul className="text-[11px] text-stone-600 space-y-0.5">
-                {round.comandas.map((c) => (
-                  <li key={c.id} className="flex justify-between gap-1">
-                    <span className="truncate">{c.quantity}x {c.product_name}</span>
-                  </li>
-                ))}
+                {round.comandas.map((c) => {
+                  const mods = parseStoredModifiers(c.modifiers_json)
+                  const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
+                  return (
+                    <li key={c.id} className="flex justify-between gap-1">
+                      <span className="truncate">
+                        {c.quantity}x {c.product_name}
+                        {summary ? ` · ${summary}` : ''}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}
@@ -554,7 +576,7 @@ export default function POSPage() {
                   <span className={orderStatusBadgeClasses(orderStatus)}>
                     {ORDER_STATUS_LABELS[orderStatus] ?? orderStatus}
                   </span>
-                  {sessionTotal > 0 && <span>S/ {sessionTotal.toFixed(2)}</span>}
+                  {sessionTotal > 0 && <span>{formatSoles(sessionTotal)}</span>}
                 </p>
               )}
               {hasPendingOrders && (
@@ -687,7 +709,7 @@ export default function POSPage() {
           <button
             type="button"
             onClick={onCobrar ?? openCheckout}
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || branchSeriesMissing}
             className="w-full py-3 bg-rest-500 text-white rounded-xl text-sm font-semibold hover:bg-rest-600 disabled:opacity-50 shadow-md shadow-rest-500/20"
           >
             Cobrar venta directa
@@ -732,7 +754,7 @@ export default function POSPage() {
         <button
           type="button"
           onClick={onCobrar ?? openCheckout}
-          disabled={cart.length === 0 && sessionTotal <= 0}
+          disabled={branchSeriesMissing || (cart.length === 0 && sessionTotal <= 0)}
           className="inline-flex items-center justify-center gap-1 py-2 bg-rest-500 text-white rounded-xl text-xs font-semibold hover:bg-rest-600 disabled:opacity-50"
         >
           Cobrar
@@ -744,14 +766,24 @@ export default function POSPage() {
 
   const addProduct = useCallback(
     (p: Product, sourceEl?: HTMLElement) => {
-      setCart((c) => {
-        const i = c.findIndex((x) => x.kind === 'catalog' && x.product.id === p.id)
-        if (i >= 0) return c.map((x, j) => (j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + 1 } : x))
-        return [...c, { kind: 'catalog' as const, product: p, quantity: 1, notes: '' }]
-      })
+      if (productNeedsConfiguration(p)) {
+        setConfigureFlySource(sourceEl)
+        setConfigureProduct(p)
+        return
+      }
+      setCart((c) => appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' })))
       if (sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
     },
     [flyToCart],
+  )
+
+  const onConfiguredProduct = useCallback(
+    (line: CatalogCartLine) => {
+      setCart((c) => appendCatalogLine(c, line))
+      if (configureFlySource) flyToCart(configureFlySource, getProductImageUrl(line.product.image_url))
+      setConfigureFlySource(undefined)
+    },
+    [flyToCart, configureFlySource],
   )
 
   const patchComandaNote = (comandaId: number, notes: string) => {
@@ -816,7 +848,13 @@ export default function POSPage() {
   }
 
   const setCartNotes = (index: number, notes: string) => {
-    setCart((c) => c.map((x, i) => (i === index ? { ...x, notes } : x)))
+    setCart((c) =>
+      c.map((x, i) => {
+        if (i !== index) return x
+        if (x.kind !== 'catalog') return { ...x, notes }
+        return { ...x, notes, configureKey: buildConfigureKey(x.modifiers, notes) }
+      }),
+    )
   }
 
   const renderCartLineItems = () =>
@@ -824,7 +862,7 @@ export default function POSPage() {
       <PosCartLineRow
         key={cartLineKey(item, i)}
         line={item}
-        subtotalLabel={`Subtotal: S/ ${cartLineTotal(item, taxRate, taxConfig).toFixed(2)}`}
+        subtotalLabel={`Subtotal: ${formatSoles(cartLineTotal(item, taxRate, taxConfig))}`}
         onQtyChange={(d) => setQty(i, item.quantity + d)}
         onNotesChange={(n) => setCartNotes(i, n)}
         showNotes={isRestaurantOrder}
@@ -971,12 +1009,13 @@ export default function POSPage() {
   }
 
   const openCheckout = () => {
+    if (branchSeriesMissing) return
     if (cart.length === 0 && sessionTotal <= 0) return
     if (!effectiveContactId) {
       toast.error('Selecciona un cliente en el carrito')
       return
     }
-    const def = pickDefaultNotaVentaSeries(series)
+    const def = pickDefaultNotaVentaSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -1014,7 +1053,8 @@ export default function POSPage() {
       toast.error('El monto pagado debe ser al menos el total')
       return
     }
-    if (!seriesId) { toast.error('Selecciona una serie'); return }
+    if (branchSeriesMissing) return
+    if (!seriesId) return
     const selectedContactId = effectiveContactId
     if (!selectedContactId) { toast.error('Selecciona un cliente'); return }
 
@@ -1124,6 +1164,11 @@ export default function POSPage() {
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-stone-50/80 overflow-hidden w-full max-w-full h-full lg:-mx-5 lg:-my-3">
       <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
+        {branchSeriesMissing && (
+          <div className="shrink-0 px-2 pb-2 lg:px-0">
+            <BranchCheckoutSeriesEmptyState />
+          </div>
+        )}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
           {/* Productos — ancho completo en móvil */}
           <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 mx-auto">
@@ -1286,7 +1331,7 @@ export default function POSPage() {
                           {p.name}
                         </p>
                         <p className="text-rest-600 font-semibold text-xs mt-1">
-                          S/ {Number(p.sale_price).toFixed(2)}
+                          {formatSoles(Number(p.sale_price))}
                         </p>
                       </div>
                     </button>
@@ -1575,7 +1620,7 @@ export default function POSPage() {
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
         igvAmount={totalsByAfectacion.gravado.taxAmount}
-        series={series}
+        series={checkoutSeries}
         seriesId={seriesId}
         onSeriesChange={(id, dt) => {
           setSeriesId(id)
@@ -1747,7 +1792,7 @@ export default function POSPage() {
                   >
                     <div className="flex justify-between gap-2 items-start">
                       <span className="font-semibold text-stone-800">{o.order_code || `#${o.id}`}</span>
-                      <span className="text-sm font-medium text-stone-800">S/ {Number(o.total_amount).toFixed(2)}</span>
+                      <span className="text-sm font-medium text-stone-800 tabular-nums">{formatSoles(Number(o.total_amount))}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 mt-1">
                       <span className={orderTypeChipClasses(o.order_type)}>
@@ -1824,10 +1869,7 @@ export default function POSPage() {
               <ul className="text-sm space-y-3">
                 {comandaModal.comandas.map((c) => (
                   <li key={c.id} className="border-b border-stone-100 pb-3 last:border-0">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-stone-700 font-medium">{c.product_name}</span>
-                      <span className="font-semibold shrink-0">x{c.quantity}</span>
-                    </div>
+                    <ComandaLineDisplay comanda={c} />
                     <ComandaNoteEditor comanda={c} onUpdated={patchComandaNote} />
                   </li>
                 ))}
@@ -1901,13 +1943,13 @@ export default function POSPage() {
                   <span className="text-stone-700">
                     {l.quantity}x {l.product_name}
                   </span>
-                  <span className="shrink-0">S/ {Number(l.line_total).toFixed(2)}</span>
+                  <span className="shrink-0 tabular-nums">{formatSoles(Number(l.line_total))}</span>
                 </li>
               ))}
             </ul>
             <div className="flex justify-between font-bold text-stone-800 border-t border-stone-200 pt-2">
               <span>Total</span>
-              <span className="text-rest-600">S/ {Number(precuentaData.total).toFixed(2)}</span>
+              <span className="text-rest-600 tabular-nums">{formatSoles(Number(precuentaData.total))}</span>
             </div>
             <button
               type="button"
@@ -1940,6 +1982,15 @@ export default function POSPage() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={(line: ManualCartLine) => setCart((c) => [...c, line])}
+      />
+
+      <ProductConfigureModal
+        product={configureProduct}
+        onClose={() => {
+          setConfigureProduct(null)
+          setConfigureFlySource(undefined)
+        }}
+        onConfirm={onConfiguredProduct}
       />
     </div>
   )

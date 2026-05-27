@@ -30,6 +30,9 @@ const FEATURE_PERM: Record<RestaurantFeature, string> = {
 
 export function featureAllowed(permissions: string[] | null | undefined, feature: RestaurantFeature): boolean {
   if (!permissions || permissions.length === 0) return false
+  if (feature === 'ventas') {
+    return permissions.includes('o.ch') || permissions.includes('c.v')
+  }
   const need = FEATURE_PERM[feature]
   return permissions.includes(need)
 }

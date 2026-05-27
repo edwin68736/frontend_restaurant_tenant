@@ -13,6 +13,7 @@ import { cashbankService, type CashSession } from '@/services/cashbank.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { hasPermission } from '@/utils/restaurantPermissions'
+import { useBackendConnectivity } from '@/contexts/BackendConnectivityContext'
 
 type CashSessionContextValue = {
   session: CashSession | null | undefined
@@ -45,7 +46,9 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
   const [openModal, setOpenModal] = useState(false)
   /** true cuando ya se consultó la caja del usuario en la sucursal activa. */
   const [checkedForBranch, setCheckedForBranch] = useState(false)
+  const [fetchError, setFetchError] = useState(false)
   const lastFetchedBranchRef = useRef(0)
+  const { isOffline } = useBackendConnectivity()
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated || authLoading) {
@@ -67,6 +70,7 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
 
     setLoading(true)
     setCheckedForBranch(false)
+    setFetchError(false)
     try {
       const s = await cashbankService.getOpenSession(activeBranchId)
       const valid =
@@ -76,6 +80,8 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       if (valid) setOpenModal(false)
     } catch {
       setSession(undefined)
+      setFetchError(true)
+      setOpenModal(false)
     } finally {
       setCheckedForBranch(true)
       setLoading(false)
@@ -101,8 +107,11 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
       !activeBranchId ||
       loading ||
       !checkedForBranch ||
-      lastFetchedBranchRef.current !== activeBranchId
+      lastFetchedBranchRef.current !== activeBranchId ||
+      isOffline ||
+      fetchError
     ) {
+      if (isOffline || fetchError) setOpenModal(false)
       return
     }
     if (session === null) {
@@ -118,6 +127,8 @@ export function CashSessionProvider({ children }: { children: ReactNode }) {
     loading,
     checkedForBranch,
     session,
+    isOffline,
+    fetchError,
   ])
 
   const openMySession = useCallback(

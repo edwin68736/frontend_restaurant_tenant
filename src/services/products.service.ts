@@ -1,4 +1,4 @@
-import api, { API_BASE_URL } from './api'
+import api, { resolvePublicAssetUrl } from './api'
 
 export type ApiRequestOptions = { signal?: AbortSignal }
 
@@ -9,12 +9,14 @@ export interface Product {
   description?: string
   image_url?: string | null
   sale_price: number
+  purchase_price?: number
   unit: string
   category_id?: number | null
   category_name?: string
   is_restaurant: boolean
   preparation_area?: string | null
   has_modifiers?: boolean
+  has_variants?: boolean
   manage_stock?: boolean
   active: boolean
   /** Catálogo SUNAT N°07: 10 Gravado, 20 Exonerado, 30 Inafecto, 40 Exportación */
@@ -30,6 +32,8 @@ export interface ModifierGroup {
   multi_select?: boolean
   options: { id: number; name: string; extra_price?: number }[]
 }
+
+export type ModifierOptionInput = { name: string; extra_price: number }
 
 export interface Category {
   id: number
@@ -75,6 +79,7 @@ export interface CreateProductInput {
   /** Cantidad inicial en sucursal activa; registra kardex (entrada STOCK_INICIAL). */
   initial_stock?: number
   has_modifiers?: boolean
+  has_variants?: boolean
   is_restaurant?: boolean
   preparation_area?: string | null
   modifier_group_ids?: number[]
@@ -148,7 +153,8 @@ export const productsService = {
       image_url: data.image_url ?? '',
       unit: data.unit ?? 'NIU',
       sale_price: data.sale_price,
-      purchase_price: data.purchase_price ?? 0,
+      purchase_price:
+        data.purchase_price != null && data.purchase_price > 0 ? data.purchase_price : 0,
       category_id: data.category_id ?? null,
       preparation_area: data.preparation_area ?? '',
       igv_affectation_type: data.igv_affectation_type ?? '10',
@@ -157,6 +163,7 @@ export const productsService = {
       initial_stock:
         data.initial_stock != null && data.initial_stock > 0 ? data.initial_stock : undefined,
       has_modifiers: data.has_modifiers ?? false,
+      has_variants: data.has_variants ?? false,
       is_restaurant: true,
       modifier_group_ids: data.modifier_group_ids ?? [],
     }).then((r) => r.data.data!),
@@ -185,7 +192,12 @@ export const productsService = {
   listModifierGroups: () =>
     api.get<{ data: ModifierGroup[] }>('/api/modifier-groups').then((r) => r.data.data ?? []),
 
-  createModifierGroup: (data: { name: string; required: boolean; multi_select?: boolean; options: string[] }) =>
+  createModifierGroup: (data: {
+    name: string
+    required: boolean
+    multi_select?: boolean
+    options: ModifierOptionInput[]
+  }) =>
     api
       .post<{ group: ModifierGroup }>('/api/modifier-groups', {
         name: data.name,
@@ -194,6 +206,22 @@ export const productsService = {
         options: data.options ?? [],
       })
       .then((r) => r.data.group),
+
+  updateModifierGroup: (
+    id: number,
+    data: { name: string; required: boolean; multi_select?: boolean; options: ModifierOptionInput[] },
+  ) =>
+    api
+      .put<{ group: ModifierGroup }>(`/api/modifier-groups/${id}`, {
+        name: data.name,
+        required: data.required ?? false,
+        multi_select: data.multi_select ?? false,
+        options: data.options ?? [],
+      })
+      .then((r) => r.data.group),
+
+  deleteModifierGroup: (id: number) =>
+    api.delete(`/api/modifier-groups/${id}`).then((r) => r.data),
 
   uploadImage: (productId: number, file: File) => {
     const form = new FormData()
@@ -207,7 +235,5 @@ export const productsService = {
 }
 
 export function getProductImageUrl(url: string | null | undefined): string {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  return `${API_BASE_URL.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+  return resolvePublicAssetUrl(url)
 }

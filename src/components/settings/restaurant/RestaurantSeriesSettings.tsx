@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileText, Pencil, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type SeriesRow } from '@/services/company.service'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision'] as const
@@ -51,6 +52,7 @@ function normalizeSeries(list: SeriesRow[], branches: { id: number; name: string
 }
 
 export function RestaurantSeriesSettings() {
+  const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
   const [sunatEnabled, setSunatEnabled] = useState(false)
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
@@ -137,6 +139,7 @@ export function RestaurantSeriesSettings() {
         })
       }
       toast.success(editing ? 'Serie actualizada' : 'Serie creada')
+      invalidateCheckoutSeries(form.branch_id)
       setModalOpen(false)
       setLoading(true)
       load()

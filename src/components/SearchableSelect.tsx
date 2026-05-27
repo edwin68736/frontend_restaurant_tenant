@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Search, X } from 'lucide-react'
+import { clsx } from 'clsx'
+import { REST_DROPDOWN_Z_INDEX } from '@/utils/restaurantUiLayers'
 
 export type SearchableSelectOption = {
   value: string | number
@@ -131,14 +133,14 @@ export function SearchableSelect({
               top: menuPos.top,
               left: menuPos.left,
               width: menuPos.width,
-              zIndex: 10000,
+              zIndex: REST_DROPDOWN_Z_INDEX,
             }
           : undefined
       }
-      className={
-        menuClassName ??
-        'bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden'
-      }
+      className={clsx(
+        'bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden',
+        menuClassName,
+      )}
     >
       {showSearch && (
         <div className="p-2 border-b border-stone-100">

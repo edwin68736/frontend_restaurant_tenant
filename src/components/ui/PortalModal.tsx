@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import type { ReactNode, MouseEvent } from 'react'
+import { REST_PORTAL_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 type Props = {
   open: boolean
@@ -17,7 +18,7 @@ export function PortalModal({ open, onClose, children, className = '', overlayCl
   return createPortal(
     <div
       className={clsx(
-        'fixed inset-0 z-[250] flex justify-center bg-black/50 p-3 sm:p-4',
+        `fixed inset-0 ${REST_PORTAL_MODAL_Z} flex justify-center bg-black/50 p-3 sm:p-4`,
         overlayClassName?.includes('items-') ? null : 'items-center',
         overlayClassName,
       )}

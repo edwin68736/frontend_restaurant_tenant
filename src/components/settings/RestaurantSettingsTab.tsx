@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { RestaurantBranchesSettings } from './restaurant/RestaurantBranchesSettings'
 import { RestaurantCompanySettings } from './restaurant/RestaurantCompanySettings'
 import { RestaurantOperationSettings } from './restaurant/RestaurantOperationSettings'
@@ -16,7 +17,13 @@ const TABS: { id: RestTab; label: string }[] = [
 ]
 
 export function RestaurantSettingsTab() {
-  const [tab, setTab] = useState<RestTab>('operacion')
+  const location = useLocation()
+  const navTab = (location.state as { restaurantSettingsTab?: RestTab } | null)?.restaurantSettingsTab
+  const [tab, setTab] = useState<RestTab>(navTab ?? 'operacion')
+
+  useEffect(() => {
+    if (navTab) setTab(navTab)
+  }, [navTab])
 
   return (
     <div className="space-y-4">

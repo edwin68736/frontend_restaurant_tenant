@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import RestaurantHeader from '@/components/layout/RestaurantHeader'
 import MobileBottomNav from '@/components/layout/MobileBottomNav'
 import { CashSessionOpenModal } from '@/components/CashSessionOpenModal'
+import { BackendOfflineOverlay } from '@/components/layout/BackendOfflineOverlay'
 import { BRAND_TOP_BAR } from '@/config/branding'
 
 /**
@@ -27,6 +28,7 @@ export default function RestaurantLayout() {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden bg-stone-50 pt-safe lg:pt-0 lg:mt-6 lg:rounded-t-3xl lg:shadow-[0_-4px_20px_rgba(15,23,42,0.1)]">
         <RestaurantHeader />
         <CashSessionOpenModal />
+        <BackendOfflineOverlay />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col overflow-auto px-3 py-2.5 pb-[calc(3.5rem+var(--safe-bottom))] sm:px-4 sm:py-3 lg:px-5 lg:pb-3">
             <Outlet />

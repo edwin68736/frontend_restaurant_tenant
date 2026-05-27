@@ -1,6 +1,11 @@
 import type { Product } from '@/services/products.service'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
-import { cartToOrderItems as cartLinesToOrderItems, type PosCartLine } from '@/utils/posCart'
+import {
+  cartToOrderItems as cartLinesToOrderItems,
+  createCatalogCartLine,
+  type PosCartLine,
+} from '@/utils/posCart'
+import { parseStoredModifiers, storedToCartModifiers } from '@/utils/productModifiers'
 
 /** @deprecated Use PosCartLine from @/utils/posCart */
 export type PosCartItem = PosCartLine
@@ -121,11 +126,23 @@ export function sessionDetailToCart(detail: SessionDetail, catalog: Product[]): 
           active: true,
         } as Product)
 
-      const existing = acc.get(pid)
-      if (existing) {
-        existing.quantity += c.quantity
+      const modifiers = storedToCartModifiers(parseStoredModifiers(c.modifiers_json))
+      const base = Number(product.sale_price) || Number(c.unit_price) || 0
+      const line = createCatalogCartLine(product, {
+        quantity: c.quantity,
+        notes: c.notes ?? '',
+        modifiers,
+        base_price: base,
+      })
+      line.unit_price = Number(c.unit_price) || line.unit_price
+
+      const key = line.configureKey
+      const existingKey = [...acc.entries()].find(([, v]) => v.kind === 'catalog' && v.configureKey === key)?.[0]
+      if (existingKey != null) {
+        const existing = acc.get(existingKey)!
+        if (existing.kind === 'catalog') existing.quantity += c.quantity
       } else {
-        acc.set(pid, { kind: 'catalog', product, quantity: c.quantity, notes: c.notes ?? '' })
+        acc.set(pid + acc.size, line)
       }
     }
   }

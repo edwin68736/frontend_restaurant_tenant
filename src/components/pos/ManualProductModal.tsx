@@ -15,6 +15,11 @@ const IGV_OPTIONS = [
   { value: '30', label: '30 - Inafecto' },
 ]
 
+function isGravadoIgv(code: string): boolean {
+  const c = String(code || '').trim()
+  return !['20', '21', '30', '31', '32', '33', '34', '35', '36', '40'].includes(c)
+}
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -28,7 +33,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
   const [quantity, setQuantity] = useState(1)
   const [unitPrice, setUnitPrice] = useState('')
   const [igv, setIgv] = useState('10')
-  const [priceIncludesIgv, setPriceIncludesIgv] = useState(false)
+  const [priceIncludesIgv, setPriceIncludesIgv] = useState(true)
 
   useEffect(() => {
     if (!open) return
@@ -38,7 +43,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
     setQuantity(1)
     setUnitPrice('')
     setIgv('10')
-    setPriceIncludesIgv(false)
+    setPriceIncludesIgv(true)
   }, [open])
 
   const submit = () => {
@@ -118,18 +123,39 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
             </div>
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Afectación IGV</label>
-              <SearchableSelect value={igv} onChange={(v) => setIgv(String(v ?? '10'))} options={IGV_OPTIONS} searchable={false} />
+              <SearchableSelect
+                value={igv}
+                onChange={(v) => {
+                  const vv = String(v ?? '10')
+                  setIgv(vv)
+                  if (!isGravadoIgv(vv)) setPriceIncludesIgv(false)
+                  else setPriceIncludesIgv(true)
+                }}
+                options={IGV_OPTIONS}
+                searchable={false}
+              />
             </div>
           </div>
-          <label className="inline-flex items-center gap-2 text-sm text-stone-700">
-            <input
-              type="checkbox"
-              checked={priceIncludesIgv}
-              onChange={(e) => setPriceIncludesIgv(e.target.checked)}
-              className="h-4 w-4 accent-rest-600"
-            />
-            Precio incluye IGV
-          </label>
+          {isGravadoIgv(igv) ? (
+            <label className="inline-flex items-center gap-2 text-sm text-stone-700">
+              <input
+                type="checkbox"
+                checked={priceIncludesIgv}
+                onChange={(e) => setPriceIncludesIgv(e.target.checked)}
+                className="h-4 w-4 accent-rest-600"
+              />
+              Precio incluye IGV
+            </label>
+          ) : (
+            <p className="text-xs text-stone-500">Esta afectación no aplica IGV al total.</p>
+          )}
+          {isGravadoIgv(igv) && unitPrice.trim() && (
+            <p className="text-xs text-stone-500 rounded-lg bg-stone-50 border border-stone-100 px-2 py-1.5">
+              {priceIncludesIgv
+                ? 'El monto ingresado es el precio final con IGV incluido (se desglosa al cobrar y facturar).'
+                : 'El monto ingresado es la base; se sumará el IGV al total del carrito y en la factura.'}
+            </p>
+          )}
         </div>
         <div className="p-4 border-t border-stone-200 flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium">

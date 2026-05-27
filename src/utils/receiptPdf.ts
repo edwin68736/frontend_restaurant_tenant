@@ -7,6 +7,7 @@ import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { ticketDetailLayout4Col } from '@/utils/receiptTicketLayout'
 import { renderA4ReceiptPdf } from '@/utils/receiptPdfA4'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
+import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
@@ -171,7 +172,8 @@ export async function generateReceiptPdf(
     addWrapped(data.company.business_name, FONT_SIZE_TITLE, 'center')
     if (data.company.trade_name) addWrapped(data.company.trade_name, FONT_SIZE, 'center')
     addWrapped(`RUC: ${data.company.ruc}`, FONT_SIZE_SM, 'center')
-    if (data.company.address) addWrapped(data.company.address, FONT_SIZE_SM, 'center')
+    const issuerAddress = getPrintIssuerAddress(data)
+    if (issuerAddress) addWrapped(issuerAddress, FONT_SIZE_SM, 'center')
     addCompanyContactLines()
     y += 2
 

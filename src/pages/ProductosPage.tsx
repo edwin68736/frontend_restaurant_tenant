@@ -1,7 +1,19 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, X, RefreshCw, SlidersHorizontal, FileSpreadsheet } from 'lucide-react'
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  X,
+  RefreshCw,
+  SlidersHorizontal,
+  FileSpreadsheet,
+  Layers,
+} from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
@@ -61,6 +73,7 @@ const emptyForm = (): CreateProductInput => ({
   sale_price: 0,
   unit: 'NIU',
   has_modifiers: false,
+  has_variants: false,
   modifier_group_ids: [],
   category_id: null,
   preparation_area: '',
@@ -92,6 +105,7 @@ export default function ProductosPage() {
   const [addingCategory, setAddingCategory] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [showMoreOptions, setShowMoreOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const categoryModalInputRef = useRef<HTMLInputElement>(null)
 
@@ -103,6 +117,7 @@ export default function ProductosPage() {
     setCategoryModalOpen(false)
     setNewCategoryName('')
     setAddingCategory(false)
+    setShowMoreOptions(false)
   }
 
   const catId = categoryFilter === '' ? undefined : categoryFilter
@@ -161,6 +176,7 @@ export default function ProductosPage() {
     setForm({ ...emptyForm(), code: generateEan13() })
     setEditing(null)
     setNewCategoryName('')
+    setShowMoreOptions(false)
     setModal('create')
     loadModifierGroups()
     loadCategories()
@@ -168,26 +184,41 @@ export default function ProductosPage() {
 
   const openEdit = (p: Product) => {
     setEditing(p)
-    productsService.get(p.id).then(({ data, modifier_group_ids }) => {
-      setForm({
-        name: data.name,
-        code: data.code ?? '',
-        description: (data as Product & { description?: string }).description ?? '',
-        image_url: data.image_url ?? '',
-        sale_price: data.sale_price,
-        unit: 'NIU',
-        has_modifiers: data.has_modifiers ?? false,
-        modifier_group_ids: modifier_group_ids ?? [],
-        category_id: data.category_id ?? null,
-        preparation_area: (data as Product & { preparation_area?: string }).preparation_area ?? '',
-        manage_stock: data.manage_stock ?? false,
-        igv_affectation_type: data.igv_affectation_type ?? '10',
-        price_includes_igv: data.price_includes_igv ?? true,
+    Promise.all([productsService.get(p.id), productsService.listModifierGroups()])
+      .then(([{ data, modifier_group_ids }, groups]) => {
+        setModifierGroups(groups)
+        let ids = modifier_group_ids ?? []
+        if (data.has_modifiers && ids.length === 0 && groups.length > 0) {
+          ids = groups.map((g) => g.id)
+          toast.info(
+            'Este producto no tenía grupos vinculados. Se marcaron todos; revisa y pulsa Guardar.',
+            { duration: 8000 },
+          )
+        }
+        const desc = data.description?.trim() ?? ''
+        const purchasePrice = data.purchase_price ?? 0
+        setShowMoreOptions(!!desc || purchasePrice > 0)
+        setForm({
+          name: data.name,
+          code: data.code ?? '',
+          description: desc,
+          purchase_price: purchasePrice > 0 ? purchasePrice : undefined,
+          image_url: data.image_url ?? '',
+          sale_price: data.sale_price,
+          unit: 'NIU',
+          has_modifiers: data.has_modifiers ?? false,
+          has_variants: data.has_variants ?? false,
+          modifier_group_ids: ids,
+          category_id: data.category_id ?? null,
+          preparation_area: (data as Product & { preparation_area?: string }).preparation_area ?? '',
+          manage_stock: data.manage_stock ?? false,
+          igv_affectation_type: data.igv_affectation_type ?? '10',
+          price_includes_igv: data.price_includes_igv ?? true,
+        })
+        setNewCategoryName('')
+        setModal('edit')
       })
-      setNewCategoryName('')
-      setModal('edit')
-      loadModifierGroups()
-    }).catch(() => toast.error('Error al cargar el producto'))
+      .catch(() => toast.error('Error al cargar el producto'))
   }
 
   useEffect(() => {
@@ -218,6 +249,10 @@ export default function ProductosPage() {
       toast.error('El nombre es requerido')
       return
     }
+    if (form.has_modifiers && (form.modifier_group_ids ?? []).length === 0) {
+      toast.error('Selecciona al menos un grupo de modificadores o desactiva «Variantes y extras»')
+      return
+    }
     const selectedFile = fileInputRef.current?.files?.[0] ?? null
     setSaving(true)
     try {
@@ -228,6 +263,8 @@ export default function ProductosPage() {
           name: form.name.trim(),
           code: codeToSend,
           description: form.description?.trim() ?? '',
+          purchase_price:
+            form.purchase_price != null && form.purchase_price > 0 ? form.purchase_price : undefined,
           sale_price: Number(form.sale_price) || 0,
           category_id: form.category_id ?? null,
           preparation_area: form.preparation_area ?? '',
@@ -259,8 +296,11 @@ export default function ProductosPage() {
           name: form.name.trim(),
           code: form.code?.trim() ?? '',
           description: form.description?.trim() ?? '',
+          purchase_price:
+            form.purchase_price != null && form.purchase_price > 0 ? form.purchase_price : 0,
           sale_price: Number(form.sale_price) || 0,
           has_modifiers: form.has_modifiers,
+          has_variants: form.has_variants,
           modifier_group_ids: form.modifier_group_ids,
           image_url: form.image_url ?? '',
           category_id: form.category_id ?? null,
@@ -270,7 +310,12 @@ export default function ProductosPage() {
           igv_affectation_type: form.igv_affectation_type ?? '10',
           price_includes_igv: isGravadoIgv(form.igv_affectation_type ?? '10') ? form.price_includes_igv : false,
         })
-        toast.success('Producto actualizado')
+        const n = (form.modifier_group_ids ?? []).length
+        toast.success(
+          form.has_modifiers && n > 0
+            ? `Producto actualizado (${n} grupo${n === 1 ? '' : 's'} vinculado${n === 1 ? '' : 's'})`
+            : 'Producto actualizado',
+        )
         closeProductModal()
         refresh()
         if (selectedFile) {
@@ -701,6 +746,64 @@ export default function ProductosPage() {
                 />
               </div>
 
+              <div className="border border-stone-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowMoreOptions((v) => !v)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-left text-sm text-stone-700 hover:bg-stone-50"
+                >
+                  <span className="font-medium">Más opciones</span>
+                  {showMoreOptions ? (
+                    <ChevronDown size={16} className="text-stone-500 shrink-0" />
+                  ) : (
+                    <ChevronRight size={16} className="text-stone-500 shrink-0" />
+                  )}
+                </button>
+                {showMoreOptions && (
+                  <div className="px-3 pb-3 pt-0 space-y-3 border-t border-stone-100">
+                    <div>
+                      <label className="block text-sm font-medium text-stone-700 mb-1">
+                        Descripción <span className="font-normal text-stone-400">(opcional)</span>
+                      </label>
+                      <textarea
+                        value={form.description ?? ''}
+                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                        rows={3}
+                        placeholder="Ej. Plato típico con arroz y ensalada"
+                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-stone-700 mb-1">
+                        Precio de compra (S/) <span className="font-normal text-stone-400">(opcional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={
+                          form.purchase_price != null && form.purchase_price > 0
+                            ? form.purchase_price
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          setForm((f) => ({
+                            ...f,
+                            purchase_price: raw === '' ? undefined : Math.max(0, Number(raw) || 0),
+                          }))
+                        }}
+                        placeholder="0.00"
+                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                      />
+                      <p className="text-xs text-stone-500 mt-1">
+                        Costo de insumos o compra; útil para reportes de margen.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
                   <input
@@ -728,35 +831,116 @@ export default function ProductosPage() {
                   <input
                     type="checkbox"
                     checked={form.has_modifiers ?? false}
-                    onChange={(e) => setForm((f) => ({ ...f, has_modifiers: e.target.checked }))}
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setForm((f) => ({
+                        ...f,
+                        has_modifiers: on,
+                        has_variants: on ? f.has_variants : false,
+                        modifier_group_ids: on
+                          ? modifierGroups.length > 0
+                            ? modifierGroups.map((g) => g.id)
+                            : (f.modifier_group_ids ?? [])
+                          : [],
+                      }))
+                    }}
                     className="rounded border-stone-300"
                   />
-                  Usar modificadores
+                  Variantes y extras en mesa/POS
                 </label>
               </div>
 
-              {form.has_modifiers && modifierGroups.length > 0 && (
-                <div className="space-y-2 pl-1">
-                  {modifierGroups.map((g) => (
-                    <label key={g.id} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={(form.modifier_group_ids ?? []).includes(g.id)}
-                        onChange={(e) => {
-                          const ids = form.modifier_group_ids ?? []
-                          if (e.target.checked) setForm((f) => ({ ...f, modifier_group_ids: [...ids, g.id] }))
-                          else setForm((f) => ({ ...f, modifier_group_ids: ids.filter((id) => id !== g.id) }))
-                        }}
-                        className="rounded border-stone-300"
-                      />
-                      <span className="text-sm">{g.name}</span>
-                      {g.required && <span className="text-xs text-rest-600">(obligatorio)</span>}
-                    </label>
-                  ))}
+              {form.has_modifiers && (
+                <div className="rounded-xl border border-rest-200 bg-rest-50/50 p-3 space-y-3">
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    Al pedir, el mozo verá un modal: elige variante (una opción obligatoria) y extras (opcionales).
+                    Primero crea grupos en{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeProductModal()
+                        navigate('/modificadores')
+                      }}
+                      className="text-rest-700 font-semibold underline"
+                    >
+                      Modificadores
+                    </button>
+                    , luego asígnalos aquí.
+                  </p>
+                  {modifierGroups.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-stone-700">Grupos vinculados a este producto *</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => ({
+                                ...f,
+                                modifier_group_ids: modifierGroups.map((g) => g.id),
+                              }))
+                            }
+                            className="text-xs font-medium text-rest-700 hover:underline"
+                          >
+                            Todos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setForm((f) => ({ ...f, modifier_group_ids: [] }))}
+                            className="text-xs font-medium text-stone-500 hover:underline"
+                          >
+                            Ninguno
+                          </button>
+                        </div>
+                      </div>
+                      {modifierGroups.map((g) => {
+                        const isVariant = !!(g.required && !g.multi_select)
+                        return (
+                          <label
+                            key={g.id}
+                            className="flex items-start gap-2 p-2 rounded-lg bg-white border border-stone-100"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={(form.modifier_group_ids ?? []).includes(g.id)}
+                              onChange={(e) => {
+                                const ids = form.modifier_group_ids ?? []
+                                if (e.target.checked) setForm((f) => ({ ...f, modifier_group_ids: [...ids, g.id] }))
+                                else setForm((f) => ({ ...f, modifier_group_ids: ids.filter((id) => id !== g.id) }))
+                              }}
+                              className="rounded border-stone-300 mt-0.5"
+                            />
+                            <span className="text-sm">
+                              <span className="font-medium text-stone-800">{g.name}</span>
+                              <span className="block text-xs text-stone-500 mt-0.5">
+                                {isVariant ? 'Variante (elige una)' : 'Extras'}
+                                {g.required ? ' · obligatorio' : ''}
+                                {g.options?.length ? ` · ${g.options.map((o) => o.name).join(', ')}` : ' · sin opciones'}
+                              </span>
+                            </span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        closeProductModal()
+                        navigate('/modificadores')
+                      }}
+                      className="inline-flex items-center gap-2 text-sm font-medium text-rest-700 hover:text-rest-800"
+                    >
+                      <Layers size={16} />
+                      Crear grupos de modificadores
+                    </button>
+                  )}
+                  {(form.modifier_group_ids ?? []).length === 0 && modifierGroups.length > 0 && (
+                    <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+                      Debes marcar al menos un grupo; si no, en mesa solo se agregará el precio base.
+                    </p>
+                  )}
                 </div>
-              )}
-              {form.has_modifiers && modifierGroups.length === 0 && (
-                <p className="text-xs text-stone-500">Crea grupos de modificadores desde el panel tenant (Productos).</p>
               )}
             </div>
             <div className="flex gap-2 p-4 border-t border-stone-200">

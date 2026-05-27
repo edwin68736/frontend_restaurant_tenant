@@ -139,16 +139,11 @@ export const cashbankService = {
     api.get('/api/cashbank/sessions', { params: { branch_id } }).then((r) => r.data.data ?? []),
 
   getOpenSession: async (branch_id?: number): Promise<CashSession | null> => {
-    try {
-      const r = await api.get<{ data: CashSession | null; open?: boolean }>('/api/cashbank/sessions/open', {
-        params: branch_id && branch_id > 0 ? { branch_id } : undefined,
-      })
-      return r.data?.data != null ? r.data.data : null
-    } catch (e: unknown) {
-      const status = (e as { response?: { status?: number } })?.response?.status
-      if (status === 403 || status === 401) throw e
-      return null
-    }
+    const r = await api.get<{ data: CashSession | null; open?: boolean }>('/api/cashbank/sessions/open', {
+      params: branch_id && branch_id > 0 ? { branch_id } : undefined,
+      timeout: 15_000,
+    })
+    return r.data?.data != null ? r.data.data : null
   },
 
   listOpenSessionsInBranch: (branch_id: number): Promise<OpenCashSessionRow[]> =>

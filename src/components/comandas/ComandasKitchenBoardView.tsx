@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ChefHat, LayoutGrid, ShoppingBag, Truck, Check, Play, Package } from 'lucide-react'
 import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
-import { useBranch } from '@/contexts/BranchContext'
+import type { ComandasKitchenProps } from '@/components/comandas/comandasKitchenProps'
 import {
   ORDER_STATUS_LABELS,
   ORDER_TYPE_LABELS,
@@ -48,28 +48,12 @@ function elapsedLabel(iso: string): string {
   return `${h}h ${min % 60}m`
 }
 
-export function ComandasKitchenBoardView() {
-  const { resetEpoch } = useBranch()
+export function ComandasKitchenBoardView({ comandas, loading, onReload }: ComandasKitchenProps) {
   const [tab, setTab] = useState<OrderTab>('all')
   const [statusFilter, setStatusFilter] = useState<ComandaStatus>('pendiente')
   const [tableFilter, setTableFilter] = useState<string>('all')
   const [areaFilter, setAreaFilter] = useState<string>('all')
-  const [comandas, setComandas] = useState<KitchenComanda[]>([])
-  const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
-
-  const load = useCallback(() => {
-    setLoading(true)
-    restaurantService
-      .getKitchen()
-      .then(setComandas)
-      .catch(() => toast.error('Error al cargar comandas'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load, resetEpoch])
 
   const statusCounts = useMemo(() => {
     const acc = { pendiente: 0, preparacion: 0, lista: 0, entregada: 0 }
@@ -130,7 +114,7 @@ export function ComandasKitchenBoardView() {
     try {
       await restaurantService.updateComandaStatus(id, status)
       toast.success('Estado actualizado')
-      load()
+      onReload()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     } finally {
@@ -147,7 +131,7 @@ export function ComandasKitchenBoardView() {
         pending.map((i) => restaurantService.updateComandaStatus(i.id, 'lista')),
       )
       toast.success('Ronda marcada como lista')
-      load()
+      onReload()
     } catch {
       toast.error('No se pudo actualizar la ronda')
     } finally {

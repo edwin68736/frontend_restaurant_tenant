@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { isNativePrintAvailable } from '@/services/printers.service'
 import { BranchSelectorMenu } from './RestaurantBranchBadge'
+import { AppVersionBadge } from './AppVersionBadge'
 
 export default function UserDropdown() {
   const { user, logout, employeeType, hasPerm } = useAuth()
@@ -99,6 +100,9 @@ export default function UserDropdown() {
             <Headphones size={16} className="text-stone-500" />
             Soporte
           </a>
+          <div className="px-3 py-2 border-t border-stone-100">
+            <AppVersionBadge compact />
+          </div>
           <div className="my-1 border-t border-stone-100" />
           <button
             type="button"

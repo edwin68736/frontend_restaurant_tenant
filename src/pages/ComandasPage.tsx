@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { ComandasViewModeToggle, type ComandasViewMode } from '@/components/comandas/ComandasViewModeToggle'
 import { ComandasItemsView } from '@/components/comandas/ComandasItemsView'
 import { ComandasKitchenBoardView } from '@/components/comandas/ComandasKitchenBoardView'
+import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
+import { useBranch } from '@/contexts/BranchContext'
 
 const VIEW_STORAGE_KEY = 'tukichef-comandas-view'
 
@@ -17,7 +20,23 @@ function readStoredView(): ComandasViewMode {
 
 /** Comandas: vista por ítem (defecto) o por pedido agrupado. */
 export default function ComandasPage() {
+  const { resetEpoch } = useBranch()
   const [viewMode, setViewMode] = useState<ComandasViewMode>(readStoredView)
+  const [comandas, setComandas] = useState<KitchenComanda[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const loadKitchen = useCallback(() => {
+    setLoading(true)
+    restaurantService
+      .getKitchen()
+      .then(setComandas)
+      .catch(() => toast.error('Error al cargar comandas'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    loadKitchen()
+  }, [loadKitchen, resetEpoch])
 
   useEffect(() => {
     try {
@@ -26,6 +45,8 @@ export default function ComandasPage() {
       /* ignore */
     }
   }, [viewMode])
+
+  const kitchenProps = { comandas, loading, onReload: loadKitchen }
 
   return (
     <div className="w-full flex flex-col flex-1 min-h-0">
@@ -44,7 +65,11 @@ export default function ComandasPage() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-        {viewMode === 'items' ? <ComandasItemsView /> : <ComandasKitchenBoardView />}
+        {viewMode === 'items' ? (
+          <ComandasItemsView {...kitchenProps} />
+        ) : (
+          <ComandasKitchenBoardView {...kitchenProps} />
+        )}
       </div>
     </div>
   )

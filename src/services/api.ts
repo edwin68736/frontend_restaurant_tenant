@@ -46,6 +46,24 @@ export function getCentralApiRequestBaseUrl(): string {
   return getCentralApiBaseUrl()
 }
 
+/**
+ * Origen para /uploads y /storage. En release los archivos los sirve el backend Go
+ * (p. ej. api.tukifac.com), no el host del tenant SPA (demo.tukifac.com).
+ */
+export function getPublicAssetsBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_ASSETS_ORIGIN as string | undefined
+  if (fromEnv?.trim()) return normalizeApiOrigin(fromEnv)
+  if (shouldUseDevProxy()) return ''
+  return getCentralApiBaseUrl()
+}
+
+export function resolvePublicAssetUrl(url: string | null | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  const base = getPublicAssetsBaseUrl()
+  return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+}
+
 function getApiBaseUrl(): string {
   if (shouldUseDevProxy()) return ''
   const tenantUrl = getTenantApiBaseUrl()

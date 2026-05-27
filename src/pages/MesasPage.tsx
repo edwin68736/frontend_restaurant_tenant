@@ -11,13 +11,27 @@ import { PortalModal } from '@/components/ui/PortalModal'
 
 const PAGE_SIZE = 12
 
-function tableDeleteBlockReason(t: RestaurantTable): string | null {
+/** Mesa libre y sin pedidos (eliminar o cambiar de piso). */
+function tableMustBeIdleReason(t: RestaurantTable): string | null {
   if (t.session_id) {
-    return 'Tiene un pedido abierto en esta mesa. Ciérrelo o anúlelo antes de eliminarla.'
+    return 'Tiene un pedido abierto. Ciérrelo o anúlelo antes de continuar.'
   }
   if (t.status && t.status !== 'libre') {
-    return `La mesa está ${tableStatusLabel(t.status).toLowerCase()}. Debe quedar libre para poder eliminarla.`
+    return `La mesa está ${tableStatusLabel(t.status).toLowerCase()}. Debe quedar libre.`
   }
+  return null
+}
+
+function tableDeleteBlockReason(t: RestaurantTable): string | null {
+  const idle = tableMustBeIdleReason(t)
+  if (idle) return `${idle} Solo entonces podrá eliminarla.`
+  return null
+}
+
+function tableFloorChangeBlockReason(t: RestaurantTable, newFloorId: number): string | null {
+  if (newFloorId === t.floor_id) return null
+  const idle = tableMustBeIdleReason(t)
+  if (idle) return `${idle} Solo entonces podrá cambiarla de piso.`
   return null
 }
 
@@ -117,12 +131,29 @@ export default function MesasPage() {
     setModal('edit')
   }
   const save = async () => {
+    if (!form.floor_id) {
+      toast.error('Selecciona un piso')
+      return
+    }
+    if (!form.name.trim()) {
+      toast.error('Indica el nombre de la mesa')
+      return
+    }
     try {
       if (modal === 'create') {
-        await restaurantService.createTable(form)
+        await restaurantService.createTable({ ...form, name: form.name.trim() })
         toast.success('Mesa creada')
       } else if (editing) {
-        await restaurantService.updateTable(editing.id, { name: form.name, capacity: form.capacity })
+        const floorBlock = tableFloorChangeBlockReason(editing, form.floor_id)
+        if (floorBlock) {
+          toast.error(floorBlock)
+          return
+        }
+        await restaurantService.updateTable(editing.id, {
+          floor_id: form.floor_id,
+          name: form.name.trim(),
+          capacity: form.capacity,
+        })
         toast.success('Mesa actualizada')
       }
       setModal(null)
@@ -418,8 +449,14 @@ export default function MesasPage() {
                   options={floors.map((f) => ({ value: f.id, label: f.name }))}
                   placeholder="Selecciona piso"
                   searchable={floors.length > 8}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                  disabled={modal === 'edit' && !!editing && !!tableMustBeIdleReason(editing)}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 disabled:opacity-60"
                 />
+                {modal === 'edit' && editing && tableMustBeIdleReason(editing) && (
+                  <p className="text-[11px] text-amber-700 mt-1 leading-snug">
+                    Para cambiar de piso la mesa debe estar libre y sin pedidos abiertos.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Nombre / Número</label>

@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, X, Trash2, FileText, UtensilsCrossed, ShoppingCart, Plus } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { useAuth } from '@/contexts/AuthContext'
-import { useBranch } from '@/contexts/BranchContext'
+import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { restaurantService, type SessionDetail, type Comanda } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
-import { companyService, pickDefaultNotaVentaSeries, sortSeriesNotaVentaFirst, type SeriesRow } from '@/services/company.service'
+import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
+import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
@@ -25,16 +27,28 @@ import {
   type KitchenRound,
 } from '@/utils/posOrderHelpers'
 import {
+  appendCatalogLine,
   cartLineKey,
   cartLineLabel,
   cartLineTotal,
   cartLineUnitPrice,
+  createCatalogCartLine,
   sumCartQty,
+  type CatalogCartLine,
   type ManualCartLine,
   type PosCartLine,
 } from '@/utils/posCart'
+import {
+  buildConfigureKey,
+  formatModifierLines,
+  formatModifierSummary,
+  parseStoredModifiers,
+  productNeedsConfiguration,
+} from '@/utils/productModifiers'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
+import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
+import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
@@ -45,8 +59,8 @@ import {
   calcPayableTotal,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
-import { paidCoversTotal, roundSunat } from '@/utils/money'
-import { formatMoney } from '@/utils/format'
+import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import { formatMoney, formatSoles } from '@/utils/format'
 import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { REST_PAGE_MODAL_Z, useFlyToCart } from '@/hooks/useFlyToCart'
@@ -57,6 +71,7 @@ export default function MesaPage() {
   const { canAccess, hasPerm, employeeType, restaurantPermissions } = useAuth()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
   const { activeBranchId } = useBranch()
+  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const canCerrarMesa = canAccess('cerrar_mesa')
   const canAnularComanda = hasPerm('s.m')
@@ -69,12 +84,13 @@ export default function MesaPage() {
   const [preparationAreaFilter, setPreparationAreaFilter] = useState<string | null>(null)
   const productsScrollRef = useRef<HTMLDivElement>(null)
   const productsSentinelRef = useRef<HTMLDivElement>(null)
-  const [series, setSeries] = useState<SeriesRow[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [manualProductOpen, setManualProductOpen] = useState(false)
+  const [configureProduct, setConfigureProduct] = useState<Product | null>(null)
+  const [configureFlySource, setConfigureFlySource] = useState<HTMLElement | undefined>(undefined)
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
   const [ordersModalOpen, setOrdersModalOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -113,18 +129,11 @@ export default function MesaPage() {
   }
 
   useEffect(() => { load() }, [id])
-  useEffect(() => {
+
+  const loadMesaMeta = useCallback(() => {
+    if (!activeBranchId) return
     productsService.listCategories().then(setCategories).catch(() => [])
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
-    companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }).then((s) => {
-      const ordered = sortSeriesNotaVentaFirst(s)
-      setSeries(ordered)
-      const def = pickDefaultNotaVentaSeries(ordered)
-      if (def) {
-        setSeriesId(def.id)
-        setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
-      }
-    })
     contactsService
       .list('', 'customer')
       .then((list) => {
@@ -142,7 +151,27 @@ export default function MesaPage() {
       })
       .catch(() => setPaymentMethods([]))
     cashbankService.listBankAccounts(true).then(setBankAccounts).catch(() => setBankAccounts([]))
-  }, [])
+  }, [activeBranchId])
+
+  useEffect(() => {
+    loadMesaMeta()
+  }, [loadMesaMeta])
+
+  useOnBranchChange(() => {
+    loadMesaMeta()
+  })
+
+  useEffect(() => {
+    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    } else {
+      setSeriesId(0)
+    }
+  }, [checkoutSeries])
+
+  const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
 
   const {
     products,
@@ -193,29 +222,42 @@ export default function MesaPage() {
   }, [products])
 
   const addToCart = (p: Product, sourceEl?: HTMLElement) => {
-    setCart((c) => {
-      const i = c.findIndex((x) => x.kind === 'catalog' && x.product.id === p.id)
-      if (i >= 0) return c.map((x, j) => (j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + 1 } : x))
-      return [...c, { kind: 'catalog' as const, product: p, quantity: 1, notes: '' }]
-    })
+    if (productNeedsConfiguration(p)) {
+      setConfigureFlySource(sourceEl)
+      setConfigureProduct(p)
+      return
+    }
+    setCart((c) => appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' })))
     if (sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
+  }
+
+  const onConfiguredProduct = (line: CatalogCartLine) => {
+    setCart((c) => appendCatalogLine(c, line))
+    if (configureFlySource) flyToCart(configureFlySource, getProductImageUrl(line.product.image_url))
+    setConfigureFlySource(undefined)
   }
   const setQty = (index: number, qty: number) => {
     if (qty <= 0) setCart((c) => c.filter((_, i) => i !== index))
     else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
   }
   const setCartNotes = (index: number, notes: string) => {
-    setCart((c) => c.map((x, i) => (i === index ? { ...x, notes } : x)))
+    setCart((c) =>
+      c.map((x, i) => {
+        if (i !== index) return x
+        if (x.kind !== 'catalog') return { ...x, notes }
+        return { ...x, notes, configureKey: buildConfigureKey(x.modifiers, notes) }
+      }),
+    )
   }
 
   const taxRate = sunat?.tax_rate ?? 18
   const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
   const cartTotal = useMemo(
-    () => cart.reduce((s, line) => s + cartLineTotal(line, taxRate, taxConfig), 0),
+    () => sumMoney(...cart.map((line) => cartLineTotal(line, taxRate, taxConfig))),
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
   )
   const sessionTotal = session?.total_amount ?? 0
-  const totalToPay = cartTotal + sessionTotal
+  const totalToPay = sumMoney(cartTotal, sessionTotal)
   const checkoutDiscountAmount = useMemo(
     () => calcCheckoutDiscountAmount(totalToPay, checkoutDiscountMode, checkoutDiscountValue),
     [totalToPay, checkoutDiscountMode, checkoutDiscountValue],
@@ -335,11 +377,16 @@ export default function MesaPage() {
                 </button>
               </div>
               <ul className="text-[11px] text-stone-600 space-y-0.5">
-                {round.comandas.map((c) => (
-                  <li key={c.id} className="truncate">
-                    {c.quantity}x {c.product_name}
-                  </li>
-                ))}
+                {round.comandas.map((c) => {
+                  const mods = parseStoredModifiers(c.modifiers_json)
+                  const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
+                  return (
+                    <li key={c.id} className="truncate" title={summary || undefined}>
+                      {c.quantity}x {c.product_name}
+                      {summary ? ` · ${summary}` : ''}
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}
@@ -392,7 +439,8 @@ export default function MesaPage() {
       toast.error('El monto pagado debe ser al menos el total')
       return
     }
-    if (!seriesId) { toast.error('Selecciona una serie'); return }
+    if (branchSeriesMissing) return
+    if (!seriesId) return
     const selectedContactId = effectiveContactId
     if (!selectedContactId) { toast.error('Selecciona un cliente'); return }
 
@@ -520,9 +568,10 @@ export default function MesaPage() {
   }
 
   const openCheckout = () => {
+    if (branchSeriesMissing) return
     if (!canGenerarVenta) return
     if (contactId == null && defaultContactId != null) setContactId(defaultContactId)
-    const def = pickDefaultNotaVentaSeries(series)
+    const def = pickDefaultNotaVentaSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -578,7 +627,7 @@ export default function MesaPage() {
       <PosCartLineRow
         key={cartLineKey(item, i)}
         line={item}
-        subtotalLabel={`Importe: S/ ${cartLineTotal(item, taxRate, taxConfig).toFixed(2)}`}
+        subtotalLabel={`Importe: ${formatSoles(cartLineTotal(item, taxRate, taxConfig))}`}
         onQtyChange={(d) => setQty(i, item.quantity + d)}
         onNotesChange={(n) => setCartNotes(i, n)}
         showNotes
@@ -588,7 +637,7 @@ export default function MesaPage() {
   const renderCartTotals = () => (
     <div className="px-3 py-2 border-t border-stone-200 bg-stone-50/30 shrink-0">
       {sessionTotal > 0 && (
-        <p className="text-xs text-stone-500 mb-1">En mesa: S/ {sessionTotal.toFixed(2)}</p>
+        <p className="text-xs text-stone-500 mb-1 tabular-nums">En mesa: {formatSoles(sessionTotal)}</p>
       )}
       <div className="flex justify-between items-baseline font-bold text-stone-800 text-base">
         <span>Total</span>
@@ -641,7 +690,7 @@ export default function MesaPage() {
               <button
                 type="button"
                 onClick={openCheckout}
-                disabled={!canGenerarVenta || adding}
+                disabled={branchSeriesMissing || !canGenerarVenta || adding}
                 className="col-span-2 inline-flex items-center justify-center gap-1 py-2.5 bg-rest-600 text-white rounded-xl text-xs font-semibold hover:bg-rest-700 disabled:opacity-50"
               >
                 Generar venta
@@ -664,6 +713,11 @@ export default function MesaPage() {
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-stone-50/80 overflow-hidden w-full max-w-full h-full lg:-mx-5 lg:-my-3">
       <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
+        {branchSeriesMissing && (
+          <div className="shrink-0 px-2 pb-2 lg:px-0">
+            <BranchCheckoutSeriesEmptyState />
+          </div>
+        )}
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-0 pb-1.5 min-w-0 w-full">
           <button
             type="button"
@@ -690,8 +744,8 @@ export default function MesaPage() {
               {session.table_name ?? 'Mesa'}
             </h2>
             <p className="text-xs text-stone-500 tabular-nums">
-              En mesa S/ {sessionTotal.toFixed(2)}
-              {cart.length > 0 && <> · Nuevo S/ {cartTotal.toFixed(2)}</>}
+              En mesa {formatSoles(sessionTotal)}
+              {cart.length > 0 && <> · Nuevo {formatSoles(cartTotal)}</>}
             </p>
           </div>
         </div>
@@ -803,7 +857,7 @@ export default function MesaPage() {
                         {p.name}
                       </p>
                       <p className="text-rest-600 font-semibold text-xs mt-1">
-                        S/ {Number(p.sale_price).toFixed(2)}
+                        {formatSoles(Number(p.sale_price))}
                       </p>
                     </div>
                   </button>
@@ -932,7 +986,9 @@ export default function MesaPage() {
                     <div className="px-3 py-2 bg-stone-50/60 flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-stone-800">#{ord.order_number}</span>
                       <span className="text-sm font-semibold text-rest-700">
-                        S/ {(ord.comandas ?? []).reduce((s, c) => s + c.quantity * c.unit_price, 0).toFixed(2)}
+                        {formatSoles(
+                          sumMoney(...(ord.comandas ?? []).map((c) => c.quantity * c.unit_price)),
+                        )}
                       </span>
                     </div>
                     <div className="px-3 py-2">
@@ -940,7 +996,7 @@ export default function MesaPage() {
                         {ord.comandas?.map((c) => (
                           <li key={c.id} className="flex items-start justify-between gap-2 text-stone-600">
                             <span className="min-w-0">
-                              {c.product_name} x{c.quantity} — S/ {(c.quantity * c.unit_price).toFixed(2)}
+                              {c.product_name} x{c.quantity} — {formatSoles(c.quantity * c.unit_price)}
                             </span>
                             {session.status === 'open' && canAnularComanda && (
                               <button
@@ -985,7 +1041,7 @@ export default function MesaPage() {
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
-        series={series}
+        series={checkoutSeries}
         seriesId={seriesId}
         onSeriesChange={(sid, dt) => {
           setSeriesId(sid)
@@ -1030,10 +1086,22 @@ export default function MesaPage() {
                   {session?.orders?.flatMap((ord) =>
                     ord.comandas?.map((c) => (
                       <tr key={c.id} className="border-b border-stone-100">
-                        <td className="py-2 pr-2">{c.product_name}</td>
+                        <td className="py-2 pr-2">
+                          <div>{c.product_name}</div>
+                          {formatModifierLines(parseStoredModifiers(c.modifiers_json)).map((line) => (
+                            <div key={line} className="text-xs text-stone-500 pl-2">
+                              {line}
+                            </div>
+                          ))}
+                          {c.notes?.trim() ? (
+                            <div className="text-xs text-amber-700 italic pl-2">Obs: {c.notes.trim()}</div>
+                          ) : null}
+                        </td>
                         <td className="py-2 text-center">{c.quantity}</td>
-                        <td className="py-2 text-right">S/ {Number(c.unit_price).toFixed(2)}</td>
-                        <td className="py-2 text-right font-medium">S/ {(c.quantity * c.unit_price).toFixed(2)}</td>
+                        <td className="py-2 text-right tabular-nums">{formatSoles(Number(c.unit_price))}</td>
+                        <td className="py-2 text-right font-medium tabular-nums">
+                          {formatSoles(c.quantity * c.unit_price)}
+                        </td>
                       </tr>
                     )) ?? []
                   )}
@@ -1041,14 +1109,20 @@ export default function MesaPage() {
                     <tr key={`cart-${cartLineKey(item, i)}`} className="border-b border-stone-100">
                       <td className="py-2 pr-2">
                         {cartLineLabel(item)}
+                        {item.kind === 'catalog' &&
+                          formatModifierLines(item.modifiers).map((line) => (
+                            <div key={line} className="text-xs text-stone-500 pl-2">
+                              {line}
+                            </div>
+                          ))}
                         {item.notes?.trim() ? (
                           <div className="text-xs text-stone-500">{item.notes.trim()}</div>
                         ) : null}
                       </td>
                       <td className="py-2 text-center">{item.quantity}</td>
-                      <td className="py-2 text-right">S/ {cartLineUnitPrice(item).toFixed(2)}</td>
-                      <td className="py-2 text-right font-medium">
-                        S/ {cartLineTotal(item, taxRate, taxConfig).toFixed(2)}
+                      <td className="py-2 text-right tabular-nums">{formatSoles(cartLineUnitPrice(item))}</td>
+                      <td className="py-2 text-right font-medium tabular-nums">
+                        {formatSoles(cartLineTotal(item, taxRate, taxConfig))}
                       </td>
                     </tr>
                   ))}
@@ -1056,7 +1130,7 @@ export default function MesaPage() {
               </table>
               <div className="mt-4 pt-3 border-t-2 border-stone-200 flex justify-between items-center font-bold text-stone-800">
                 <span>Total a pagar</span>
-                <span className="text-lg">S/ {totalToPay.toFixed(2)}</span>
+                <span className="text-lg tabular-nums">{formatSoles(totalToPay)}</span>
               </div>
             </div>
             <div className="p-4 border-t border-stone-200">
@@ -1109,10 +1183,12 @@ export default function MesaPage() {
                     {comandaModal.comandas.map((c) => (
                       <tr key={c.id} className="border-b border-stone-100 last:border-0 align-top">
                         <td className="py-2 px-3">
-                          <div className="text-stone-700 font-medium">{c.product_name}</div>
+                          <ComandaLineDisplay comanda={c} />
                           <ComandaNoteEditor comanda={c} onUpdated={patchComandaNote} />
                         </td>
-                        <td className="py-2 px-3 text-center font-semibold text-stone-800">{c.quantity}</td>
+                        <td className="py-2 px-3 text-center font-semibold text-stone-800 align-top">
+                          {c.quantity}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1156,7 +1232,8 @@ export default function MesaPage() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-bold text-stone-800 mb-2">Anular comanda</h3>
             <p className="text-sm text-stone-600 mb-4">
-              {anulComanda.product_name} x{anulComanda.quantity} — S/ {(anulComanda.quantity * anulComanda.unit_price).toFixed(2)}
+              {anulComanda.product_name} x{anulComanda.quantity} —{' '}
+              {formatSoles(anulComanda.quantity * anulComanda.unit_price)}
             </p>
             <p className="text-xs text-rest-700 mb-3">Se requiere el PIN de operaciones (Ajustes → Restaurante).</p>
             <input
@@ -1338,6 +1415,15 @@ export default function MesaPage() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={(line: ManualCartLine) => setCart((c) => [...c, line])}
+      />
+
+      <ProductConfigureModal
+        product={configureProduct}
+        onClose={() => {
+          setConfigureProduct(null)
+          setConfigureFlySource(undefined)
+        }}
+        onConfirm={onConfiguredProduct}
       />
     </div>
   )

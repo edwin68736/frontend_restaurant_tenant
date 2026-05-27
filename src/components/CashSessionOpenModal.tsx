@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useCashSession } from '@/contexts/CashSessionContext'
+import { useBackendConnectivity } from '@/contexts/BackendConnectivityContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { CashOpenSessionForm } from '@/components/cash/CashOpenSessionForm'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 export function CashSessionOpenModal() {
   const { openModal, setOpenModal, openMySession } = useCashSession()
+  const { isOffline } = useBackendConnectivity()
   const { activeBranch } = useBranch()
   const [saving, setSaving] = useState(false)
 
-  if (!openModal) return null
+  if (!openModal || isOffline) return null
 
   const handleClose = () => {
     if (saving) return

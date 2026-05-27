@@ -8,9 +8,12 @@ import type { PaymentMethodRecord } from '@/services/cashbank.service'
 import type { SeriesRow } from '@/services/company.service'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
-import { paidCoversTotal, roundDisplay, roundSunat } from '@/utils/money'
+import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
 import { docTypeShortLabel, normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
+import { filterRestaurantCheckoutSeries } from '@/utils/restaurantCheckoutSeries'
+import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 
 export type CheckoutPaymentLine = {
   method: string
@@ -145,29 +148,31 @@ export function POSCheckoutModal({
     return primary.length > 0 ? primary.slice(0, 4) : methodOptions.slice(0, 4)
   }, [methodOptions, showMoreMethods])
 
+  const checkoutSeries = useMemo(() => filterRestaurantCheckoutSeries(series), [series])
+
   const docTypeGroups = useMemo(() => {
     const seen = new Set<string>()
     const groups: { key: string; label: string; items: SeriesRow[] }[] = []
-    for (const s of series) {
+    for (const s of checkoutSeries) {
       const key = normalizeDocTypeKey(s.doc_type)
       if (seen.has(key)) continue
       seen.add(key)
       groups.push({
         key,
-        label: docTypeShortLabel(s.doc_type),
-        items: series.filter((x) => normalizeDocTypeKey(x.doc_type) === key),
+        label: docTypeShortLabel(s.doc_type, s.sunat_code),
+        items: checkoutSeries.filter((x) => normalizeDocTypeKey(x.doc_type) === key),
       })
     }
     return groups
-  }, [series])
+  }, [checkoutSeries])
 
-  const selectedSeries = series.find((s) => s.id === seriesId)
+  const selectedSeries = checkoutSeries.find((s) => s.id === seriesId)
   const selectedDocKey = selectedSeries ? normalizeDocTypeKey(selectedSeries.doc_type) : ''
-  const seriesForDocType = series.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
+  const seriesForDocType = checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
 
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
-  const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+  const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
   const change = Math.max(0, roundDisplay(paid - payableTotal))
   const exactPayment =
     Math.abs(roundDisplay(paid) - roundDisplay(payableTotal)) < 0.02 && paid > 0
@@ -207,10 +212,16 @@ export function POSCheckoutModal({
     cleaned = cleaned.replace(/,/g, '')
     const n = Number(cleaned)
     const v = Number.isFinite(n) ? Math.max(0, roundDisplay(n)) : 0
-    onDiscountValueChange(discountMode === 'percent' ? Math.min(100, v) : v)
+    onDiscountValueChange(
+      discountMode === 'percent' ? Math.min(100, v) : roundSunat(v),
+    )
   }
 
-  const discountInputDisplay = isEditingDiscount ? discountDraft : String(discountValue ?? 0)
+  const discountInputDisplay = isEditingDiscount
+    ? discountDraft
+    : discountMode === 'percent'
+      ? String(discountValue ?? 0)
+      : formatAmountDisplay(discountValue ?? 0)
 
   const handleDiscountFocus = () => {
     discountPrevRef.current = discountValue ?? 0
@@ -275,6 +286,10 @@ export function POSCheckoutModal({
           </div>
 
           <div className="scrollbar-checkout min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            {checkoutSeries.length === 0 ? (
+              <BranchCheckoutSeriesEmptyState compact />
+            ) : (
+              <>
             {docTypeGroups.length > 0 && (
               <div>
                 <span className={LABEL}>Tipo de comprobante</span>
@@ -439,14 +454,12 @@ export function POSCheckoutModal({
                     ))}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      className={clsx(INPUT, 'text-right')}
-                      value={payments[0]?.amount ?? ''}
-                      onChange={(e) => updateLine(0, { amount: Number(e.target.value) || 0 })}
+                    <MoneyAmountInput
+                      className={clsx(INPUT, 'text-right tabular-nums')}
+                      value={payments[0]?.amount ?? 0}
+                      onChange={(amount) => updateLine(0, { amount })}
                       placeholder="Monto"
+                      emptyWhenZero
                     />
                     <input
                       type="text"
@@ -479,14 +492,12 @@ export function POSCheckoutModal({
                           <span className="truncate font-medium text-stone-800">{opt?.name ?? 'Método'}</span>
                           <span className="ml-auto text-stone-400">▾</span>
                         </button>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min={0}
-                          className={clsx(INPUT, 'w-[5.5rem] shrink-0 text-right py-1.5')}
+                        <MoneyAmountInput
+                          className={clsx(INPUT, 'w-[5.5rem] shrink-0 text-right py-1.5 tabular-nums')}
                           value={p.amount}
-                          onChange={(e) => updateLine(idx, { amount: Number(e.target.value) || 0 })}
+                          onChange={(amount) => updateLine(idx, { amount })}
                           placeholder="Monto"
+                          emptyWhenZero
                         />
                         <input
                           type="text"
@@ -554,6 +565,8 @@ export function POSCheckoutModal({
                 </div>
               </div>
             </div>
+              </>
+            )}
           </div>
 
           <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-stone-50/50 p-3">
@@ -568,7 +581,7 @@ export function POSCheckoutModal({
             <button
               type="button"
               onClick={onConfirm}
-              disabled={!canSubmit}
+              disabled={!canSubmit || checkoutSeries.length === 0}
               className={clsx(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-sm font-semibold text-white transition-colors',
                 canSubmit ? 'bg-rest-600 hover:bg-rest-700' : 'cursor-not-allowed bg-stone-300',

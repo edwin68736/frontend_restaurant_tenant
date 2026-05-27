@@ -1,4 +1,5 @@
 import type { PrintData } from '@/types/printData'
+import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -258,7 +259,12 @@ export function buildComandaEscPos(input: {
   tableName?: string | null
   orderNumber?: number | null
   waiterName?: string | null
-  items: { productName: string; quantity: number; notes?: string | null }[]
+  items: {
+    productName: string
+    quantity: number
+    notes?: string | null
+    modifierLines?: string[]
+  }[]
   paperWidthMm: PrinterPaperWidth
 }): Uint8Array {
   const cols = columnsForWidth(input.paperWidthMm)
@@ -298,9 +304,15 @@ export function buildComandaEscPos(input: {
     out.push(...escposBold(false))
     out.push(...escposSize(1, 1))
 
+    for (const mod of it.modifierLines ?? []) {
+      const line = String(mod).trim()
+      if (!line) continue
+      for (const w of wrapText(line, cols - 4)) out.push(...Array.from(textBytes(`  * ${w}\n`)))
+    }
+
     const note = String(it.notes ?? '').trim()
     if (note) {
-      for (const w of wrapText(note, cols - 4)) out.push(...Array.from(textBytes(`  * ${w}\n`)))
+      for (const w of wrapText(`Obs: ${note}`, cols - 4)) out.push(...Array.from(textBytes(`  > ${w}\n`)))
     }
     out.push(...Array.from(textBytes(`\n`)))
   }
@@ -425,7 +437,7 @@ export async function buildSaleDocumentEscPos(
   wrapText(companyName, cols).forEach((x) => companyLines.push(x))
   if (printData.company?.trade_name) wrapText(printData.company.trade_name, cols).forEach((x) => companyLines.push(x))
   if (printData.company?.ruc) companyLines.push(`RUC: ${printData.company.ruc}`)
-  const addr = printData.company?.address || printData.branch?.address || ''
+  const addr = getPrintIssuerAddress(printData)
   if (addr) wrapText(addr, cols).forEach((x) => companyLines.push(x))
   if (printData.company?.phone) companyLines.push(`Telf: ${printData.company.phone}`)
   if (printData.company?.email) companyLines.push(`Email: ${printData.company.email}`)
@@ -562,7 +574,12 @@ export async function printComandaAuto(
     tableName?: string | null
     orderNumber?: number | null
     waiterName?: string | null
-    items: { productName: string; quantity: number; notes?: string | null }[]
+    items: {
+      productName: string
+      quantity: number
+      notes?: string | null
+      modifierLines?: string[]
+    }[]
   },
   opts?: { preparationArea?: string | null; printerConfig?: PrinterConfig },
 ): Promise<string> {
