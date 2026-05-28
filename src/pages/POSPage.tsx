@@ -48,6 +48,8 @@ import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
+import { isCapacitorNative } from '@/lib/app'
+import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { cartToOrderItems, getActiveKitchenRounds, getOrderRoundHistory, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import {
@@ -183,8 +185,10 @@ export default function POSPage() {
   const [orderDetailsModal, setOrderDetailsModal] = useState<'takeaway' | 'delivery' | null>(null)
   const [voidOrderTarget, setVoidOrderTarget] = useState<RestaurantOrderSummary | null>(null)
   const [scannerMode, setScannerMode] = useState(readScannerModePreference)
+  const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
   const [scanProcessing, setScanProcessing] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const useCameraBarcodeScanner = isCapacitorNative()
 
   const loadSession = useCallback(async (sessionId: number): Promise<SessionDetail> => {
     const detail = await restaurantService.getSession(sessionId)
@@ -843,11 +847,30 @@ export default function POSPage() {
     } catch {
       /* ignore */
     }
-    if (scannerMode) {
-      const t = window.setTimeout(() => searchInputRef.current?.focus(), 0)
-      return () => window.clearTimeout(t)
+    if (!scannerMode) {
+      setCameraScannerOpen(false)
+      return
     }
-  }, [scannerMode])
+    if (useCameraBarcodeScanner) {
+      setCameraScannerOpen(true)
+      return
+    }
+    const t = window.setTimeout(() => searchInputRef.current?.focus(), 0)
+    return () => window.clearTimeout(t)
+  }, [scannerMode, useCameraBarcodeScanner])
+
+  const setScannerModeOff = useCallback(() => {
+    setScannerMode(false)
+    setCameraScannerOpen(false)
+  }, [])
+
+  const toggleScannerMode = useCallback(() => {
+    setScannerMode((on) => {
+      const next = !on
+      if (!next) setCameraScannerOpen(false)
+      return next
+    })
+  }, [])
 
   const handleBarcodeScan = useCallback(
     async (rawCode: string) => {
@@ -1310,8 +1333,12 @@ export default function POSPage() {
                   )}
                   title={
                     scannerMode
-                      ? 'Modo escáner activo: Enter agrega al carrito'
-                      : 'Activar modo escáner de código de barras'
+                      ? useCameraBarcodeScanner
+                        ? 'Cámara activa para escanear códigos'
+                        : 'Modo escáner activo: Enter agrega al carrito'
+                      : useCameraBarcodeScanner
+                        ? 'Abrir cámara para escanear códigos'
+                        : 'Activar modo escáner de código de barras'
                   }
                 >
                   <ScanBarcode
@@ -1325,7 +1352,7 @@ export default function POSPage() {
                     role="switch"
                     aria-checked={scannerMode}
                     aria-label="Modo escáner de código de barras"
-                    onClick={() => setScannerMode((on) => !on)}
+                    onClick={toggleScannerMode}
                     className={clsx(
                       'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-rest-500/50',
                       scannerMode ? 'bg-rest-600' : 'bg-stone-300',
@@ -2058,6 +2085,13 @@ export default function POSPage() {
           setConfigureProduct(null)
         }}
         onConfirm={onConfiguredProduct}
+      />
+
+      <PosBarcodeScannerModal
+        open={cameraScannerOpen}
+        onClose={setScannerModeOff}
+        onScan={handleBarcodeScan}
+        busy={scanProcessing}
       />
     </div>
   )

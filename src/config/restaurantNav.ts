@@ -46,8 +46,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operaciones',
     items: [
       { to: '/pos', label: 'POS', icon: Receipt, feature: 'pos', emphasis: true },
-      { to: '/comandas', label: 'Comandas', icon: ChefHat, feature: 'comandas', emphasis: true },
       { to: '/salas', label: 'Mesas', icon: LayoutGrid, feature: 'salas', emphasis: true },
+      { to: '/comandas', label: 'Comandas', icon: ChefHat, feature: 'comandas', emphasis: true },
     ],
   },
   {

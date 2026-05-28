@@ -53,18 +53,18 @@ export default function HomePage() {
 <div className="absolute inset-0 bg-gradient-to-b from-stone-950/15 via-stone-900/10 to-stone-950/20 pointer-events-none" aria-hidden />
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center w-full max-w-2xl mx-auto px-[clamp(0.75rem,4vw,2.5rem)] py-[max(1.25rem,env(safe-area-inset-top))] pb-4 min-h-0">
-        <div className="w-full text-center mb-[clamp(1rem,4vw,2rem)] shrink-0">
+        <div className="w-full text-center bg-slate-700/50 p-2 rounded-2xl mb-[clamp(1rem,4vw,2rem)] shrink-0">
           {/*<img
             src={BRAND_LOGO}
             alt="Tukichef"
             className="w-[clamp(4rem,18vw,7rem)] h-[clamp(4rem,18vw,7rem)] mx-auto mb-3 sm:mb-4 object-contain drop-shadow-lg"
           />*/}
-          <h1 className="text-[clamp(1.25rem,5vw,1.875rem)] font-bold text-stone-800 tracking-tight drop-shadow-md px-2">
+          <h1 className="text-[clamp(1.25rem,5vw,1.875rem)] font-bold text-gray-200 tracking-tight drop-shadow-md px-2">
             {tenant.name || 'Restaurante'}
           </h1>
           {/*<p className="text-white/90 text-xs sm:text-sm mt-1 drop-shadow">Tukichef · Operación en sala</p>*/}
           {tenant.ruc && (
-            <p className="text-stone-800 text-[10px] sm:text-xs font-mono mt-1.5 sm:mt-2">RUC {tenant.ruc}</p>
+            <p className="text-gray-200 text-[10px] sm:text-xs font-mono mt-1.5 sm:mt-2">RUC {tenant.ruc}</p>
           )}
         </div>
 

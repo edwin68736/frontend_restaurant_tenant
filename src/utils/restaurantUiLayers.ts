@@ -7,6 +7,8 @@ export const REST_PAGE_MODAL_Z = 'z-[120]'
 export const REST_PORTAL_MODAL_Z = 'z-[300]'
 /** Encima de Procesar pago u otros portales (ej. nuevo cliente). */
 export const REST_PORTAL_MODAL_STACK_Z = 'z-[350]'
+/** Escáner POS con cámara (encima de modales de cobro). */
+export const REST_CAMERA_SCANNER_Z = 'z-[380]'
 export const REST_DROPDOWN_Z = 'z-[450]'
 /** Para estilos inline en portales (createPortal). Por encima del aviso de conexión. */
 export const REST_DROPDOWN_Z_INDEX = 450
