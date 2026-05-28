@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { X, Wallet, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PortalModal } from '@/components/ui/PortalModal'
-import { SearchableSelect } from '@/components/SearchableSelect'
 import { PaymentMethodIcon } from '@/components/pos/PaymentMethodIcon'
 import type { PaymentMethodRecord } from '@/services/cashbank.service'
 import type { SeriesRow } from '@/services/company.service'
@@ -11,9 +10,10 @@ import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
 import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
-import { docTypeShortLabel, normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
+import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
 import { filterRestaurantCheckoutSeries } from '@/utils/restaurantCheckoutSeries'
 import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
+import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
 
 export type CheckoutPaymentLine = {
   method: string
@@ -29,9 +29,6 @@ type MethodOption = {
 const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
 const INPUT =
   'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-rest-500/30 focus:border-rest-400'
-const SELECT_TRIGGER =
-  'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2'
-
 const FALLBACK_METHODS: MethodOption[] = [
   { code: 'cash', name: 'Efectivo' },
   { code: 'yape', name: 'Yape' },
@@ -56,13 +53,6 @@ function isCashMethod(code: string, name: string): boolean {
   return s.includes('efectivo') || s.includes('cash') || code === '01'
 }
 
-export type CheckoutClientPickerProps = {
-  contactId: number | null
-  contacts: { id: number; business_name: string }[]
-  onChange: (id: number | null) => void
-  onAddNew?: () => void
-}
-
 type Props = {
   open: boolean
   onClose: () => void
@@ -76,7 +66,13 @@ type Props = {
   igvAmount?: number
   series: SeriesRow[]
   seriesId: number
+  docType: string
   onSeriesChange: (seriesId: number, docType: string) => void
+  contactId: number | null
+  contacts: { id: number; business_name: string; doc_number?: string; doc_type?: string }[]
+  onContactChange: (id: number | null) => void
+  onAddContact?: () => void
+  onPreferVariosContact?: () => void
   paymentMethods: PaymentMethodRecord[]
   payments: CheckoutPaymentLine[]
   onPaymentsChange: (payments: CheckoutPaymentLine[]) => void
@@ -84,9 +80,7 @@ type Props = {
   confirmDisabled?: boolean
   title?: string
   confirmLabel?: string
-  /** Mesa: selector de cliente (en POS va en el carrito). */
-  clientPicker?: CheckoutClientPickerProps
-  /** Contenido extra bajo serie/descuento (opcional). */
+  /** Contenido extra antes de métodos de pago (opcional). */
   extraBeforePayments?: ReactNode
   /** Si false, oculta el campo de descuento. */
   allowDiscount?: boolean
@@ -105,7 +99,13 @@ export function POSCheckoutModal({
   igvAmount = 0,
   series,
   seriesId,
+  docType,
   onSeriesChange,
+  contactId,
+  contacts,
+  onContactChange,
+  onAddContact,
+  onPreferVariosContact,
   paymentMethods,
   payments,
   onPaymentsChange,
@@ -113,7 +113,6 @@ export function POSCheckoutModal({
   confirmDisabled = false,
   title = 'Procesar pago',
   confirmLabel = 'Finalizar venta',
-  clientPicker,
   extraBeforePayments,
   allowDiscount = true,
 }: Props) {
@@ -150,26 +149,6 @@ export function POSCheckoutModal({
 
   const checkoutSeries = useMemo(() => filterRestaurantCheckoutSeries(series), [series])
 
-  const docTypeGroups = useMemo(() => {
-    const seen = new Set<string>()
-    const groups: { key: string; label: string; items: SeriesRow[] }[] = []
-    for (const s of checkoutSeries) {
-      const key = normalizeDocTypeKey(s.doc_type)
-      if (seen.has(key)) continue
-      seen.add(key)
-      groups.push({
-        key,
-        label: docTypeShortLabel(s.doc_type, s.sunat_code),
-        items: checkoutSeries.filter((x) => normalizeDocTypeKey(x.doc_type) === key),
-      })
-    }
-    return groups
-  }, [checkoutSeries])
-
-  const selectedSeries = checkoutSeries.find((s) => s.id === seriesId)
-  const selectedDocKey = selectedSeries ? normalizeDocTypeKey(selectedSeries.doc_type) : ''
-  const seriesForDocType = checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
-
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
   const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
@@ -196,14 +175,6 @@ export function POSCheckoutModal({
 
   const updateLine = (index: number, patch: Partial<CheckoutPaymentLine>) => {
     onPaymentsChange(payments.map((p, i) => (i === index ? { ...p, ...patch } : p)))
-  }
-
-  const selectDocType = (key: string) => {
-    const group = docTypeGroups.find((g) => g.key === key)
-    const first = group?.items[0]
-    if (first) {
-      onSeriesChange(first.id, String(first.doc_type || '').trim() || 'NOTA DE VENTA')
-    }
   }
 
   const parseDiscountInput = (raw: string) => {
@@ -265,10 +236,10 @@ export function POSCheckoutModal({
       <PortalModal
         open={open}
         onClose={loading ? () => {} : onClose}
-        className="max-w-md"
+        className="max-w-lg"
         overlayClassName="items-center p-3 sm:p-4"
       >
-        <div className="flex max-h-[min(90dvh,640px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className="flex max-h-[min(92dvh,720px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200 px-4 py-3">
             <h3 className="flex items-center gap-2 text-sm font-bold text-stone-800">
               <Wallet size={18} className="shrink-0 text-rest-600" aria-hidden />
@@ -290,116 +261,52 @@ export function POSCheckoutModal({
               <BranchCheckoutSeriesEmptyState compact />
             ) : (
               <>
-            {docTypeGroups.length > 0 && (
+            <CheckoutCartBillingFields
+              series={series}
+              seriesId={seriesId}
+              docType={docType}
+              onSeriesChange={onSeriesChange}
+              contactId={contactId}
+              contacts={contacts}
+              onContactChange={onContactChange}
+              onAddContact={onAddContact}
+              onPreferVariosContact={onPreferVariosContact}
+            />
+
+            {allowDiscount && (
               <div>
-                <span className={LABEL}>Tipo de comprobante</span>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {docTypeGroups.map((g) => (
-                    <button
-                      key={g.key}
-                      type="button"
-                      onClick={() => selectDocType(g.key)}
-                      className={clsx(
-                        'rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors',
-                        selectedDocKey === g.key
-                          ? 'border-blue-900 bg-blue-900 text-white shadow-sm'
-                          : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:bg-stone-50',
-                      )}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
+                <label className={LABEL}>Descuento</label>
+                <div className="flex overflow-hidden rounded-xl border border-stone-200 bg-white">
+                  <button
+                    type="button"
+                    className={clsx(
+                      'w-9 shrink-0 border-r border-stone-200 text-xs font-bold text-white',
+                      discountMode === 'percent' ? 'bg-rest-600' : 'bg-stone-500',
+                    )}
+                    onClick={() =>
+                      onDiscountModeChange(discountMode === 'percent' ? 'amount' : 'percent')
+                    }
+                  >
+                    {discountMode === 'percent' ? '%' : 'S/'}
+                  </button>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-stone-800 focus:outline-none"
+                    value={discountInputDisplay}
+                    onFocus={handleDiscountFocus}
+                    onChange={(e) => {
+                      if (isEditingDiscount) {
+                        setDiscountDraft(e.target.value)
+                        parseDiscountInput(e.target.value)
+                      }
+                    }}
+                    onBlur={handleDiscountBlur}
+                    placeholder={discountMode === 'percent' ? '0' : '0.00'}
+                  />
                 </div>
               </div>
             )}
-
-            {clientPicker && (
-              <div>
-                <label className={LABEL}>Cliente</label>
-                <div className="flex gap-2">
-                  <div className="min-w-0 flex-1">
-                    <SearchableSelect
-                      value={clientPicker.contactId ?? null}
-                      onChange={(v) =>
-                        clientPicker.onChange(v == null || String(v) === '' ? null : Number(v))
-                      }
-                      options={clientPicker.contacts.map((c) => ({
-                        value: c.id,
-                        label: c.business_name,
-                      }))}
-                      placeholder="Selecciona cliente"
-                      searchable
-                      className={SELECT_TRIGGER}
-                    />
-                  </div>
-                  {clientPicker.onAddNew && (
-                    <button
-                      type="button"
-                      onClick={clientPicker.onAddNew}
-                      className="shrink-0 rounded-xl border border-rest-500 px-3 py-2 text-xs font-medium text-rest-600 hover:bg-rest-50"
-                    >
-                      Nuevo
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className={LABEL}>Serie</label>
-                <SearchableSelect
-                  value={seriesId || null}
-                  onChange={(v) => {
-                    const id = Number(v)
-                    const s = series.find((x) => x.id === id)
-                    if (s) onSeriesChange(id, String(s.doc_type || '').trim() || 'NOTA DE VENTA')
-                  }}
-                  options={(seriesForDocType.length > 0 ? seriesForDocType : series).map((s) => ({
-                    value: s.id,
-                    label: String(s.series ?? '').trim() || `Serie ${s.id}`,
-                  }))}
-                  placeholder="Seleccione..."
-                  searchable={(seriesForDocType.length || series.length) > 8}
-                  className={SELECT_TRIGGER}
-                />
-              </div>
-
-              {allowDiscount && (
-                <div>
-                  <label className={LABEL}>Descuento</label>
-                  <div className="flex overflow-hidden rounded-xl border border-stone-200 bg-white">
-                    <button
-                      type="button"
-                      className={clsx(
-                        'w-9 shrink-0 border-r border-stone-200 text-xs font-bold text-white',
-                        discountMode === 'percent' ? 'bg-rest-600' : 'bg-stone-500',
-                      )}
-                      onClick={() =>
-                        onDiscountModeChange(discountMode === 'percent' ? 'amount' : 'percent')
-                      }
-                    >
-                      {discountMode === 'percent' ? '%' : 'S/'}
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-stone-800 focus:outline-none"
-                      value={discountInputDisplay}
-                      onFocus={handleDiscountFocus}
-                      onChange={(e) => {
-                        if (isEditingDiscount) {
-                          setDiscountDraft(e.target.value)
-                          parseDiscountInput(e.target.value)
-                        }
-                      }}
-                      onBlur={handleDiscountBlur}
-                      placeholder={discountMode === 'percent' ? '0' : '0.00'}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
 
             {extraBeforePayments}
 

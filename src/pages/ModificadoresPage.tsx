@@ -121,9 +121,10 @@ export default function ModificadoresPage() {
     <div className="w-full flex flex-col flex-1 min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 shrink-0">
         <div>
-          <h2 className="text-lg font-bold text-stone-800">Grupos de modificadores</h2>
+          <h2 className="text-lg font-bold text-stone-800">Grupos de extras</h2>
           <p className="text-sm text-stone-500">
-            Define variantes y extras con precio. Luego vincúlalos a cada producto en <strong>Productos</strong>.
+            Extras reutilizables entre productos (queso, tocino…). Las presentaciones se configuran en cada
+            producto en <strong>Productos</strong>.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -146,13 +147,11 @@ export default function ModificadoresPage() {
         </div>
       </div>
 
-      <div className="mb-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600 space-y-1">
-        <p>
-          <strong>Variante</strong> (tamaño, presentación): el cliente elige una · puedes poner +S/ 0 o el monto que
-          suma al precio base.
-        </p>
-        <p>
-          <strong>Extras</strong> (papa, queso, tocino): puede elegir varios · cada uno con su precio adicional.
+      <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-950">
+        <p className="font-bold">Solo extras globales</p>
+        <p className="mt-0.5">
+          Cada opción <strong>suma</strong> al precio. Para tamaños o envases por producto (Coca 500 ml, Pizza
+          mediana), usa <strong>Presentaciones</strong> al editar el producto.
         </p>
       </div>
 
@@ -167,7 +166,7 @@ export default function ModificadoresPage() {
               <thead className="bg-stone-50 border-b border-stone-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold text-stone-700">Nombre</th>
-                  <th className="text-left px-4 py-3 font-semibold text-stone-700">Tipo</th>
+                  <th className="text-left px-4 py-3 font-semibold text-stone-700">Comportamiento</th>
                   <th className="text-left px-4 py-3 font-semibold text-stone-700">Opciones</th>
                   <th className="w-24" />
                 </tr>
@@ -176,12 +175,9 @@ export default function ModificadoresPage() {
                 {groups.map((g) => (
                   <tr key={g.id} className="border-b border-stone-100 hover:bg-stone-50/50">
                     <td className="px-4 py-3 font-medium text-stone-800">{g.name}</td>
-                    <td className="px-4 py-3 text-stone-600 text-xs whitespace-nowrap">
-                      {g.multi_select
-                        ? 'Extras (varios)'
-                        : g.required
-                          ? 'Variante (obligatoria)'
-                          : 'Variante (opcional)'}
+                    <td className="px-4 py-3 text-xs text-stone-600 whitespace-nowrap">
+                      {g.multi_select ? 'Varios extras' : 'Un extra'}
+                      {g.required ? ' · obligatorio' : ''}
                     </td>
                     <td className="px-4 py-3">
                       <ul className="space-y-1">
@@ -191,7 +187,7 @@ export default function ModificadoresPage() {
                             <span className="text-rest-700 tabular-nums">
                               {Number(o.extra_price) > 0
                                 ? `+ S/ ${Number(o.extra_price).toFixed(2)}`
-                                : '(sin cargo extra)'}
+                                : '(sin cargo)'}
                             </span>
                           </li>
                         ))}
@@ -260,7 +256,7 @@ export default function ModificadoresPage() {
         <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-stone-200 shrink-0">
             <h3 className="font-bold text-stone-800 text-lg">
-              {modal === 'edit' ? 'Editar grupo' : 'Nuevo grupo'}
+              {modal === 'edit' ? 'Editar grupo de extras' : 'Nuevo grupo de extras'}
             </h3>
           </div>
 
@@ -270,62 +266,33 @@ export default function ModificadoresPage() {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ej. Tamaño, Extras, Presentación"
+                placeholder="Ej. Extras, Adicionales"
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm"
               />
             </div>
 
             <div className="rounded-xl border border-stone-200 p-3 space-y-2 bg-white">
-              <p className="text-xs font-semibold text-stone-700">Tipo de grupo</p>
-              <label className="flex items-start gap-3 p-2 rounded-lg hover:bg-stone-50 cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-stone-700">
                 <input
-                  type="radio"
-                  name="groupType"
-                  checked={!multiSelect}
-                  onChange={() => {
-                    setMultiSelect(false)
-                  }}
-                  className="mt-1"
-                />
-                <span className="text-sm">
-                  <span className="font-medium text-stone-800">Variante</span>
-                  <span className="block text-xs text-stone-500">Una sola opción (tamaño, término, presentación)</span>
-                </span>
-              </label>
-              <label className="flex items-start gap-3 p-2 rounded-lg hover:bg-stone-50 cursor-pointer">
-                <input
-                  type="radio"
-                  name="groupType"
+                  type="checkbox"
                   checked={multiSelect}
-                  onChange={() => {
-                    setMultiSelect(true)
-                    setRequired(false)
-                  }}
-                  className="mt-1"
+                  onChange={(e) => setMultiSelect(e.target.checked)}
+                  className="rounded border-stone-300"
                 />
-                <span className="text-sm">
-                  <span className="font-medium text-stone-800">Extras</span>
-                  <span className="block text-xs text-stone-500">Varias opciones (queso, papa, tocino…)</span>
-                </span>
+                Permitir elegir varios extras
               </label>
-              {!multiSelect && (
-                <label className="flex items-center gap-2 text-sm text-stone-700 pl-1 pt-1 border-t border-stone-100">
-                  <input
-                    type="checkbox"
-                    checked={required}
-                    onChange={(e) => setRequired(e.target.checked)}
-                    className="rounded border-stone-300"
-                  />
-                  Obligatorio en el POS (el mozo debe elegir una)
-                </label>
-              )}
+              <label className="flex items-center gap-2 text-sm text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={required}
+                  onChange={(e) => setRequired(e.target.checked)}
+                  className="rounded border-stone-300"
+                />
+                Obligatorio en el POS (al menos uno)
+              </label>
             </div>
 
-            <ModifierOptionsEditor
-              options={optionDrafts}
-              onChange={setOptionDrafts}
-              isExtrasGroup={multiSelect}
-            />
+            <ModifierOptionsEditor options={optionDrafts} onChange={setOptionDrafts} />
           </div>
 
           <div className="flex gap-2 p-4 border-t border-stone-200 shrink-0">

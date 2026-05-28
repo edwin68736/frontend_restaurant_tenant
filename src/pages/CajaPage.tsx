@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download } from 'lucide-react'
 import {
@@ -151,13 +151,44 @@ function formatReportSessionSelectLabel(s: CashSession, style: 'current' | 'hist
 
 export default function CajaPage() {
   const { activeBranch, activeBranchId } = useBranch()
-  const { refresh: refreshCashContext } = useCashSession()
+  const {
+    session: contextSession,
+    loading: contextSessionLoading,
+    refresh: refreshCashContext,
+  } = useCashSession()
+  const loadGenRef = useRef(0)
+  const contextSessionRef = useRef(contextSession)
+  const contextSessionLoadingRef = useRef(contextSessionLoading)
+  contextSessionRef.current = contextSession
+  contextSessionLoadingRef.current = contextSessionLoading
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [sessions, setSessions] = useState<CashSession[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
+  const [movementsPage, setMovementsPage] = useState(1)
+  const MOVEMENTS_PAGE_SIZE = 20
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [tab, setTab] = useState<'sesion' | 'movimientos' | 'reporte' | 'config'>('sesion')
+
+  const movementsTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(movements.length / MOVEMENTS_PAGE_SIZE)),
+    [movements.length],
+  )
+
+  const paginatedMovements = useMemo(() => {
+    const start = (movementsPage - 1) * MOVEMENTS_PAGE_SIZE
+    return movements.slice(start, start + MOVEMENTS_PAGE_SIZE)
+  }, [movements, movementsPage])
+
+  useEffect(() => {
+    setMovementsPage(1)
+  }, [session?.id])
+
+  useEffect(() => {
+    if (movementsPage > movementsTotalPages) {
+      setMovementsPage(movementsTotalPages)
+    }
+  }, [movementsPage, movementsTotalPages])
   const [loading, setLoading] = useState(true)
   const [openModal, setOpenModal] = useState(false)
   const [closeModal, setCloseModal] = useState(false)
@@ -443,35 +474,53 @@ export default function CajaPage() {
     }
   }
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!activeBranchId) return
+    const gen = ++loadGenRef.current
     setLoading(true)
     try {
+      const ctx = contextSessionRef.current
+      const ctxLoading = contextSessionLoadingRef.current
+      const useContextSession =
+        !ctxLoading &&
+        ctx !== undefined &&
+        (ctx === null || ctx.branch_id === activeBranchId || !ctx.branch_id)
+
+      const openSessionPromise = useContextSession
+        ? Promise.resolve(ctx)
+        : cashbankService.getOpenSession(activeBranchId)
+
       const [sess, hist, ba, pm] = await Promise.all([
-        cashbankService.getOpenSession(activeBranchId || undefined),
-        cashbankService.listSessions(activeBranchId || undefined),
+        openSessionPromise,
+        cashbankService.listSessions(activeBranchId),
         cashbankService.listBankAccounts(true),
         cashbankService.listPaymentMethods(true),
       ])
+
+      if (gen !== loadGenRef.current) return
+
       setSession(sess ?? null)
       setSessions(hist ?? [])
       setBankAccounts(ba ?? [])
       setPaymentMethods(pm ?? [])
       if (sess?.id != null) {
         const movs = await cashbankService.listMovements(sess.id)
+        if (gen !== loadGenRef.current) return
         setMovements(movs ?? [])
       } else {
         setMovements([])
       }
     } catch {
-      toast.error('Error al cargar')
+      if (gen === loadGenRef.current) toast.error('Error al cargar')
     } finally {
-      setLoading(false)
+      if (gen === loadGenRef.current) setLoading(false)
     }
-  }
+  }, [activeBranchId])
 
   useEffect(() => {
-    if (activeBranchId) load()
-  }, [activeBranchId])
+    if (!activeBranchId) return
+    void load()
+  }, [activeBranchId, load])
 
   useOnBranchChange(() => {
     setSession(null)
@@ -872,7 +921,7 @@ export default function CajaPage() {
               </thead>
               <tbody>
                 {session &&
-                  movements.map((m) => (
+                  paginatedMovements.map((m) => (
                     <tr key={m.id} className="border-b border-stone-100">
                       <td className="px-4 py-2 text-xs whitespace-nowrap">{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
                       <td className="px-4 py-2">
@@ -901,6 +950,35 @@ export default function CajaPage() {
               </tbody>
             </table>
           </div>
+          {session && movements.length > MOVEMENTS_PAGE_SIZE && (
+            <div className="px-4 py-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-stone-500">
+                Mostrando {(movementsPage - 1) * MOVEMENTS_PAGE_SIZE + 1}–
+                {Math.min(movementsPage * MOVEMENTS_PAGE_SIZE, movements.length)} de {movements.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={movementsPage <= 1}
+                  onClick={() => setMovementsPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs text-stone-600 tabular-nums">
+                  Página {movementsPage} / {movementsTotalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={movementsPage >= movementsTotalPages}
+                  onClick={() => setMovementsPage((p) => Math.min(movementsTotalPages, p + 1))}
+                  className="px-3 py-1.5 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

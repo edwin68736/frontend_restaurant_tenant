@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink } from 'react-router-dom'
-import { X } from 'lucide-react'
+import { Settings, X } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import type { NavGroup, NavItem } from '@/config/restaurantNav'
 import { navSheetLinkClasses } from '@/utils/restaurantUiColors'
 import SubscriptionSidebarCard from './SubscriptionSidebarCard'
@@ -27,6 +29,9 @@ function SheetLink({ item, onClose }: { item: NavItem; onClose: () => void }) {
 }
 
 export default function ResponsiveMenu({ open, onClose, groups }: Props) {
+  const { restaurantPermissions, employeeType } = useAuth()
+  const showPrinterSettings = canAccessAppSettings(restaurantPermissions, employeeType)
+
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -64,6 +69,25 @@ export default function ResponsiveMenu({ open, onClose, groups }: Props) {
         </div>
         <div className="flex-1 space-y-6 overflow-y-auto p-4">
           <SubscriptionSidebarCard onNavigate={onClose} />
+          {showPrinterSettings && (
+            <div>
+              <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                Equipo
+              </p>
+              <NavLink
+                to="/ajustes"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium touch-manipulation ${
+                    isActive ? 'bg-rest-50 text-rest-800' : 'text-stone-700 hover:bg-stone-50'
+                  }`
+                }
+              >
+                <Settings size={20} strokeWidth={2} />
+                Impresoras y ajustes
+              </NavLink>
+            </div>
+          )}
           {groups.map((group) => (
             <div key={group.id}>
               <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">

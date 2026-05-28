@@ -4,11 +4,9 @@ import { createEmptyOptionDraft, type ModifierOptionDraft } from '@/utils/modifi
 type Props = {
   options: ModifierOptionDraft[]
   onChange: (options: ModifierOptionDraft[]) => void
-  /** true = grupo de extras (varios); false = variante (una opción) */
-  isExtrasGroup: boolean
 }
 
-export function ModifierOptionsEditor({ options, onChange, isExtrasGroup }: Props) {
+export function ModifierOptionsEditor({ options, onChange }: Props) {
   const rows = options.length > 0 ? options : [createEmptyOptionDraft()]
 
   const setRow = (index: number, patch: Partial<ModifierOptionDraft>) => {
@@ -31,9 +29,7 @@ export function ModifierOptionsEditor({ options, onChange, isExtrasGroup }: Prop
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-sm font-medium text-stone-700">
-          {isExtrasGroup ? 'Extras disponibles' : 'Opciones de variante'} *
-        </label>
+        <label className="text-sm font-medium text-stone-700">Opciones de extra *</label>
         <button
           type="button"
           onClick={addRow}
@@ -43,9 +39,7 @@ export function ModifierOptionsEditor({ options, onChange, isExtrasGroup }: Prop
         </button>
       </div>
       <p className="text-[11px] text-stone-500 leading-relaxed">
-        {isExtrasGroup
-          ? 'Cada fila es un extra opcional. El precio adicional se suma al plato (no reemplaza el precio base).'
-          : 'El mozo elige una sola opción. El precio adicional se suma al precio base del producto.'}
+        Cada fila es un extra reutilizable. El precio se suma al producto en mesa/POS.
       </p>
 
       <div className="space-y-2 max-h-[min(40vh,320px)] overflow-y-auto pr-0.5">
@@ -62,7 +56,7 @@ export function ModifierOptionsEditor({ options, onChange, isExtrasGroup }: Prop
                 type="text"
                 value={row.name}
                 onChange={(e) => setRow(index, { name: e.target.value })}
-                placeholder={isExtrasGroup ? 'Ej. Papa extra' : 'Ej. Familiar'}
+                placeholder="Ej. Queso extra, Tocino"
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
               />
             </div>
@@ -109,4 +103,3 @@ export function ModifierOptionsEditor({ options, onChange, isExtrasGroup }: Prop
     </div>
   )
 }
-

@@ -17,12 +17,20 @@ export interface Product {
   preparation_area?: string | null
   has_modifiers?: boolean
   has_variants?: boolean
+  presentations?: ProductPresentation[]
   manage_stock?: boolean
   active: boolean
   /** Catálogo SUNAT N°07: 10 Gravado, 20 Exonerado, 30 Inafecto, 40 Exportación */
   igv_affectation_type?: string
   /** Si el precio de venta ya incluye IGV (solo aplica cuando es gravado) */
   price_includes_igv?: boolean
+}
+
+export interface ProductPresentation {
+  id?: number
+  name: string
+  sale_price: number
+  sort_order?: number
 }
 
 export interface ModifierGroup {
@@ -83,6 +91,7 @@ export interface CreateProductInput {
   is_restaurant?: boolean
   preparation_area?: string | null
   modifier_group_ids?: number[]
+  presentations?: ProductPresentation[]
   active?: boolean
 }
 
@@ -134,8 +143,17 @@ export const productsService = {
 
   get: (id: number) =>
     api
-      .get<{ data: Product; modifier_group_ids: number[] }>(`/api/products/${id}`)
-      .then((r) => ({ data: r.data.data!, modifier_group_ids: r.data.modifier_group_ids ?? [] })),
+      .get<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] }>(
+        `/api/products/${id}`,
+      )
+      .then((r) => ({
+        data: {
+          ...r.data.data!,
+          presentations: r.data.presentations ?? [],
+        },
+        modifier_group_ids: r.data.modifier_group_ids ?? [],
+        presentations: r.data.presentations ?? [],
+      })),
 
   bulkImportRestaurant: (items: BulkImportItemPayload[]) =>
     api
@@ -166,6 +184,7 @@ export const productsService = {
       has_variants: data.has_variants ?? false,
       is_restaurant: true,
       modifier_group_ids: data.modifier_group_ids ?? [],
+      presentations: data.presentations ?? [],
     }).then((r) => r.data.data!),
 
   update: (id: number, data: Partial<CreateProductInput>) =>

@@ -28,6 +28,8 @@ import {
 } from '@/utils/posOrderHelpers'
 import {
   appendCatalogLine,
+  applyCatalogLineUnitPrice,
+  buildCatalogConfigureKey,
   cartLineKey,
   cartLineLabel,
   cartLineTotal,
@@ -38,8 +40,8 @@ import {
   type ManualCartLine,
   type PosCartLine,
 } from '@/utils/posCart'
+import { roundMoney } from '@/utils/checkoutDiscount'
 import {
-  buildConfigureKey,
   formatModifierLines,
   formatModifierSummary,
   parseStoredModifiers,
@@ -48,11 +50,22 @@ import {
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
+import { CartClearButton } from '@/components/pos/CartClearButton'
+import { playCartAddSound, playCartClearSound } from '@/utils/cartSounds'
 import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
+import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
+import {
+  contactDocConsultMinLength,
+  contactDocNumberPlaceholder,
+  contactDocSelectOptions,
+  contactDocSupportsConsulta,
+  sanitizeContactDocNumber,
+  toContactDocCode,
+} from '@/utils/contactDocTypes'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
 import {
   calcCheckoutDiscountAmount,
@@ -63,9 +76,9 @@ import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
 import { formatMoney, formatSoles } from '@/utils/format'
 import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
+import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
+import { PortalModal } from '@/components/ui/PortalModal'
 import { REST_PAGE_MODAL_Z, useFlyToCart } from '@/hooks/useFlyToCart'
-
-const DEFAULT_POS_CONTACT = { doc_type: '0', doc_number: '99999999' }
 
 export default function MesaPage() {
   const { canAccess, hasPerm, employeeType, restaurantPermissions } = useAuth()
@@ -90,7 +103,7 @@ export default function MesaPage() {
   const [cart, setCart] = useState<PosCartLine[]>([])
   const [manualProductOpen, setManualProductOpen] = useState(false)
   const [configureProduct, setConfigureProduct] = useState<Product | null>(null)
-  const [configureFlySource, setConfigureFlySource] = useState<HTMLElement | undefined>(undefined)
+  const configureFlySourceRef = useRef<HTMLElement | undefined>(undefined)
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
   const [ordersModalOpen, setOrdersModalOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -120,7 +133,8 @@ export default function MesaPage() {
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
   const cartBtnRef = useRef<HTMLButtonElement>(null)
   const desktopCartRef = useRef<HTMLDivElement>(null)
-  const { flyToCart, FlyToCartLayer } = useFlyToCart(cartBtnRef, { desktopCartRef })
+  const { flyToCart, FlyToCartLayer, cancelFlyAnimations } = useFlyToCart(cartBtnRef, { desktopCartRef })
+  const configuringRef = useRef(false)
 
   const load = () => {
     if (!id) return
@@ -138,10 +152,8 @@ export default function MesaPage() {
       .list('', 'customer')
       .then((list) => {
         setContacts(list)
-        const def = list.find(
-          (c) => String(c.doc_type).trim() === DEFAULT_POS_CONTACT.doc_type && String(c.doc_number).trim() === DEFAULT_POS_CONTACT.doc_number
-        )
-        if (def) setContactId((prev) => prev ?? def.id)
+        const variosId = pickVariosContactId(list)
+        if (variosId) setContactId((prev) => prev ?? variosId)
       })
       .catch(() => setContacts([]))
     cashbankService
@@ -221,21 +233,51 @@ export default function MesaPage() {
     return Array.from(areas).sort((a, b) => a.localeCompare(b))
   }, [products])
 
-  const addToCart = (p: Product, sourceEl?: HTMLElement) => {
-    if (productNeedsConfiguration(p)) {
-      setConfigureFlySource(sourceEl)
-      setConfigureProduct(p)
-      return
-    }
-    setCart((c) => appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' })))
-    if (sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
-  }
+  useEffect(() => {
+    configuringRef.current = configureProduct != null
+  }, [configureProduct])
 
-  const onConfiguredProduct = (line: CatalogCartLine) => {
-    setCart((c) => appendCatalogLine(c, line))
-    if (configureFlySource) flyToCart(configureFlySource, getProductImageUrl(line.product.image_url))
-    setConfigureFlySource(undefined)
-  }
+  const addToCart = useCallback(
+    (p: Product, sourceEl?: HTMLElement) => {
+      if (configuringRef.current) return
+      if (productNeedsConfiguration(p)) {
+        configuringRef.current = true
+        cancelFlyAnimations()
+        configureFlySourceRef.current = sourceEl
+        setConfigureProduct(p)
+        return
+      }
+      setCart((c) => {
+        const { cart: next, merged } = appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' }))
+        if (!merged && sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
+        return next
+      })
+      playCartAddSound()
+    },
+    [flyToCart, cancelFlyAnimations],
+  )
+
+  const onConfiguredProduct = useCallback(
+    (line: CatalogCartLine) => {
+      const source = configureFlySourceRef.current
+      configureFlySourceRef.current = undefined
+      configuringRef.current = false
+      setConfigureProduct(null)
+      setCart((c) => {
+        const { cart: next, merged } = appendCatalogLine(c, line)
+        if (!merged && source) flyToCart(source, getProductImageUrl(line.product.image_url))
+        return next
+      })
+      playCartAddSound()
+    },
+    [flyToCart],
+  )
+
+  const clearPendingCart = useCallback(() => {
+    if (cart.length === 0) return
+    setCart([])
+    playCartClearSound()
+  }, [cart.length])
   const setQty = (index: number, qty: number) => {
     if (qty <= 0) setCart((c) => c.filter((_, i) => i !== index))
     else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
@@ -245,7 +287,18 @@ export default function MesaPage() {
       c.map((x, i) => {
         if (i !== index) return x
         if (x.kind !== 'catalog') return { ...x, notes }
-        return { ...x, notes, configureKey: buildConfigureKey(x.modifiers, notes) }
+        return { ...x, notes, configureKey: buildCatalogConfigureKey(x.modifiers, notes, x.unit_price) }
+      }),
+    )
+  }
+  const setCartUnitPrice = (index: number, raw: string) => {
+    const parsed = Number.parseFloat(raw.replace(',', '.'))
+    if (Number.isNaN(parsed) || parsed < 0) return
+    setCart((c) =>
+      c.map((x, i) => {
+        if (i !== index) return x
+        if (x.kind === 'manual') return { ...x, unit_price: roundMoney(parsed) }
+        return applyCatalogLineUnitPrice(x, parsed)
       }),
     )
   }
@@ -301,14 +354,31 @@ export default function MesaPage() {
   }
   const totalCartQty = sessionItemQty + newCartQty
 
-  const defaultContactId = useMemo(() => {
-    const def = contacts.find(
-      (c) => String(c.doc_type).trim() === DEFAULT_POS_CONTACT.doc_type && String(c.doc_number).trim() === DEFAULT_POS_CONTACT.doc_number
-    )
-    return def?.id ?? null
-  }, [contacts])
+  const defaultContactId = useMemo(() => pickVariosContactId(contacts), [contacts])
 
   const effectiveContactId = contactId ?? defaultContactId
+
+  const selectedSeries = useMemo(
+    () => checkoutSeries.find((s) => s.id === seriesId) ?? null,
+    [checkoutSeries, seriesId],
+  )
+
+  const selectedContact = useMemo(
+    () => contacts.find((c) => c.id === effectiveContactId) ?? null,
+    [contacts, effectiveContactId],
+  )
+
+  const checkoutContactOk = checkoutContactIsValid(selectedContact, docType, selectedSeries?.sunat_code)
+
+  const applyCheckoutDefaults = useCallback(() => {
+    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    }
+    const variosId = pickVariosContactId(contacts)
+    if (variosId) setContactId(variosId)
+  }, [checkoutSeries, contacts])
 
   const reprintKitchenRound = async (round: KitchenRound) => {
     if (round.comandas.length === 0 || !session) return
@@ -442,7 +512,15 @@ export default function MesaPage() {
     if (branchSeriesMissing) return
     if (!seriesId) return
     const selectedContactId = effectiveContactId
-    if (!selectedContactId) { toast.error('Selecciona un cliente'); return }
+    const contactForCheckout = contacts.find((c) => c.id === selectedContactId) ?? null
+    if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries?.sunat_code)) {
+      toast.error(
+        isFacturaDocType(docType, selectedSeries?.sunat_code)
+          ? 'La factura requiere un cliente con RUC'
+          : 'Selecciona un cliente',
+      )
+      return
+    }
 
     if (paymentMethods.length > 0) {
       for (const p of payments) {
@@ -570,12 +648,7 @@ export default function MesaPage() {
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (!canGenerarVenta) return
-    if (contactId == null && defaultContactId != null) setContactId(defaultContactId)
-    const def = pickDefaultNotaVentaSeries(checkoutSeries)
-    if (def) {
-      setSeriesId(def.id)
-      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
-    }
+    applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
     setPayments([
@@ -630,6 +703,7 @@ export default function MesaPage() {
         subtotalLabel={`Importe: ${formatSoles(cartLineTotal(item, taxRate, taxConfig))}`}
         onQtyChange={(d) => setQty(i, item.quantity + d)}
         onNotesChange={(n) => setCartNotes(i, n)}
+        onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
         showNotes
       />
     ))
@@ -891,14 +965,22 @@ export default function MesaPage() {
                   <div className="flex items-center gap-2 min-w-0">
                     <div
                       ref={desktopCartRef}
-                      className="hidden lg:flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rest-50 text-rest-600"
+                      className="relative hidden lg:flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rest-50 text-rest-600"
                       aria-hidden
                     >
                       <ShoppingCart size={18} />
+                      {totalCartQty > 0 && (
+                        <span className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-0.5 text-[9px] font-bold leading-none text-white tabular-nums ring-2 ring-white">
+                          {totalCartQty > 99 ? '99+' : totalCartQty}
+                        </span>
+                      )}
                     </div>
                     <h4 className="font-semibold text-stone-800 text-sm">Pedido</h4>
                   </div>
-                  <span className="text-xs text-stone-500 truncate max-w-[55%]">{session.table_name}</span>
+                  <div className="flex items-center gap-2 shrink-0 min-w-0">
+                    <CartClearButton disabled={cart.length === 0} onClear={clearPendingCart} />
+                    <span className="text-xs text-stone-500 truncate max-w-[6rem]">{session.table_name}</span>
+                  </div>
                 </div>
               </div>
               {renderSentKitchenBlock()}
@@ -921,43 +1003,24 @@ export default function MesaPage() {
       )}
       <FlyToCartLayer />
 
-      {cartDrawerOpen && (
-        <div className="lg:hidden fixed inset-0 z-[115]">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setCartDrawerOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4">
-            <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-h-[85vh] flex flex-col">
-              <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <ShoppingCart size={18} className="text-stone-700" />
-                  <h3 className="font-bold text-stone-800 truncate">Carrito</h3>
-                  {totalCartQty > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-rest-600 text-white text-sm font-bold tabular-nums">
-                      {totalCartQty > 99 ? '99+' : totalCartQty}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCartDrawerOpen(false)}
-                  className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
-                  aria-label="Cerrar"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {renderSentKitchenBlock()}
-              <ul className="p-4 pt-2 space-y-0.5 text-sm flex-1 min-h-0 overflow-y-auto">
-                {renderCartLines()}
-              </ul>
-              <div className="shrink-0 border-t border-stone-200">
-                {renderCartTotals()}
-                <div className="p-3 pt-0">{renderCartActions()}</div>
-              </div>
-            </div>
+      <MobileCartDrawer
+        open={cartDrawerOpen}
+        onClose={() => setCartDrawerOpen(false)}
+        quantity={totalCartQty}
+        pendingCartCount={cart.length}
+        onClearCart={clearPendingCart}
+        footer={
+          <div className="shrink-0 border-t border-stone-200">
+            {renderCartTotals()}
+            <div className="p-3 pt-0">{renderCartActions()}</div>
           </div>
-        </div>
-      )}
+        }
+      >
+        {renderSentKitchenBlock()}
+        <ul className="p-4 pt-2 space-y-0.5 text-sm flex-1 min-h-0 overflow-y-auto">
+          {renderCartLines()}
+        </ul>
+      </MobileCartDrawer>
 
       {ordersModalOpen && (
         <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z}`}>
@@ -1043,22 +1106,25 @@ export default function MesaPage() {
         onDiscountValueChange={setCheckoutDiscountValue}
         series={checkoutSeries}
         seriesId={seriesId}
+        docType={docType}
         onSeriesChange={(sid, dt) => {
           setSeriesId(sid)
           setDocType(dt)
+        }}
+        contactId={effectiveContactId}
+        contacts={contacts}
+        onContactChange={setContactId}
+        onAddContact={() => setClientQuickAddOpen(true)}
+        onPreferVariosContact={() => {
+          const variosId = pickVariosContactId(contacts)
+          if (variosId) setContactId(variosId)
         }}
         paymentMethods={paymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
         allowDiscount={allowCheckoutDiscount}
         onConfirm={doCheckout}
-        confirmDisabled={!effectiveContactId}
-        clientPicker={{
-          contactId: effectiveContactId,
-          contacts,
-          onChange: setContactId,
-          onAddNew: () => setClientQuickAddOpen(true),
-        }}
+        confirmDisabled={!checkoutContactOk || !seriesId}
       />
 
       {/* Modal Precuenta */}
@@ -1271,10 +1337,8 @@ export default function MesaPage() {
         </div>
       )}
 
-      {/* Modal Nuevo cliente rápido */}
-      {clientQuickAddOpen && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+      <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md" stacked>
+          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-stone-800">Registrar cliente</h3>
               <button type="button" onClick={() => setClientQuickAddOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -1282,15 +1346,18 @@ export default function MesaPage() {
               </button>
             </div>
             <div className="space-y-3">
-              <div className="flex gap-2">
-                <div className="w-24">
+              <div className="flex flex-wrap gap-2">
+                <div className="min-w-[9.5rem] shrink-0">
                   <SearchableSelect
-                    value={clientQuickAdd.doc_type}
-                    onChange={(v) => setClientQuickAdd((q) => ({ ...q, doc_type: String(v) }))}
-                    options={[
-                      { value: '1', label: 'DNI' },
-                      { value: '6', label: 'RUC' },
-                    ]}
+                    value={toContactDocCode(clientQuickAdd.doc_type)}
+                    onChange={(v) =>
+                      setClientQuickAdd((q) => ({
+                        ...q,
+                        doc_type: String(v ?? '6'),
+                        doc_number: '',
+                      }))
+                    }
+                    options={contactDocSelectOptions()}
                     searchable={false}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
                   />
@@ -1298,41 +1365,63 @@ export default function MesaPage() {
                 <input
                   type="text"
                   value={clientQuickAdd.doc_number}
-                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, doc_number: e.target.value.replace(/\D/g, '').slice(0, clientQuickAdd.doc_type === '6' ? 11 : 8) }))}
-                  placeholder={clientQuickAdd.doc_type === '6' ? 'RUC' : 'DNI'}
-                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  onChange={(e) =>
+                    setClientQuickAdd((q) => ({
+                      ...q,
+                      doc_number: sanitizeContactDocNumber(q.doc_type, e.target.value),
+                    }))
+                  }
+                  placeholder={contactDocNumberPlaceholder(clientQuickAdd.doc_type)}
+                  className="flex-1 min-w-[6rem] border border-stone-200 rounded-xl px-3 py-2 text-sm"
                 />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const ruc = (await companyService.getConfig()).ruc
-                    if (!ruc) { toast.error('No se pudo obtener RUC de la empresa'); return }
-                    setConsultaLoading(true)
-                    try {
-                      if (clientQuickAdd.doc_type === '6') {
-                        const res = await consultaService.ruc(ruc, clientQuickAdd.doc_number)
-                        if (res.success) {
-                          setClientQuickAdd((q) => ({ ...q, business_name: res.razon_social ?? '', address: res.direccion_completa ?? res.direccion ?? '' }))
-                          toast.success('Datos obtenidos')
-                        } else toast.error('RUC no encontrado')
-                      } else {
-                        const res = await consultaService.dni(ruc, clientQuickAdd.doc_number)
-                        if (res.success) {
-                          setClientQuickAdd((q) => ({ ...q, business_name: res.nombre_completo ?? '', address: '' }))
-                          toast.success('Datos obtenidos')
-                        } else toast.error('DNI no encontrado')
+                {contactDocSupportsConsulta(clientQuickAdd.doc_type) && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const ruc = (await companyService.getConfig()).ruc
+                      if (!ruc) {
+                        toast.error('No se pudo obtener RUC de la empresa')
+                        return
                       }
-                    } catch {
-                      toast.error('Error al consultar')
-                    } finally {
-                      setConsultaLoading(false)
+                      setConsultaLoading(true)
+                      try {
+                        const docCode = toContactDocCode(clientQuickAdd.doc_type)
+                        if (docCode === '6') {
+                          const res = await consultaService.ruc(ruc, clientQuickAdd.doc_number)
+                          if (res.success) {
+                            setClientQuickAdd((q) => ({
+                              ...q,
+                              business_name: res.razon_social ?? '',
+                              address: res.direccion_completa ?? res.direccion ?? '',
+                            }))
+                            toast.success('Datos obtenidos')
+                          } else toast.error('RUC no encontrado')
+                        } else {
+                          const res = await consultaService.dni(ruc, clientQuickAdd.doc_number)
+                          if (res.success) {
+                            setClientQuickAdd((q) => ({
+                              ...q,
+                              business_name: res.nombre_completo ?? '',
+                              address: '',
+                            }))
+                            toast.success('Datos obtenidos')
+                          } else toast.error('DNI no encontrado')
+                        }
+                      } catch {
+                        toast.error('Error al consultar')
+                      } finally {
+                        setConsultaLoading(false)
+                      }
+                    }}
+                    disabled={
+                      consultaLoading ||
+                      clientQuickAdd.doc_number.length < contactDocConsultMinLength(clientQuickAdd.doc_type)
                     }
-                  }}
-                  disabled={consultaLoading || clientQuickAdd.doc_number.length < (clientQuickAdd.doc_type === '6' ? 11 : 8)}
-                  className="px-3 py-2 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200 disabled:opacity-50"
-                >
-                  {consultaLoading ? '...' : 'Consultar'}
-                </button>
+                    className="px-3 py-2 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200 disabled:opacity-50"
+                  >
+                    {consultaLoading ? '...' : 'Consultar'}
+                  </button>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Razón social / Nombre</label>
@@ -1358,14 +1447,18 @@ export default function MesaPage() {
               </button>
               <button
                 type="button"
-                disabled={createContactLoading || !clientQuickAdd.business_name.trim()}
+                disabled={
+                  createContactLoading ||
+                  !clientQuickAdd.business_name.trim() ||
+                  !clientQuickAdd.doc_number.trim()
+                }
                 onClick={async () => {
                   setCreateContactLoading(true)
                   try {
                     const data: CreateContactInput = {
                       type: 'customer',
-                      doc_type: clientQuickAdd.doc_type,
-                      doc_number: clientQuickAdd.doc_number,
+                      doc_type: toContactDocCode(clientQuickAdd.doc_type),
+                      doc_number: clientQuickAdd.doc_number.trim(),
                       business_name: clientQuickAdd.business_name.trim(),
                       address: clientQuickAdd.address || undefined,
                     }
@@ -1387,8 +1480,7 @@ export default function MesaPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+      </PortalModal>
 
       <KitchenRoundHistoryModal
         open={kitchenHistoryOpen}
@@ -1414,14 +1506,20 @@ export default function MesaPage() {
       <ManualProductModal
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
-        onAdd={(line: ManualCartLine) => setCart((c) => [...c, line])}
+        onAdd={(line: ManualCartLine) => {
+          setCart((c) => [...c, line])
+          playCartAddSound()
+        }}
       />
 
       <ProductConfigureModal
+        key={configureProduct?.id ?? 'closed'}
         product={configureProduct}
         onClose={() => {
+          configureFlySourceRef.current = undefined
+          configuringRef.current = false
+          cancelFlyAnimations()
           setConfigureProduct(null)
-          setConfigureFlySource(undefined)
         }}
         onConfirm={onConfiguredProduct}
       />

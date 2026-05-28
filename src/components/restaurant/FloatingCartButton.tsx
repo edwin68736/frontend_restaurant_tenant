@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
 import { ShoppingCart } from 'lucide-react'
 import { clsx } from 'clsx'
+import { isCapacitorAndroid } from '@/lib/platform/detect'
 
 type Props = {
   quantity: number
@@ -16,6 +17,7 @@ export const FloatingCartButton = forwardRef<HTMLButtonElement, Props>(function 
   ref,
 ) {
   const label = quantity === 1 ? '1 artículo' : `${quantity} artículos`
+  const android = isCapacitorAndroid()
 
   return (
     <button
@@ -24,22 +26,23 @@ export const FloatingCartButton = forwardRef<HTMLButtonElement, Props>(function 
       onClick={onClick}
       aria-label={quantity > 0 ? `Abrir carrito, ${label}` : 'Abrir carrito'}
       className={clsx(
-        'lg:hidden fixed right-4 z-[105] flex h-[3.25rem] w-[3.25rem] items-center justify-center rounded-full',
+        'lg:hidden fixed right-4 z-[105] flex items-center justify-center rounded-full',
         'bg-rest-600 text-white shadow-lg shadow-rest-900/30 ring-4 ring-white',
         'hover:bg-rest-700 active:scale-95 transition-transform touch-manipulation',
+        android ? 'h-14 w-14' : 'h-[3.25rem] w-[3.25rem]',
         className,
       )}
       style={{ bottom: 'calc(3.5rem + 0.625rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      <ShoppingCart size={26} strokeWidth={2.25} aria-hidden />
-      <span
-        className={clsx(
-          'absolute -top-0.5 -right-0.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums ring-2 ring-white',
-          quantity > 0 ? 'bg-amber-500 text-white' : 'bg-stone-400 text-white',
-        )}
-      >
-        {quantity > 99 ? '99+' : quantity}
-      </span>
+      <ShoppingCart size={android ? 28 : 26} strokeWidth={2.25} aria-hidden />
+      {quantity > 0 && (
+        <span
+          className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white tabular-nums ring-2 ring-white"
+          aria-hidden
+        >
+          {quantity > 99 ? '99+' : quantity}
+        </span>
+      )}
     </button>
   )
 })

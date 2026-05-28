@@ -5,7 +5,8 @@ import { UtensilsCrossed } from 'lucide-react'
 export { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 const FLY_DURATION_MS = 480
-const SOURCE_POP_CLASS = 'fly-cart-source-pop'
+/** Un solo vuelo visible cada ~750 ms (clics rápidos en productos distintos). */
+const FLY_GLOBAL_THROTTLE_MS = 750
 
 type FlyItem = {
   id: number
@@ -28,13 +29,6 @@ function getFloatingCartRect(): DOMRect {
   const left = window.innerWidth - right - btn
   const top = window.innerHeight - bottomNav - gap - btn
   return new DOMRect(left, top, btn, btn)
-}
-
-function pulseSourceElement(el: HTMLElement) {
-  el.classList.remove(SOURCE_POP_CLASS)
-  void el.offsetWidth
-  el.classList.add(SOURCE_POP_CLASS)
-  window.setTimeout(() => el.classList.remove(SOURCE_POP_CLASS), 320)
 }
 
 function FlyParticle({
@@ -107,6 +101,7 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
   const desktopCartRef = options?.desktopCartRef
   const [items, setItems] = useState<FlyItem[]>([])
   const idRef = useRef(0)
+  const lastFlyAtRef = useRef(0)
 
   const resolveCartRect = useCallback((): DOMRect | null => {
     if (isMobileViewport()) {
@@ -119,12 +114,19 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
     setItems((prev) => prev.filter((it) => it.id !== id))
   }, [])
 
+  const cancelFlyAnimations = useCallback(() => {
+    setItems([])
+    lastFlyAtRef.current = 0
+  }, [])
+
   const flyToCart = useCallback(
     (sourceEl: HTMLElement, imageUrl: string | null) => {
       const cartRect = resolveCartRect()
       if (!cartRect) return
 
-      pulseSourceElement(sourceEl)
+      const now = Date.now()
+      if (now - lastFlyAtRef.current < FLY_GLOBAL_THROTTLE_MS) return
+      lastFlyAtRef.current = now
 
       const srcRect = sourceEl.getBoundingClientRect()
       const tileSize = Math.max(srcRect.width, srcRect.height)
@@ -142,7 +144,7 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
       }
 
       const id = ++idRef.current
-      setItems((prev) => [...prev, { id, imageUrl, from, to }])
+      setItems([{ id, imageUrl, from, to }])
     },
     [resolveCartRect],
   )
@@ -159,5 +161,5 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
     )
   }, [items, removeItem])
 
-  return { flyToCart, FlyToCartLayer }
+  return { flyToCart, FlyToCartLayer, cancelFlyAnimations }
 }

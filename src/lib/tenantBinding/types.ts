@@ -8,6 +8,8 @@ export type TenantByRucResponse = {
   token_consulta_datos: string
 }
 
+import type { AppEnvironment } from '@/lib/runtime/environment'
+
 /** Vinculación única por instalación (RUC → slug + URL del tenant). */
 export type TenantBinding = {
   version: 1
@@ -16,7 +18,9 @@ export type TenantBinding = {
   name: string
   ruc: string
   tokenConsultaDatos: string
+  environment: AppEnvironment
   boundAt: string
+  lastConnectionAt?: string
 }
 
 export const TENANT_BINDING_VERSION = 1 as const
@@ -36,7 +40,9 @@ export function parseTenantBinding(raw: string | null | undefined): TenantBindin
       name: String(data.name ?? '').trim(),
       ruc: String(data.ruc ?? '').trim(),
       tokenConsultaDatos: String(data.tokenConsultaDatos ?? '').trim(),
+      environment: data.environment === 'development' ? 'development' : 'production',
       boundAt: String(data.boundAt ?? new Date().toISOString()),
+      lastConnectionAt: data.lastConnectionAt ? String(data.lastConnectionAt) : undefined,
     }
   } catch {
     return null

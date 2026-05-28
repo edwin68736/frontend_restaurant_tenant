@@ -1,3 +1,5 @@
+import { isNativePrintAvailable } from '@/services/printers.service'
+
 export type RestaurantFeature =
   | 'productos'
   | 'modificadores'
@@ -39,6 +41,35 @@ export function featureAllowed(permissions: string[] | null | undefined, feature
 
 export function hasPermission(permissions: string[] | null | undefined, perm: string): boolean {
   return !!permissions?.includes(perm)
+}
+
+/** Configuración de impresoras locales (comandas, precuenta, documentos) en app nativa. */
+export function canConfigureDevicePrinters(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  if (!isNativePrintAvailable()) return false
+  if (hasPermission(permissions, 's.m')) return true
+  const et = String(employeeType ?? '').toLowerCase()
+  if (['waiter', 'mozo', 'cashier', 'cook', 'driver', 'admin', 'supervisor'].includes(et)) {
+    return true
+  }
+  return (
+    hasPermission(permissions, 't.o') ||
+    hasPermission(permissions, 't.v') ||
+    hasPermission(permissions, 'o.c') ||
+    hasPermission(permissions, PERM_ORDERS_CHARGE) ||
+    hasPermission(permissions, 'k.v') ||
+    hasPermission(permissions, 'p.u')
+  )
+}
+
+/** Pantalla Ajustes: administración del restaurante y/o impresoras del equipo. */
+export function canAccessAppSettings(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  return hasPermission(permissions, 's.m') || canConfigureDevicePrinters(permissions, employeeType)
 }
 
 /** Permiso corto backend: cobrar / generar venta (restaurantperm.OrdersCharge). */

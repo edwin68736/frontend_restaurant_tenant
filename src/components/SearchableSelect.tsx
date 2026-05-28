@@ -10,7 +10,11 @@ export type SearchableSelectOption = {
   disabled?: boolean
 }
 
-type MenuPosition = { top: number; left: number; width: number }
+type MenuPosition = { top: number; left: number; width: number; maxHeight: number }
+
+const MENU_GAP = 6
+const MENU_MAX_HEIGHT = 280
+const MENU_MIN_HEIGHT = 120
 
 export function SearchableSelect({
   value,
@@ -60,22 +64,21 @@ export function SearchableSelect({
     const el = rootRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const gap = 4
-    const maxH = 280
-    const spaceBelow = window.innerHeight - rect.bottom - gap
-    const spaceAbove = rect.top - gap
-    const openUp = spaceBelow < 160 && spaceAbove > spaceBelow
-    const maxHeight = Math.min(maxH, openUp ? spaceAbove - 8 : spaceBelow - 8)
+    const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP
+    const spaceAbove = rect.top - MENU_GAP
+    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow
+    const maxHeight = Math.max(
+      MENU_MIN_HEIGHT,
+      Math.min(MENU_MAX_HEIGHT, openUp ? spaceAbove - 12 : spaceBelow - 12),
+    )
 
-    let top = rect.bottom + gap
-    if (openUp) {
-      top = Math.max(gap, rect.top - gap - Math.min(maxHeight, maxH))
-    }
+    const top = openUp ? Math.max(MENU_GAP, rect.top - MENU_GAP - maxHeight) : rect.bottom + MENU_GAP
 
     setMenuPos({
       top,
       left: rect.left,
-      width: rect.width,
+      width: Math.max(rect.width, 200),
+      maxHeight,
     })
   }, [])
 
@@ -89,7 +92,11 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (!open) return
-    const onScrollOrResize = () => updateMenuPosition()
+    const onScrollOrResize = (e: Event) => {
+      const target = e.target
+      if (target instanceof Node && menuRef.current?.contains(target)) return
+      updateMenuPosition()
+    }
     window.addEventListener('resize', onScrollOrResize)
     window.addEventListener('scroll', onScrollOrResize, true)
     return () => {
@@ -100,15 +107,15 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
       const target = e.target
       if (!(target instanceof Node)) return
       if (rootRef.current?.contains(target)) return
       if (menuRef.current?.contains(target)) return
       setOpen(false)
     }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
   }, [open])
 
   useEffect(() => {
@@ -123,6 +130,9 @@ export function SearchableSelect({
     if (!open) setQuery('')
   }, [open])
 
+  const searchBlockHeight = showSearch ? 52 : 0
+  const listMaxHeight = menuPos ? Math.max(80, menuPos.maxHeight - searchBlockHeight) : MENU_MAX_HEIGHT
+
   const menuContent = (
     <div
       ref={menuRef}
@@ -133,19 +143,21 @@ export function SearchableSelect({
               top: menuPos.top,
               left: menuPos.left,
               width: menuPos.width,
+              maxHeight: menuPos.maxHeight,
               zIndex: REST_DROPDOWN_Z_INDEX,
             }
           : undefined
       }
       className={clsx(
-        'bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden',
+        'bg-white border border-stone-200 rounded-xl shadow-lg flex flex-col overflow-hidden touch-manipulation',
         menuClassName,
       )}
+      onTouchMove={(e) => e.stopPropagation()}
     >
       {showSearch && (
-        <div className="p-2 border-b border-stone-100">
+        <div className="shrink-0 p-2 border-b border-stone-100">
           <div className="flex items-center gap-2 px-2 py-1.5 border border-stone-200 rounded-lg">
-            <Search size={16} className="text-stone-400" />
+            <Search size={16} className="text-stone-400 shrink-0" />
             <input
               ref={inputRef}
               value={query}
@@ -154,13 +166,17 @@ export function SearchableSelect({
                 if (e.key === 'Escape') setOpen(false)
               }}
               placeholder={searchPlaceholder}
-              className="w-full text-sm outline-none"
+              className="w-full min-w-0 text-sm outline-none"
             />
           </div>
         </div>
       )}
 
-      <div className="max-h-64 overflow-auto">
+      <div
+        className="overflow-y-auto overscroll-y-contain touch-pan-y min-h-0 flex-1"
+        style={{ maxHeight: listMaxHeight }}
+        role="listbox"
+      >
         {filtered.length === 0 && <div className="px-3 py-3 text-sm text-stone-500">Sin resultados</div>}
         {filtered.map((opt) => {
           const isSelected = selected != null && String(selected.value) === String(opt.value)
@@ -174,12 +190,12 @@ export function SearchableSelect({
                 onChange(opt.value)
                 setOpen(false)
               }}
-              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 ${
-                opt.disabled ? 'text-stone-300 cursor-not-allowed' : 'hover:bg-stone-50'
+              className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 touch-manipulation ${
+                opt.disabled ? 'text-stone-300 cursor-not-allowed' : 'hover:bg-stone-50 active:bg-stone-100'
               } ${isSelected ? 'bg-rest-50 text-rest-700 font-semibold' : 'text-stone-700'}`}
             >
               <span className="truncate">{opt.label}</span>
-              {isSelected && <span className="text-xs text-rest-600">Seleccionado</span>}
+              {isSelected && <span className="text-xs text-rest-600 shrink-0">✓</span>}
             </button>
           )
         })}
@@ -201,7 +217,7 @@ export function SearchableSelect({
         }}
         className={
           className ??
-          'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 disabled:bg-stone-50'
+          'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 disabled:bg-stone-50 touch-manipulation min-h-[44px]'
         }
       >
         <span className={selected ? 'text-stone-800 truncate' : 'text-stone-400 truncate'}>

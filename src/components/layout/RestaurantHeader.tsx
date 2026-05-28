@@ -5,6 +5,7 @@ import { getStoredTenant } from '@/services/public.service'
 import { BRAND_LOGO } from '@/config/branding'
 import { NAV_GROUPS } from '@/config/restaurantNav'
 import TopNavigation from './TopNavigation'
+import ManagementNavDropdown from './ManagementNavDropdown'
 import ResponsiveMenu from './ResponsiveMenu'
 import UserDropdown from './UserDropdown'
 import CashSessionBadge from './CashSessionBadge'
@@ -24,10 +25,20 @@ export default function RestaurantHeader() {
     [canAccess],
   )
 
+  const managementItems = useMemo(
+    () => visibleGroups.find((g) => g.id === 'management')?.items ?? [],
+    [visibleGroups],
+  )
+
   return (
     <>
       <header className="sticky top-0 z-[100] shrink-0 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-sm shadow-stone-900/5">
         <div className="flex items-center gap-1.5 sm:gap-3 min-h-14 py-1.5 sm:py-0 sm:h-14 px-2 sm:px-4 lg:px-5 w-full">
+          {managementItems.length > 0 ? (
+            <div className="hidden lg:block shrink-0">
+              <ManagementNavDropdown items={managementItems} />
+            </div>
+          ) : null}
           {/* Marca + empresa (+ plan en lg+) */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 overflow-hidden">
             <img

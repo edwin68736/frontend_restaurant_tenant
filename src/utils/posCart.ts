@@ -2,7 +2,12 @@ import type { Product } from '@/services/products.service'
 import { calcItem } from '@/utils/taxCalc'
 import type { TaxConfig } from '@/utils/taxCalc'
 import type { CartModifierEntry } from '@/types/productModifiers'
-import { buildConfigureKey, calcUnitPriceWithModifiers, modifiersToJson } from '@/utils/productModifiers'
+import {
+  buildConfigureKey,
+  calcUnitPriceWithModifiers,
+  modifiersToJson,
+} from '@/utils/productModifiers'
+import { roundMoney } from '@/utils/checkoutDiscount'
 
 export type CatalogCartLine = {
   kind: 'catalog'
@@ -86,6 +91,24 @@ export function cartLineTotal(
   ).total
 }
 
+/** Clave de fusión en carrito: modificadores, nota y precio unitario acordado. */
+export function buildCatalogConfigureKey(
+  modifiers: CartModifierEntry[],
+  notes: string,
+  unitPrice: number,
+): string {
+  return `${buildConfigureKey(modifiers, notes)}@u${roundMoney(unitPrice).toFixed(2)}`
+}
+
+export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: number): CatalogCartLine {
+  const price = roundMoney(Math.max(0, unitPrice))
+  return {
+    ...line,
+    unit_price: price,
+    configureKey: buildCatalogConfigureKey(line.modifiers, line.notes ?? '', price),
+  }
+}
+
 export function createCatalogCartLine(
   product: Product,
   partial?: {
@@ -107,7 +130,7 @@ export function createCatalogCartLine(
     base_price: base,
     unit_price,
     modifiers,
-    configureKey: buildConfigureKey(modifiers, notes),
+    configureKey: buildCatalogConfigureKey(modifiers, notes, unit_price),
   }
 }
 
@@ -130,15 +153,20 @@ export function catalogLinesMatch(a: CatalogCartLine, b: CatalogCartLine): boole
   return a.product.id === b.product.id && a.configureKey === b.configureKey
 }
 
-/** Agrega o incrementa cantidad si la configuración es idéntica. */
-export function appendCatalogLine(cart: PosCartLine[], line: CatalogCartLine): PosCartLine[] {
+export type AppendCatalogResult = { cart: PosCartLine[]; merged: boolean }
+
+/** Agrega o incrementa cantidad si producto, modificadores, nota y precio coinciden. */
+export function appendCatalogLine(cart: PosCartLine[], line: CatalogCartLine): AppendCatalogResult {
   const i = cart.findIndex((x) => x.kind === 'catalog' && catalogLinesMatch(x, line))
   if (i >= 0) {
-    return cart.map((x, j) =>
-      j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + line.quantity } : x,
-    )
+    return {
+      cart: cart.map((x, j) =>
+        j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + line.quantity } : x,
+      ),
+      merged: true,
+    }
   }
-  return [...cart, line]
+  return { cart: [...cart, line], merged: false }
 }
 
 export function cartToOrderItems(cart: PosCartLine[]) {

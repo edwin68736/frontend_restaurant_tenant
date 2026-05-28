@@ -8,18 +8,17 @@ import {
   Settings,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
-import { isNativePrintAvailable } from '@/services/printers.service'
+import { canAccessAppSettings, EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { BranchSelectorMenu } from './RestaurantBranchBadge'
 import { AppVersionBadge } from './AppVersionBadge'
 
 export default function UserDropdown() {
-  const { user, logout, employeeType, hasPerm } = useAuth()
+  const { user, logout, employeeType, restaurantPermissions } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const isAdmin = employeeType === 'admin' || employeeType === 'supervisor'
-  const showSettings = isNativePrintAvailable() || hasPerm('s.m')
+  const showSettings = canAccessAppSettings(restaurantPermissions, employeeType)
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -86,7 +85,7 @@ export default function UserDropdown() {
               role="menuitem"
             >
               <Settings size={16} className="text-stone-500" />
-              Ajustes
+              {employeeType === 'waiter' || employeeType === 'mozo' ? 'Impresoras' : 'Ajustes'}
             </Link>
           )}
           <a

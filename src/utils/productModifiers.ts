@@ -1,66 +1,65 @@
-import type { ModifierGroup } from '@/services/products.service'
-import type { Product } from '@/services/products.service'
+import type { ModifierGroup, Product, ProductPresentation } from '@/services/products.service'
 import type { CartModifierEntry, StoredModifierEntry } from '@/types/productModifiers'
 import { formatAmountDisplay } from '@/utils/money'
 
+/** Abre modal de configuración en POS/Mesa (presentaciones se cargan al abrir). */
 export function productNeedsConfiguration(product: Product): boolean {
   return !!(product.has_modifiers || product.has_variants)
 }
 
-/** Una sola opción obligatoria (tamaño, término, etc.). */
-export function isVariantLikeGroup(g: ModifierGroup): boolean {
-  return !!(g.required && !g.multi_select)
-}
-
-/** Extras opcionales o multi-selección. */
-export function isModifierLikeGroup(g: ModifierGroup): boolean {
-  return !!(g.multi_select || !g.required)
-}
-
-/** Grupos asignados al producto, separados para el modal de configuración. */
-export function classifyModifierGroups(
+/** Grupos de extras globales vinculados al producto. */
+export function getProductExtraGroups(
   modifierGroupIds: number[],
   allGroups: ModifierGroup[],
   product: Product,
-): { variantGroups: ModifierGroup[]; modifierGroups: ModifierGroup[] } {
+): ModifierGroup[] {
+  if (!product.has_modifiers) return []
   const assigned = allGroups.filter((g) => modifierGroupIds.includes(g.id))
-  const canVariants = !!(product.has_variants || product.has_modifiers)
-  const variantGroups = canVariants ? assigned.filter(isVariantLikeGroup) : []
-  const modifierGroups = product.has_modifiers ? assigned.filter(isModifierLikeGroup) : []
-  return { variantGroups, modifierGroups }
+  return assigned
 }
 
-/** Motivo por el que el modal no puede mostrar opciones (para mensajes al mozo). */
 export function getModifierSetupIssue(
   product: Product,
   modifierGroupIds: number[],
   allGroups: ModifierGroup[],
+  presentations: ProductPresentation[],
 ): string | null {
   if (!productNeedsConfiguration(product)) return null
-  if (modifierGroupIds.length === 0) {
-    return 'Tienes grupos en Modificadores, pero este producto no tiene ninguno vinculado. Ve a Productos → editar → marca los grupos y Guardar.'
+
+  const extras = getProductExtraGroups(modifierGroupIds, allGroups, product)
+  const pres = product.has_variants ? presentations.filter((p) => p.name.trim()) : []
+
+  if (product.has_variants && pres.length === 0 && !product.has_modifiers) {
+    return 'Agrega al menos una presentación en Productos → editar.'
   }
-  const assigned = allGroups.filter((g) => modifierGroupIds.includes(g.id))
-  if (assigned.length === 0) {
-    return 'Los grupos asignados no existen o están inactivos. Revisa Modificadores y Productos.'
+  if (product.has_modifiers && modifierGroupIds.length === 0) {
+    return 'Vincula grupos de extras en Productos → editar, o desactiva «Extras».'
   }
-  const { variantGroups, modifierGroups } = classifyModifierGroups(modifierGroupIds, allGroups, product)
-  const visible = [...variantGroups, ...modifierGroups]
-  if (visible.length === 0) {
-    return 'Los grupos asignados no coinciden con variantes/extras. En Modificadores: obligatorio sin «varios» = variante; «varios» = extras.'
+  if (product.has_modifiers && extras.length === 0) {
+    return 'Los grupos de extras vinculados no existen. Revisa Modificadores y Productos.'
   }
-  if (!hasConfigurableModifierUI(product, modifierGroupIds, allGroups)) {
-    return 'Los grupos asignados no tienen opciones. Agrega opciones en Modificadores (panel tenant si gestionas precios allí).'
+  if (product.has_modifiers && !extras.some((g) => (g.options?.length ?? 0) > 0)) {
+    return 'Los grupos de extras no tienen opciones. Agrégalas en Modificadores.'
   }
   return null
 }
 
+/** Presentaciones reemplazan precio base; extras suman. */
 export function calcUnitPriceWithModifiers(
   basePrice: number,
   modifiers: CartModifierEntry[],
 ): number {
-  const extras = modifiers.reduce((s, m) => s + (Number(m.extra_price) || 0), 0)
-  return roundMoney(basePrice + extras)
+  const presentation = modifiers.find((m) => m.type === 'variant')
+  const extras = modifiers.filter((m) => m.type === 'modifier')
+
+  let unit = basePrice
+  if (presentation) {
+    const p = Number(presentation.extra_price) || 0
+    if (p > 0) unit = p
+  }
+
+  const extrasSum = extras.reduce((s, m) => s + (Number(m.extra_price) || 0), 0)
+  return roundMoney(unit + extrasSum)
 }
 
 function roundMoney(n: number): number {
@@ -79,40 +78,35 @@ export function buildConfigureKey(modifiers: CartModifierEntry[], kitchenNote: s
   return `p-${modPart}-n-${normalizeKitchenNote(kitchenNote)}`
 }
 
-/** Indica si el producto tiene al menos un grupo con opciones configurables en UI. */
 export function hasConfigurableModifierUI(
   product: Product,
   modifierGroupIds: number[],
   allGroups: ModifierGroup[],
+  presentations: ProductPresentation[],
 ): boolean {
-  const { variantGroups, modifierGroups } = classifyModifierGroups(
-    modifierGroupIds,
-    allGroups,
-    product,
-  )
-  const withOptions = (groups: ModifierGroup[]) =>
-    groups.some((g) => (g.options?.length ?? 0) > 0)
-  return withOptions(variantGroups) || withOptions(modifierGroups)
+  const pres = product.has_variants && presentations.some((p) => p.name.trim())
+  const extras = getProductExtraGroups(modifierGroupIds, allGroups, product)
+  const withOptions = extras.some((g) => (g.options?.length ?? 0) > 0)
+  return pres || withOptions
 }
 
 export function validateModifierSelection(
-  variantGroups: ModifierGroup[],
-  modifierGroups: ModifierGroup[],
+  presentations: ProductPresentation[],
+  extraGroups: ModifierGroup[],
   selected: CartModifierEntry[],
+  product: Product,
 ): string | null {
-  for (const g of variantGroups) {
-    const picked = selected.filter((s) => s.group_id === g.id && s.type === 'variant')
-    if (g.required && picked.length !== 1) {
-      return `Elige una opción en «${g.name}»`
-    }
-    if (!g.required && picked.length > 1) {
-      return `Solo una opción en «${g.name}»`
+  const activePres = presentations.filter((p) => p.name.trim())
+  if (product.has_variants && activePres.length > 0) {
+    const picked = selected.filter((s) => s.type === 'variant')
+    if (picked.length !== 1) {
+      return 'Elige una presentación del producto'
     }
   }
-  for (const g of modifierGroups) {
-    const picked = selected.filter((s) => s.group_id === g.id && s.type === 'modifier')
+  for (const g of extraGroups) {
+    const picked = selected.filter((s) => s.type === 'modifier' && s.group_id === g.id)
     if (g.required && picked.length === 0) {
-      return `Elige al menos una opción en «${g.name}»`
+      return `Elige al menos un extra en «${g.name}»`
     }
     if (!g.multi_select && picked.length > 1) {
       return `Solo una opción en «${g.name}»`
@@ -121,23 +115,18 @@ export function validateModifierSelection(
   return null
 }
 
-export function selectionFromVariant(
-  group: ModifierGroup,
-  optionId: number,
-): CartModifierEntry | null {
-  const opt = group.options?.find((o) => o.id === optionId)
-  if (!opt) return null
+export function selectionFromProductPresentation(p: ProductPresentation): CartModifierEntry {
   return {
-    group_id: group.id,
-    group_name: group.name,
+    group_id: 0,
+    group_name: 'Presentación',
     type: 'variant',
-    option_id: opt.id,
-    option_name: opt.name,
-    extra_price: Number(opt.extra_price) || 0,
+    option_id: p.id ?? 0,
+    option_name: p.name.trim(),
+    extra_price: Number(p.sale_price) || 0,
   }
 }
 
-export function toggleModifierSelection(
+export function toggleExtraSelection(
   selected: CartModifierEntry[],
   group: ModifierGroup,
   optionId: number,
@@ -167,7 +156,6 @@ function normalizeStoredType(x: StoredModifierEntry & { type?: string; group_typ
   return t === 'variant' ? 'variant' : 'modifier'
 }
 
-/** Lee snapshot histórico desde BD. No consulta catálogo. */
 export function parseStoredModifiers(raw: string | null | undefined): StoredModifierEntry[] {
   if (!raw?.trim()) return []
   try {
@@ -227,7 +215,6 @@ export function modifiersToJson(modifiers: CartModifierEntry[]): string {
   return JSON.stringify(payload)
 }
 
-/** Líneas para UI / cocina bajo el nombre del producto. */
 export function formatModifierLines(modifiers: StoredModifierEntry[] | CartModifierEntry[]): string[] {
   const lines: string[] = []
   for (const m of modifiers) {
@@ -235,7 +222,7 @@ export function formatModifierLines(modifiers: StoredModifierEntry[] | CartModif
     if (!label) continue
     if (m.type === 'variant') {
       const price = Number(m.extra_price) || 0
-      lines.push(price > 0 ? `${label} (+S/ ${formatAmountDisplay(price)})` : label)
+      lines.push(price > 0 ? `${label} (S/ ${formatAmountDisplay(price)})` : label)
     } else {
       const price = Number(m.extra_price) || 0
       lines.push(price > 0 ? `+ ${label} (+S/ ${formatAmountDisplay(price)})` : `+ ${label}`)
@@ -244,8 +231,6 @@ export function formatModifierLines(modifiers: StoredModifierEntry[] | CartModif
   return lines
 }
 
-/** Resumen corto para carrito (ej. "1L · + Tocino"). */
 export function formatModifierSummary(modifiers: CartModifierEntry[] | StoredModifierEntry[]): string {
-  const parts = formatModifierLines(modifiers)
-  return parts.join(' · ')
+  return formatModifierLines(modifiers).join(' · ')
 }

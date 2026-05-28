@@ -47,15 +47,27 @@ export default function RepartidoresPage() {
 
   const load = () => {
     setLoading(true)
-    Promise.all([
+    Promise.allSettled([
       restaurantService.listDeliveryDrivers(false),
       restaurantService.listDeliveryCompanies(false),
     ])
-      .then(([d, c]) => {
-        setDrivers(d)
-        setCompanies(c)
+      .then(([driversRes, companiesRes]) => {
+        if (driversRes.status === 'fulfilled') {
+          setDrivers(driversRes.value)
+        } else {
+          setDrivers([])
+          toast.error('No se pudieron cargar los repartidores')
+        }
+        if (companiesRes.status === 'fulfilled') {
+          setCompanies(companiesRes.value)
+        } else {
+          setCompanies([])
+          const msg =
+            (companiesRes.reason as { response?: { data?: { error?: string } } })?.response?.data
+              ?.error ?? 'No se pudieron cargar las empresas de delivery'
+          toast.error(msg)
+        }
       })
-      .catch(() => toast.error('Error al cargar repartidores'))
       .finally(() => setLoading(false))
   }
 

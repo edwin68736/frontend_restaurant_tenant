@@ -9,22 +9,21 @@ import {
   type ReactNode,
 } from 'react'
 import api from '@/services/api'
-import { isNetworkOrTimeoutError } from '@/utils/networkErrors'
+import { connectivityManager } from '@/lib/connectivity/connectivityManager'
+import type { ConnectivityFailureKind, ConnectivityStatus } from '@/lib/connectivity/types'
 import { useAuth } from '@/contexts/AuthContext'
 
-export type BackendConnectivityStatus = 'checking' | 'online' | 'offline'
-
-/** Espera antes de mostrar el modal (evita parpadeo al cargar POS u otras vistas). */
-const OFFLINE_OVERLAY_DELAY_MS = 1_200
-const HEALTH_PROBE_INTERVAL_MS = 45_000
+export type BackendConnectivityStatus = ConnectivityStatus
 
 type BackendConnectivityContextValue = {
   status: BackendConnectivityStatus
+  failureKind: ConnectivityFailureKind
   message: string
-  /** Estado interno: el backend no respondió al health check. */
   isOffline: boolean
-  /** Solo true tras ~1,2 s offline sostenido — usar en el overlay visual. */
+  isDegraded: boolean
+  recoveryMode: boolean
   showOfflineOverlay: boolean
+  consecutiveFailures: number
   retry: () => Promise<void>
 }
 
@@ -32,119 +31,59 @@ const BackendConnectivityContext = createContext<BackendConnectivityContextValue
   undefined,
 )
 
-async function probeBackend(): Promise<void> {
-  await api.get('/health', { timeout: 12_000, validateStatus: (s) => s >= 200 && s < 500 })
-}
-
 export function BackendConnectivityProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
-  const [status, setStatus] = useState<BackendConnectivityStatus>('online')
-  const [message, setMessage] = useState('')
-  const [showOfflineOverlay, setShowOfflineOverlay] = useState(false)
-  const probeInFlightRef = useRef(false)
+  const [snap, setSnap] = useState(() => connectivityManager.getState())
+  const monitoringStartedRef = useRef(false)
 
-  const markOnline = useCallback(() => {
-    setStatus('online')
-    setMessage('')
-    setShowOfflineOverlay(false)
-  }, [])
-
-  const markOffline = useCallback((msg?: string) => {
-    setStatus('offline')
-    setMessage(
-      msg ??
-        (typeof navigator !== 'undefined' && !navigator.onLine
-          ? 'Sin conexión a internet.'
-          : 'No se pudo conectar con el servidor.'),
-    )
-  }, [])
-
-  const runHealthProbe = useCallback(
-    async (opts?: { userInitiated?: boolean }) => {
-      if (probeInFlightRef.current) return
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        markOffline('Sin conexión a internet en este dispositivo.')
-        return
-      }
-      probeInFlightRef.current = true
-      if (opts?.userInitiated) {
-        setStatus('checking')
-        setMessage('')
-      }
-      try {
-        await probeBackend()
-        markOnline()
-      } catch (e) {
-        markOffline(
-          isNetworkOrTimeoutError(e) ? undefined : 'El servidor no respondió correctamente.',
-        )
-        if (opts?.userInitiated) throw e
-      } finally {
-        probeInFlightRef.current = false
-      }
-    },
-    [markOffline, markOnline],
-  )
-
-  const retry = useCallback(async () => {
-    await runHealthProbe({ userInitiated: true })
-  }, [runHealthProbe])
-
-  // Retraso al mostrar el modal: solo si el offline se mantiene.
-  useEffect(() => {
-    if (status !== 'offline') {
-      setShowOfflineOverlay(false)
-      return
-    }
-    const timer = window.setTimeout(() => setShowOfflineOverlay(true), OFFLINE_OVERLAY_DELAY_MS)
-    return () => window.clearTimeout(timer)
-  }, [status])
+  useEffect(() => connectivityManager.subscribe(() => setSnap(connectivityManager.getState())), [])
 
   useEffect(() => {
-    if (!isAuthenticated || authLoading) {
-      markOnline()
+    if (!isAuthenticated) {
+      monitoringStartedRef.current = false
+      connectivityManager.stopMonitoring()
       return
     }
 
-    void runHealthProbe().catch(() => undefined)
+    if (authLoading) return
 
-    const onBrowserOffline = () => markOffline('Sin conexión a internet en este dispositivo.')
-    const onBrowserOnline = () => {
-      void runHealthProbe().catch(() => undefined)
-    }
-    window.addEventListener('offline', onBrowserOffline)
-    window.addEventListener('online', onBrowserOnline)
+    if (monitoringStartedRef.current) return
+    monitoringStartedRef.current = true
 
-    const interval = window.setInterval(() => {
-      void runHealthProbe().catch(() => undefined)
-    }, HEALTH_PROBE_INTERVAL_MS)
-
-    // Cualquier respuesta HTTP exitosa confirma que hay conexión (sin marcar offline en errores sueltos).
-    const reqId = api.interceptors.response.use(
-      (res) => {
-        markOnline()
-        return res
-      },
-      (err) => Promise.reject(err),
-    )
+    connectivityManager.startMonitoring((onSuccess) => {
+      const reqId = api.interceptors.response.use(
+        (res) => {
+          onSuccess()
+          return res
+        },
+        (err) => Promise.reject(err),
+      )
+      return () => api.interceptors.response.eject(reqId)
+    })
 
     return () => {
-      window.removeEventListener('offline', onBrowserOffline)
-      window.removeEventListener('online', onBrowserOnline)
-      window.clearInterval(interval)
-      api.interceptors.response.eject(reqId)
+      monitoringStartedRef.current = false
+      connectivityManager.stopMonitoring()
     }
-  }, [authLoading, isAuthenticated, markOffline, markOnline, runHealthProbe])
+  }, [authLoading, isAuthenticated])
+
+  const retry = useCallback(async () => {
+    await connectivityManager.probe({ userInitiated: true })
+  }, [])
 
   const value = useMemo(
     () => ({
-      status,
-      message,
-      isOffline: status === 'offline',
-      showOfflineOverlay,
+      status: snap.status,
+      failureKind: snap.failureKind,
+      message: snap.message,
+      isOffline: snap.status === 'offline',
+      isDegraded: snap.status === 'degraded',
+      recoveryMode: snap.recoveryMode,
+      showOfflineOverlay: snap.showOfflineOverlay,
+      consecutiveFailures: snap.consecutiveFailures,
       retry,
     }),
-    [status, message, showOfflineOverlay, retry],
+    [snap, retry],
   )
 
   return (

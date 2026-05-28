@@ -1,5 +1,6 @@
 import axios from 'axios'
-import { getTenantBinding } from '@/lib/tenantBinding/store'
+import { isDevelopmentMode } from '@/lib/runtime/environment'
+import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
 import { isTauriDesktop } from '@/lib/app'
 
 function normalizeApiOrigin(raw: string): string {
@@ -23,17 +24,25 @@ export function getCentralApiBaseUrl(): string {
 
 /**
  * API del tenant desde vinculación persistida.
- * En DEV siempre relativa (proxy Vite); en release usa la URL guardada.
+ * En DEV las peticiones van por proxy Vite (baseURL '') y X-Tenant-Api-Origin.
  */
 export function getTenantApiBaseUrl(): string {
-  if (import.meta.env.DEV) {
+  if (isDevelopmentMode()) {
     return ''
   }
-  const binding = getTenantBinding()
-  if (binding?.apiUrl) {
-    return normalizeApiOrigin(binding.apiUrl)
+  const url = getResolvedTenantApiUrl()
+  return url ? normalizeApiOrigin(url) : ''
+}
+
+/** URL mostrada al usuario / overlay de conexión. */
+export function getDisplayedTenantApiUrl(): string {
+  const url = getResolvedTenantApiUrl()
+  if (url) return normalizeApiOrigin(url)
+  if (isDevelopmentMode()) {
+    const central = getCentralApiBaseUrl()
+    return central ? `${central} (proxy dev)` : 'Proxy local (Vite)'
   }
-  return ''
+  return '—'
 }
 
 /** En DEV todas las peticiones van por proxy local (sin CORS). */
@@ -84,11 +93,11 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  if (import.meta.env.DEV) {
+  if (isDevelopmentMode()) {
     config.baseURL = ''
-    const binding = getTenantBinding()
-    if (binding?.apiUrl) {
-      config.headers['X-Tenant-Api-Origin'] = normalizeApiOrigin(binding.apiUrl)
+    const tenantOrigin = getResolvedTenantApiUrl()
+    if (tenantOrigin) {
+      config.headers['X-Tenant-Api-Origin'] = normalizeApiOrigin(tenantOrigin)
     }
   } else {
     const tenantUrl = getTenantApiBaseUrl()

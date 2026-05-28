@@ -1,8 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import type { NavGroup, NavItem } from '@/config/restaurantNav'
 import { navPillClasses } from '@/utils/restaurantUiColors'
-import ManagementNavDropdown from './ManagementNavDropdown'
-
 type Props = {
   groups: NavGroup[]
   variant?: 'desktop' | 'mobile-scroll'
@@ -22,14 +20,8 @@ function NavPill({ item, compact }: { item: NavItem; compact?: boolean }) {
   )
 }
 
-function splitGroups(groups: NavGroup[]) {
-  const operations = groups.find((g) => g.id === 'operations')?.items ?? []
-  const management = groups.find((g) => g.id === 'management')?.items ?? []
-  return { operations, management }
-}
-
 export default function TopNavigation({ groups, variant = 'desktop' }: Props) {
-  const { operations, management } = splitGroups(groups)
+  const operations = groups.find((g) => g.id === 'operations')?.items ?? []
 
   if (variant === 'mobile-scroll') {
     return null
@@ -40,7 +32,6 @@ export default function TopNavigation({ groups, variant = 'desktop' }: Props) {
       {operations.map((item) => (
         <NavPill key={item.to} item={item} />
       ))}
-      {management.length > 0 && <ManagementNavDropdown items={management} />}
     </nav>
   )
 }

@@ -8,7 +8,7 @@ import HomePage from '@/pages/HomePage'
 import PinLoginPage from '@/pages/PinLoginPage'
 import RucPage from '@/pages/RucPage'
 import { defaultRouteForPermissions } from '@/utils/restaurantPermissions'
-import { isWindowsDesktop } from '@/services/printers.service'
+import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import NoAccessPage from '@/pages/NoAccessPage'
 import ProductosPage from '@/pages/ProductosPage'
 import ModificadoresPage from '@/pages/ModificadoresPage'
@@ -68,8 +68,10 @@ function RequireRestaurantAdmin({ children }: { children: React.ReactNode }) {
 }
 
 function RequireSettingsAccess({ children }: { children: React.ReactNode }) {
-  const { hasPerm } = useAuth()
-  if (!hasPerm('s.m') && !isWindowsDesktop()) return <Navigate to="/" replace />
+  const { restaurantPermissions, employeeType } = useAuth()
+  if (!canAccessAppSettings(restaurantPermissions, employeeType)) {
+    return <Navigate to="/" replace />
+  }
   return <>{children}</>
 }
 

@@ -1,6 +1,7 @@
 import type { Product } from '@/services/products.service'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
 import {
+  buildCatalogConfigureKey,
   cartToOrderItems as cartLinesToOrderItems,
   createCatalogCartLine,
   type PosCartLine,
@@ -135,6 +136,7 @@ export function sessionDetailToCart(detail: SessionDetail, catalog: Product[]): 
         base_price: base,
       })
       line.unit_price = Number(c.unit_price) || line.unit_price
+      line.configureKey = buildCatalogConfigureKey(line.modifiers, line.notes ?? '', line.unit_price)
 
       const key = line.configureKey
       const existingKey = [...acc.entries()].find(([, v]) => v.kind === 'catalog' && v.configureKey === key)?.[0]

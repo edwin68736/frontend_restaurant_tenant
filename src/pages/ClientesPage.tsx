@@ -8,24 +8,12 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import { PortalModal } from '@/components/ui/PortalModal'
-
-const DOC_TYPES = [
-  { code: '0', label: 'Sin RUC' },
-  { code: '1', label: 'DNI' },
-  { code: '6', label: 'RUC' },
-  { code: '4', label: 'Carnet extranjería' },
-  { code: '7', label: 'Pasaporte' },
-]
-
-function toDocCode(v: string): string {
-  const s = (v || '').trim().toLowerCase()
-  if (s === 'dni' || s === '1') return '1'
-  if (s === 'ruc' || s === '6') return '6'
-  if (s === '0' || s === 'sin ruc') return '0'
-  if (s === '4') return '4'
-  if (s === '7') return '7'
-  return v || '6'
-}
+import {
+  CONTACT_DOC_TYPES,
+  contactDocSelectOptions,
+  contactDocSupportsConsulta,
+  toContactDocCode,
+} from '@/utils/contactDocTypes'
 
 const emptyForm = (): CreateContactInput => ({
   type: 'customer',
@@ -69,7 +57,7 @@ export default function ClientesPage() {
     setEditing(c)
     setForm({
       type: 'customer',
-      doc_type: toDocCode(c.doc_type),
+      doc_type: toContactDocCode(c.doc_type),
       doc_number: c.doc_number,
       business_name: c.business_name,
       trade_name: c.trade_name ?? '',
@@ -132,7 +120,7 @@ export default function ClientesPage() {
   }
 
   const handleConsulta = async () => {
-    const docType = toDocCode(form.doc_type)
+    const docType = toContactDocCode(form.doc_type)
     const num = (form.doc_number ?? '').trim().replace(/-/g, '')
     const isRUC = docType === '6'
     const isDNI = docType === '1'
@@ -233,7 +221,8 @@ export default function ClientesPage() {
               {contacts.map((c) => (
                 <tr key={c.id} className="border-b border-stone-100 hover:bg-stone-50/50">
                   <td className="px-4 py-3 text-stone-600 text-xs font-mono whitespace-nowrap">
-                    {DOC_TYPES.find((d) => d.code === toDocCode(c.doc_type))?.label ?? c.doc_type} {c.doc_number}
+                    {CONTACT_DOC_TYPES.find((d) => d.code === toContactDocCode(c.doc_type))?.label ?? c.doc_type}{' '}
+                    {c.doc_number}
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium text-stone-800">{c.business_name}</p>
@@ -303,22 +292,22 @@ export default function ClientesPage() {
                 <div>
                   <label className="block text-xs font-medium text-stone-600 mb-1">Tipo de documento</label>
                   <SearchableSelect
-                    value={toDocCode(form.doc_type)}
+                    value={toContactDocCode(form.doc_type)}
                     onChange={(v) => setF('doc_type', String(v ?? ''))}
-                    options={DOC_TYPES.map((d) => ({ value: d.code, label: d.label }))}
+                    options={contactDocSelectOptions()}
                     searchable={false}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-stone-600 mb-1">N° Documento *</label>
-                  {(toDocCode(form.doc_type) === '1' || toDocCode(form.doc_type) === '6') ? (
+                  {contactDocSupportsConsulta(form.doc_type) ? (
                     <div className="flex border border-stone-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-rest-500">
                       <input
                         className="flex-1 min-w-0 px-3 py-2 border-0 text-sm"
                         value={form.doc_number}
                         onChange={(e) => setF('doc_number', e.target.value)}
-                        placeholder={toDocCode(form.doc_type) === '6' ? 'RUC 11 dígitos' : 'DNI 8 dígitos'}
+                        placeholder={toContactDocCode(form.doc_type) === '6' ? 'RUC 11 dígitos' : 'DNI 8 dígitos'}
                       />
                       <button
                         type="button"

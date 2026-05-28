@@ -29,7 +29,7 @@ function dynamicApiProxyPlugin(defaultTarget: string): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? ''
-        if (!/^\/(api|uploads|storage)(\/|$)/.test(url)) {
+        if (!/^\/(api|uploads|storage|health)(\/|$)/.test(url)) {
           next()
           return
         }

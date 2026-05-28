@@ -6,6 +6,8 @@ import { publicService, storeTenant } from '@/services/public.service'
 import { getCentralApiBaseUrl } from '@/services/api'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { BRAND_LOGO_H } from '@/config/branding'
+import { isDevelopmentMode } from '@/lib/runtime/environment'
+import { DevServerSettings } from '@/components/settings/DevServerSettings'
 
 /**
  * Vinculación única por instalación: RUC → slug + URL del tenant (persistido en disco).
@@ -65,6 +67,11 @@ export default function RucPage() {
           Ingrese el RUC de su negocio. Esta vinculación queda guardada en el dispositivo y no se puede
           cambiar de empresa sin desinstalar la aplicación.
         </p>
+        {isDevelopmentMode() && (
+          <div className="mb-4">
+            <DevServerSettings />
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-stone-600 mb-1">RUC del negocio</label>

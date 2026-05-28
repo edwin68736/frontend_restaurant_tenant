@@ -1,4 +1,5 @@
 import api from './api'
+import { dedupePromise } from '@/utils/dedupePromise'
 
 export interface OpenCashSessionRow {
   id: number
@@ -138,12 +139,15 @@ export const cashbankService = {
   listSessions: (branch_id?: number): Promise<CashSession[]> =>
     api.get('/api/cashbank/sessions', { params: { branch_id } }).then((r) => r.data.data ?? []),
 
-  getOpenSession: async (branch_id?: number): Promise<CashSession | null> => {
-    const r = await api.get<{ data: CashSession | null; open?: boolean }>('/api/cashbank/sessions/open', {
-      params: branch_id && branch_id > 0 ? { branch_id } : undefined,
-      timeout: 15_000,
+  getOpenSession: (branch_id?: number): Promise<CashSession | null> => {
+    const key = `cashbank:open:${branch_id ?? 0}`
+    return dedupePromise(key, async () => {
+      const r = await api.get<{ data: CashSession | null; open?: boolean }>('/api/cashbank/sessions/open', {
+        params: branch_id && branch_id > 0 ? { branch_id } : undefined,
+        timeout: 15_000,
+      })
+      return r.data?.data != null ? r.data.data : null
     })
-    return r.data?.data != null ? r.data.data : null
   },
 
   listOpenSessionsInBranch: (branch_id: number): Promise<OpenCashSessionRow[]> =>
@@ -167,7 +171,9 @@ export const cashbankService = {
     api.post(`/api/cashbank/sessions/${id}/arqueo`, { arqueo }).then((r) => r.data),
 
   listMovements: (sessionId: number): Promise<CashMovement[]> =>
-    api.get(`/api/cashbank/sessions/${sessionId}/movements`).then((r) => r.data.data ?? r.data ?? []),
+    dedupePromise(`cashbank:movements:${sessionId}`, () =>
+      api.get(`/api/cashbank/sessions/${sessionId}/movements`).then((r) => r.data.data ?? r.data ?? []),
+    ),
 
   addMovement: (
     sessionId: number,

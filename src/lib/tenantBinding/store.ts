@@ -1,11 +1,16 @@
+import { isDevelopmentMode, isProductionMode } from '@/lib/runtime/environment'
 import { isNativeShell } from '@/lib/platform/detect'
+import { currentBindingEnvironment } from './envStorage'
 import {
   clearLegacyLocalStorageBinding,
   clearTenantBindingOnDevice,
+  readDevBindingFromLocalStorage,
+  readLegacyLocalStorageBinding,
   readTenantBindingFromDevice,
   writeTenantBindingToDevice,
 } from './persist'
 import {
+  isCentralApiHost,
   isValidTenantBinding,
   normalizeBindingApiUrl,
   TENANT_BINDING_VERSION,
@@ -44,12 +49,20 @@ export function isTenantBound(): boolean {
 export async function initTenantBindingStore(): Promise<TenantBinding | null> {
   if (initPromise) return initPromise
   initPromise = (async () => {
-    // Tauri/Capacitor: nunca usar localStorage del WebView como vinculación (solo archivo nativo).
-    if (isNativeShell()) {
+    if (isProductionMode() && isNativeShell()) {
       clearLegacyLocalStorageBinding()
     }
 
-    let binding = await readTenantBindingFromDevice()
+    let binding: TenantBinding | null = null
+
+    if (isDevelopmentMode()) {
+      binding = readDevBindingFromLocalStorage()
+      if (!binding) {
+        binding = readLegacyLocalStorageBinding()
+      }
+    } else {
+      binding = await readTenantBindingFromDevice()
+    }
 
     if (binding && !isValidTenantBinding(binding)) {
       await clearTenantBindingOnDevice()
@@ -84,7 +97,7 @@ export async function bindTenantFromRuc(data: TenantByRucResponse, ruc: string):
   const rucNorm = ruc.replace(/\D/g, '').trim()
   const slug = (data.tenant_slug || data.slug).trim()
   let apiUrl = normalizeBindingApiUrl(data.api_url || '')
-  if (!apiUrl && import.meta.env.DEV) {
+  if (!apiUrl && isDevelopmentMode()) {
     apiUrl = devTenantApiFallback()
   }
 
@@ -102,7 +115,9 @@ export async function bindTenantFromRuc(data: TenantByRucResponse, ruc: string):
     name: data.name?.trim() ?? '',
     ruc: rucNorm,
     tokenConsultaDatos: data.token_consulta_datos?.trim() ?? '',
+    environment: currentBindingEnvironment(),
     boundAt: new Date().toISOString(),
+    lastConnectionAt: new Date().toISOString(),
   }
 
   if (!isValidTenantBinding(candidate)) {
@@ -111,7 +126,7 @@ export async function bindTenantFromRuc(data: TenantByRucResponse, ruc: string):
     )
   }
 
-  if (cache && cache.slug !== slug) {
+  if (isProductionMode() && cache && cache.slug !== slug) {
     throw new Error(
       'Esta instalación ya está vinculada a otra empresa. Desinstale la aplicación para vincular otro RUC.',
     )
@@ -135,4 +150,48 @@ export async function wipeTenantBinding(): Promise<void> {
   cache = null
   resetTenantBindingInit()
   notify()
+}
+
+/** Desarrollo: actualizar URL del tenant sin repetir onboarding RUC. */
+export async function updateDevTenantApiUrl(apiUrl: string): Promise<TenantBinding> {
+  if (!isDevelopmentMode()) {
+    throw new Error('Solo disponible en modo desarrollo')
+  }
+  const normalized = normalizeBindingApiUrl(apiUrl)
+  if (!normalized || !/^https?:\/\//i.test(normalized)) {
+    throw new Error('URL inválida. Use http:// o https://')
+  }
+  if (isCentralApiHost(normalized)) {
+    throw new Error('Use la URL del tenant (subdominio), no la API central.')
+  }
+
+  const base: TenantBinding = cache ?? {
+    version: TENANT_BINDING_VERSION,
+    slug: 'dev',
+    apiUrl: normalized,
+    name: 'Desarrollo local',
+    ruc: '',
+    tokenConsultaDatos: '',
+    environment: 'development',
+    boundAt: new Date().toISOString(),
+  }
+
+  const next: TenantBinding = {
+    ...base,
+    apiUrl: normalized,
+    environment: 'development',
+    lastConnectionAt: new Date().toISOString(),
+  }
+
+  await writeTenantBindingToDevice(next)
+  cache = next
+  notify()
+  return next
+}
+
+export function getResolvedTenantApiUrl(): string {
+  const binding = cache
+  if (binding?.apiUrl) return normalizeBindingApiUrl(binding.apiUrl)
+  if (isDevelopmentMode()) return devTenantApiFallback()
+  return ''
 }

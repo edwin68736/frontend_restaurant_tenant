@@ -27,6 +27,7 @@ import {
 } from '@/services/products.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
+import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
@@ -75,6 +76,7 @@ const emptyForm = (): CreateProductInput => ({
   has_modifiers: false,
   has_variants: false,
   modifier_group_ids: [],
+  presentations: [],
   category_id: null,
   preparation_area: '',
   manage_stock: false,
@@ -105,6 +107,7 @@ export default function ProductosPage() {
   const [addingCategory, setAddingCategory] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [presentationsModalOpen, setPresentationsModalOpen] = useState(false)
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const categoryModalInputRef = useRef<HTMLInputElement>(null)
@@ -185,13 +188,13 @@ export default function ProductosPage() {
   const openEdit = (p: Product) => {
     setEditing(p)
     Promise.all([productsService.get(p.id), productsService.listModifierGroups()])
-      .then(([{ data, modifier_group_ids }, groups]) => {
+      .then(([{ data, modifier_group_ids, presentations }, groups]) => {
         setModifierGroups(groups)
         let ids = modifier_group_ids ?? []
         if (data.has_modifiers && ids.length === 0 && groups.length > 0) {
           ids = groups.map((g) => g.id)
           toast.info(
-            'Este producto no tenía grupos vinculados. Se marcaron todos; revisa y pulsa Guardar.',
+            'Este producto no tenía grupos de extras vinculados. Se marcaron todos; revisa y pulsa Guardar.',
             { duration: 8000 },
           )
         }
@@ -208,6 +211,11 @@ export default function ProductosPage() {
           unit: 'NIU',
           has_modifiers: data.has_modifiers ?? false,
           has_variants: data.has_variants ?? false,
+          presentations: (presentations ?? []).map((p) => ({
+            id: p.id,
+            name: p.name,
+            sale_price: Number(p.sale_price) || 0,
+          })),
           modifier_group_ids: ids,
           category_id: data.category_id ?? null,
           preparation_area: (data as Product & { preparation_area?: string }).preparation_area ?? '',
@@ -249,10 +257,21 @@ export default function ProductosPage() {
       toast.error('El nombre es requerido')
       return
     }
-    if (form.has_modifiers && (form.modifier_group_ids ?? []).length === 0) {
-      toast.error('Selecciona al menos un grupo de modificadores o desactiva «Variantes y extras»')
+    const presentationRows = (form.presentations ?? []).filter((p) => p.name.trim())
+    if (form.has_variants && presentationRows.length === 0) {
+      toast.error('Agrega al menos una presentación o desactiva «Presentaciones»')
       return
     }
+    if (form.has_modifiers && (form.modifier_group_ids ?? []).length === 0) {
+      toast.error('Selecciona al menos un grupo de extras o desactiva «Extras»')
+      return
+    }
+    const presentationsPayload = form.has_variants
+      ? presentationRows.map((p) => ({
+          name: p.name.trim(),
+          sale_price: Math.round((Number(p.sale_price) || 0) * 100) / 100,
+        }))
+      : []
     const selectedFile = fileInputRef.current?.files?.[0] ?? null
     setSaving(true)
     try {
@@ -266,6 +285,8 @@ export default function ProductosPage() {
           purchase_price:
             form.purchase_price != null && form.purchase_price > 0 ? form.purchase_price : undefined,
           sale_price: Number(form.sale_price) || 0,
+          has_variants: form.has_variants && presentationsPayload.length > 0,
+          presentations: presentationsPayload,
           category_id: form.category_id ?? null,
           preparation_area: form.preparation_area ?? '',
           manage_stock: form.manage_stock ?? false,
@@ -300,7 +321,8 @@ export default function ProductosPage() {
             form.purchase_price != null && form.purchase_price > 0 ? form.purchase_price : 0,
           sale_price: Number(form.sale_price) || 0,
           has_modifiers: form.has_modifiers,
-          has_variants: form.has_variants,
+          has_variants: form.has_variants && presentationsPayload.length > 0,
+          presentations: presentationsPayload,
           modifier_group_ids: form.modifier_group_ids,
           image_url: form.image_url ?? '',
           category_id: form.category_id ?? null,
@@ -830,13 +852,27 @@ export default function ProductosPage() {
                 <label className="flex items-center gap-2 text-sm font-medium text-stone-700 md:col-span-2">
                   <input
                     type="checkbox"
+                    checked={form.has_variants ?? false}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        has_variants: e.target.checked,
+                        presentations: e.target.checked ? f.presentations : [],
+                      }))
+                    }
+                    className="rounded border-stone-300"
+                  />
+                  Presentaciones propias (tamaños / envases) en mesa/POS
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-stone-700 md:col-span-2">
+                  <input
+                    type="checkbox"
                     checked={form.has_modifiers ?? false}
                     onChange={(e) => {
                       const on = e.target.checked
                       setForm((f) => ({
                         ...f,
                         has_modifiers: on,
-                        has_variants: on ? f.has_variants : false,
                         modifier_group_ids: on
                           ? modifierGroups.length > 0
                             ? modifierGroups.map((g) => g.id)
@@ -846,15 +882,37 @@ export default function ProductosPage() {
                     }}
                     className="rounded border-stone-300"
                   />
-                  Variantes y extras en mesa/POS
+                  Extras globales (grupos reutilizables) en mesa/POS
                 </label>
               </div>
 
+              {form.has_variants && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-sky-900">Presentaciones</p>
+                    <p className="text-xs text-sky-800/90 mt-0.5">
+                      {(form.presentations ?? []).filter((p) => p.name.trim()).length > 0
+                        ? `${(form.presentations ?? []).filter((p) => p.name.trim()).length} configurada(s): ${(form.presentations ?? [])
+                            .filter((p) => p.name.trim())
+                            .map((p) => p.name)
+                            .join(', ')}`
+                        : 'Sin presentaciones. Configúralas antes de guardar.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPresentationsModalOpen(true)}
+                    className="shrink-0 min-h-[44px] px-4 py-2 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700"
+                  >
+                    Gestionar presentaciones
+                  </button>
+                </div>
+              )}
+
               {form.has_modifiers && (
-                <div className="rounded-xl border border-rest-200 bg-rest-50/50 p-3 space-y-3">
+                <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 space-y-3">
                   <p className="text-xs text-stone-600 leading-relaxed">
-                    Al pedir, el mozo verá un modal: elige variante (una opción obligatoria) y extras (opcionales).
-                    Primero crea grupos en{' '}
+                    Vincula grupos de extras creados en{' '}
                     <button
                       type="button"
                       onClick={() => {
@@ -865,62 +923,42 @@ export default function ProductosPage() {
                     >
                       Modificadores
                     </button>
-                    , luego asígnalos aquí.
+                    . Se suman al precio del producto o presentación.
                   </p>
                   {modifierGroups.length > 0 ? (
                     <div className="space-y-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-xs font-semibold text-stone-700">Grupos vinculados a este producto *</p>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setForm((f) => ({
-                                ...f,
-                                modifier_group_ids: modifierGroups.map((g) => g.id),
-                              }))
-                            }
-                            className="text-xs font-medium text-rest-700 hover:underline"
-                          >
-                            Todos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setForm((f) => ({ ...f, modifier_group_ids: [] }))}
-                            className="text-xs font-medium text-stone-500 hover:underline"
-                          >
-                            Ninguno
-                          </button>
-                        </div>
-                      </div>
-                      {modifierGroups.map((g) => {
-                        const isVariant = !!(g.required && !g.multi_select)
-                        return (
-                          <label
-                            key={g.id}
-                            className="flex items-start gap-2 p-2 rounded-lg bg-white border border-stone-100"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={(form.modifier_group_ids ?? []).includes(g.id)}
-                              onChange={(e) => {
-                                const ids = form.modifier_group_ids ?? []
-                                if (e.target.checked) setForm((f) => ({ ...f, modifier_group_ids: [...ids, g.id] }))
-                                else setForm((f) => ({ ...f, modifier_group_ids: ids.filter((id) => id !== g.id) }))
-                              }}
-                              className="rounded border-stone-300 mt-0.5"
-                            />
-                            <span className="text-sm">
-                              <span className="font-medium text-stone-800">{g.name}</span>
-                              <span className="block text-xs text-stone-500 mt-0.5">
-                                {isVariant ? 'Variante (elige una)' : 'Extras'}
-                                {g.required ? ' · obligatorio' : ''}
-                                {g.options?.length ? ` · ${g.options.map((o) => o.name).join(', ')}` : ' · sin opciones'}
-                              </span>
+                      {modifierGroups.map((g) => (
+                        <label
+                          key={g.id}
+                          className="flex items-start gap-2 p-2 rounded-lg bg-white border border-amber-100"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={(form.modifier_group_ids ?? []).includes(g.id)}
+                            onChange={(e) => {
+                              const ids = form.modifier_group_ids ?? []
+                              if (e.target.checked)
+                                setForm((f) => ({ ...f, modifier_group_ids: [...ids, g.id] }))
+                              else
+                                setForm((f) => ({
+                                  ...f,
+                                  modifier_group_ids: ids.filter((id) => id !== g.id),
+                                }))
+                            }}
+                            className="rounded border-stone-300 mt-0.5"
+                          />
+                          <span className="text-sm">
+                            <span className="font-medium text-stone-800">{g.name}</span>
+                            <span className="block text-xs text-stone-500 mt-0.5">
+                              Suma al precio{g.multi_select ? ' · varios' : ''}
+                              {g.required ? ' · obligatorio' : ''}
+                              {g.options?.length
+                                ? ` · ${g.options.map((o) => o.name).join(', ')}`
+                                : ' · sin opciones'}
                             </span>
-                          </label>
-                        )
-                      })}
+                          </span>
+                        </label>
+                      ))}
                     </div>
                   ) : (
                     <button
@@ -932,12 +970,12 @@ export default function ProductosPage() {
                       className="inline-flex items-center gap-2 text-sm font-medium text-rest-700 hover:text-rest-800"
                     >
                       <Layers size={16} />
-                      Crear grupos de modificadores
+                      Crear grupos de extras
                     </button>
                   )}
-                  {(form.modifier_group_ids ?? []).length === 0 && modifierGroups.length > 0 && (
+                  {form.has_modifiers && (form.modifier_group_ids ?? []).length === 0 && modifierGroups.length > 0 && (
                     <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
-                      Debes marcar al menos un grupo; si no, en mesa solo se agregará el precio base.
+                      Marca al menos un grupo de extras.
                     </p>
                   )}
                 </div>
@@ -1021,6 +1059,14 @@ export default function ProductosPage() {
           refresh()
           loadCategories()
         }}
+      />
+
+      <ProductPresentationsModal
+        open={presentationsModalOpen}
+        productName={form.name.trim() || undefined}
+        presentations={form.presentations ?? []}
+        onClose={() => setPresentationsModalOpen(false)}
+        onSave={(presentations) => setForm((f) => ({ ...f, presentations }))}
       />
     </PageShell>
   )

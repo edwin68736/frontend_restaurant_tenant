@@ -7,6 +7,7 @@ import {
   productsService,
   type ModifierGroup,
   type Product,
+  type ProductPresentation,
 } from '@/services/products.service'
 import { formatSoles } from '@/utils/format'
 import { formatAmountDisplay } from '@/utils/money'
@@ -15,13 +16,13 @@ import { createCatalogCartLine } from '@/utils/posCart'
 import type { CartModifierEntry } from '@/types/productModifiers'
 import {
   calcUnitPriceWithModifiers,
-  classifyModifierGroups,
   formatModifierSummary,
-  selectionFromVariant,
-  toggleModifierSelection,
   getModifierSetupIssue,
+  getProductExtraGroups,
   hasConfigurableModifierUI,
   productNeedsConfiguration,
+  selectionFromProductPresentation,
+  toggleExtraSelection,
   validateModifierSelection,
 } from '@/utils/productModifiers'
 
@@ -33,44 +34,54 @@ type Props = {
 
 export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
   const [loading, setLoading] = useState(false)
-  /** true solo después de que GET producto + grupos terminó (evita degradar antes de cargar vínculos). */
   const [optionsLoaded, setOptionsLoaded] = useState(false)
   const [modifierGroupIds, setModifierGroupIds] = useState<number[]>([])
+  const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [allGroups, setAllGroups] = useState<ModifierGroup[]>([])
   const [selected, setSelected] = useState<CartModifierEntry[]>([])
   const [kitchenNote, setKitchenNote] = useState('')
   const degradedRef = useRef(false)
   const loadGenRef = useRef(0)
+  const loadedProductIdRef = useRef<number | null>(null)
+  const onConfirmRef = useRef(onConfirm)
+  const onCloseRef = useRef(onClose)
+  onConfirmRef.current = onConfirm
+  onCloseRef.current = onClose
+
+  const productId = product?.id ?? null
 
   useEffect(() => {
     degradedRef.current = false
-    if (!product) {
+    loadedProductIdRef.current = null
+    if (!productId) {
       setOptionsLoaded(false)
       setModifierGroupIds([])
+      setPresentations([])
       setAllGroups([])
+      setSelected([])
+      setKitchenNote('')
       return
     }
     const gen = ++loadGenRef.current
     setOptionsLoaded(false)
     setLoading(true)
     setModifierGroupIds([])
+    setPresentations([])
     setAllGroups([])
     setSelected([])
     setKitchenNote('')
-    Promise.all([productsService.get(product.id), productsService.listModifierGroups()])
+    Promise.all([productsService.get(productId), productsService.listModifierGroups()])
       .then(([detail, groups]) => {
         if (loadGenRef.current !== gen) return
         const ids = detail.modifier_group_ids ?? []
+        const pres = (detail.presentations ?? []).filter((p) => p.name.trim())
+        loadedProductIdRef.current = productId
         setModifierGroupIds(ids)
+        setPresentations(pres)
         setAllGroups(groups ?? [])
-        const { variantGroups } = classifyModifierGroups(ids, groups ?? [], product)
         const auto: CartModifierEntry[] = []
-        for (const g of variantGroups) {
-          const opts = g.options ?? []
-          if (opts.length === 1) {
-            const entry = selectionFromVariant(g, opts[0].id)
-            if (entry) auto.push(entry)
-          }
+        if (pres.length === 1) {
+          auto.push(selectionFromProductPresentation(pres[0]))
         }
         setSelected(auto)
       })
@@ -82,61 +93,92 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
         setLoading(false)
         setOptionsLoaded(true)
       })
-  }, [product])
+  }, [productId])
 
-  const { variantGroups, modifierGroups } = useMemo(() => {
-    if (!product) return { variantGroups: [] as ModifierGroup[], modifierGroups: [] as ModifierGroup[] }
-    return classifyModifierGroups(modifierGroupIds, allGroups, product)
+  const extraGroups = useMemo(() => {
+    if (!product) return []
+    return getProductExtraGroups(modifierGroupIds, allGroups, product)
   }, [product, modifierGroupIds, allGroups])
 
+  const productWithPres = useMemo((): Product | null => {
+    if (!product) return null
+    return { ...product, presentations }
+  }, [product, presentations])
+
   useEffect(() => {
-    if (!product || !optionsLoaded || loading || degradedRef.current) return
-    if (!productNeedsConfiguration(product)) return
-    if (hasConfigurableModifierUI(product, modifierGroupIds, allGroups)) return
+    if (!productWithPres || productId == null || loadedProductIdRef.current !== productId) return
+    if (!optionsLoaded || loading || degradedRef.current) return
+    if (!productNeedsConfiguration(productWithPres)) return
+    if (hasConfigurableModifierUI(productWithPres, modifierGroupIds, allGroups, presentations)) return
     degradedRef.current = true
-    const issue = getModifierSetupIssue(product, modifierGroupIds, allGroups)
+    const issue = getModifierSetupIssue(productWithPres, modifierGroupIds, allGroups, presentations)
     toast.warning(issue ?? 'Configuración incompleta; se agrega con precio base.', { duration: 6000 })
-    onConfirm(createCatalogCartLine(product, { quantity: 1, notes: '' }))
-    onClose()
-  }, [product, optionsLoaded, loading, modifierGroupIds, allGroups, onConfirm, onClose])
+    onConfirmRef.current(createCatalogCartLine(productWithPres, { quantity: 1, notes: '' }))
+    onCloseRef.current()
+  }, [
+    productWithPres,
+    productId,
+    optionsLoaded,
+    loading,
+    modifierGroupIds,
+    allGroups,
+    presentations,
+  ])
 
   const basePrice = product ? Number(product.sale_price) || 0 : 0
   const unitPrice = calcUnitPriceWithModifiers(basePrice, selected)
 
+  const selectedPresentation = selected.find((m) => m.type === 'variant')
+  const displayBaseLabel = selectedPresentation ? 'Precio de la presentación' : 'Precio base del producto'
+  const displayBaseAmount = selectedPresentation
+    ? Number(selectedPresentation.extra_price) || basePrice
+    : basePrice
+
   const priceBreakdown = useMemo(() => {
-    const lines: { label: string; amount: number }[] = [{ label: 'Precio base', amount: basePrice }]
-    for (const m of selected) {
+    const lines: { label: string; amount: number; sign: 'none' | 'plus' }[] = []
+    const presentation = selected.find((m) => m.type === 'variant')
+    const extras = selected.filter((m) => m.type === 'modifier')
+
+    if (!presentation) {
+      lines.push({ label: 'Precio base', amount: basePrice, sign: 'none' })
+    } else {
+      const p = Number(presentation.extra_price) || 0
+      lines.push({
+        label: presentation.option_name || 'Presentación',
+        amount: p > 0 ? p : basePrice,
+        sign: 'none',
+      })
+    }
+    for (const m of extras) {
       const amt = Number(m.extra_price) || 0
-      if (amt !== 0) {
-        lines.push({
-          label: m.type === 'variant' ? m.option_name : `+ ${m.option_name}`,
-          amount: amt,
-        })
-      }
+      if (amt !== 0) lines.push({ label: m.option_name, amount: amt, sign: 'plus' })
     }
     return lines
   }, [basePrice, selected])
 
   const handleConfirm = () => {
-    if (!product) return
-    const err = validateModifierSelection(variantGroups, modifierGroups, selected)
+    if (!productWithPres || productId == null || loadedProductIdRef.current !== productId) return
+    const err = validateModifierSelection(presentations, extraGroups, selected, productWithPres)
     if (err) {
       toast.error(err)
       return
     }
-    const line = createCatalogCartLine(product, {
-      quantity: 1,
-      notes: kitchenNote,
-      modifiers: selected,
-      base_price: basePrice,
-    })
-    onConfirm(line)
-    onClose()
+    degradedRef.current = true
+    onConfirmRef.current(
+      createCatalogCartLine(productWithPres, {
+        quantity: 1,
+        notes: kitchenNote,
+        modifiers: selected,
+        base_price: basePrice,
+      }),
+    )
+    onCloseRef.current()
   }
 
   if (!product) return null
 
   const imgUrl = getProductImageUrl(product.image_url)
+  const activePresentations = presentations.filter((p) => p.name.trim())
 
   return (
     <PortalModal open onClose={onClose} className="max-w-lg">
@@ -160,8 +202,8 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
               <div className="w-20 h-20 rounded-xl bg-stone-100 border border-stone-200 shrink-0" />
             )}
             <div>
-              <p className="text-sm text-stone-600">Precio base</p>
-              <p className="text-xl font-bold text-rest-600 tabular-nums">{formatSoles(basePrice)}</p>
+              <p className="text-sm text-stone-600">{displayBaseLabel}</p>
+              <p className="text-xl font-bold text-rest-600 tabular-nums">{formatSoles(displayBaseAmount)}</p>
             </div>
           </div>
 
@@ -171,81 +213,100 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
             </div>
           ) : (
             <>
-              {variantGroups.map((g) => (
-                <section key={g.id}>
-                  <p className="text-xs font-semibold text-stone-700 mb-2">
-                    {g.name}
-                    {g.required ? <span className="text-red-600"> *</span> : null}
-                  </p>
+              {activePresentations.length > 0 && (
+                <div className="rounded-xl border-2 border-sky-200 bg-sky-50/60 p-3 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-sky-800">
+                      Presentación del producto
+                    </p>
+                    <p className="text-[11px] text-sky-700/90 mt-0.5">
+                      Elige una. Su precio reemplaza el precio base (no se suma).
+                    </p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {(g.options ?? []).map((opt) => {
+                    {activePresentations.map((pres) => {
                       const active = selected.some(
-                        (s) => s.type === 'variant' && s.option_id === opt.id,
+                        (s) =>
+                          s.type === 'variant' &&
+                          (pres.id ? s.option_id === pres.id : s.option_name === pres.name.trim()),
                       )
-                      const extra = Number(opt.extra_price) || 0
+                      const salePrice = Number(pres.sale_price) || 0
                       return (
                         <button
-                          key={opt.id}
+                          key={pres.id ?? pres.name}
                           type="button"
                           onClick={() =>
-                            setSelected((prev) => {
-                              const without = prev.filter(
-                                (s) => !(s.type === 'variant' && s.group_id === g.id),
-                              )
-                              const entry = selectionFromVariant(g, opt.id)
-                              return entry ? [...without, entry] : without
-                            })
+                            setSelected((prev) => [
+                              ...prev.filter((s) => s.type !== 'variant'),
+                              selectionFromProductPresentation(pres),
+                            ])
                           }
                           className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
                             active
-                              ? 'bg-rest-600 text-white border-rest-600'
-                              : 'bg-white text-stone-800 border-stone-200 hover:border-rest-400'
+                              ? 'bg-sky-600 text-white border-sky-600'
+                              : 'bg-white text-stone-800 border-sky-200 hover:border-sky-400'
                           }`}
                         >
-                          {opt.name}
-                          {extra > 0 ? ` (+S/ ${formatAmountDisplay(extra)})` : ''}
+                          {pres.name}
+                          {salePrice > 0 ? (
+                            <span className="block text-[11px] font-normal opacity-90 tabular-nums">
+                              S/ {formatAmountDisplay(salePrice)}
+                            </span>
+                          ) : null}
                         </button>
                       )
                     })}
                   </div>
-                </section>
-              ))}
+                </div>
+              )}
 
-              {modifierGroups.map((g) => (
-                <section key={g.id}>
-                  <p className="text-xs font-semibold text-stone-700 mb-2">
-                    {g.name}
-                    {g.required ? <span className="text-red-600"> *</span> : null}
-                    {g.multi_select ? (
-                      <span className="text-stone-400 font-normal"> (varios)</span>
-                    ) : null}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {(g.options ?? []).map((opt) => {
-                      const active = selected.some(
-                        (s) => s.type === 'modifier' && s.option_id === opt.id,
-                      )
-                      const extra = Number(opt.extra_price) || 0
-                      return (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setSelected((prev) => toggleModifierSelection(prev, g, opt.id))}
-                          className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                            active
-                              ? 'bg-amber-100 text-amber-950 border-amber-400'
-                              : 'bg-white text-stone-800 border-stone-200 hover:border-amber-300'
-                          }`}
-                        >
-                          {active ? '✓ ' : ''}
-                          {opt.name}
-                          {extra > 0 ? ` (+S/ ${formatAmountDisplay(extra)})` : ''}
-                        </button>
-                      )
-                    })}
+              {extraGroups.length > 0 && (
+                <div className="rounded-xl border-2 border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-900">
+                      Extras y adicionales
+                    </p>
+                    <p className="text-[11px] text-amber-800/90 mt-0.5">Se suman al precio elegido.</p>
                   </div>
-                </section>
-              ))}
+                  {extraGroups.map((g) => (
+                    <section key={g.id}>
+                      <p className="text-xs font-semibold text-stone-800 mb-2">
+                        {g.name}
+                        {g.required ? <span className="text-red-600"> *</span> : null}
+                        {g.multi_select ? (
+                          <span className="text-stone-500 font-normal"> (varios)</span>
+                        ) : null}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(g.options ?? []).map((opt) => {
+                          const active = selected.some(
+                            (s) => s.type === 'modifier' && s.option_id === opt.id,
+                          )
+                          const extra = Number(opt.extra_price) || 0
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                setSelected((prev) => toggleExtraSelection(prev, g, opt.id))
+                              }
+                              className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                                active
+                                  ? 'bg-amber-500 text-white border-amber-500'
+                                  : 'bg-white text-stone-800 border-amber-200 hover:border-amber-400'
+                              }`}
+                            >
+                              {active ? '✓ ' : ''}
+                              {opt.name}
+                              {extra > 0 ? ` (+S/ ${formatAmountDisplay(extra)})` : ''}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
 
               <section>
                 <label className="block text-xs font-semibold text-stone-700 mb-1.5">
@@ -262,13 +323,13 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
               </section>
 
               <section className="rounded-xl bg-stone-50 border border-stone-200 p-3 space-y-1">
-                <p className="text-xs font-semibold text-stone-600 mb-1">Resumen</p>
+                <p className="text-xs font-semibold text-stone-600 mb-1">Resumen de precio</p>
                 {priceBreakdown.map((row) => (
                   <div key={row.label} className="flex justify-between text-sm text-stone-700">
-                    <span>{row.label}</span>
+                    <span>{row.sign === 'plus' ? `+ ${row.label}` : row.label}</span>
                     <span className="tabular-nums">
-                      {row.amount >= 0 ? '+' : ''}
-                      {formatSoles(Math.abs(row.amount))}
+                      {row.sign === 'plus' ? '+' : ''}
+                      {formatSoles(row.amount)}
                     </span>
                   </div>
                 ))}
