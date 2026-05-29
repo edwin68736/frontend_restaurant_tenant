@@ -12,6 +12,7 @@ export interface CompanyConfig {
   tax_rate?: number
   logo_url: string
   color_theme?: string
+  additional_notes?: string
 }
 
 export interface SunatConfig {
@@ -26,6 +27,7 @@ export interface BranchRow {
   name: string
   address: string
   phone: string
+  fiscal_domicile_code?: string
   is_main: boolean
   active?: boolean
 }
@@ -41,6 +43,9 @@ export interface SeriesRow {
   category: string
   active?: boolean
   sunat_code?: string
+  locked?: boolean
+  sales_count?: number
+  can_delete?: boolean
 }
 
 export const companyService = {
@@ -59,7 +64,7 @@ export const companyService = {
   listBranches: (): Promise<BranchRow[]> =>
     api.get<{ data: BranchRow[] }>('/api/company/branches').then((r) => r.data.data ?? []),
 
-  createBranch: (data: { name: string; address: string; phone: string; is_main: boolean }) =>
+  createBranch: (data: { name: string; address: string; phone: string; fiscal_domicile_code?: string; is_main: boolean }) =>
     api.post('/api/company/branches', data).then((r) => r.data),
 
   updateBranch: (id: number, data: Partial<BranchRow>) =>
@@ -89,6 +94,8 @@ export const companyService = {
       correlative?: number
     },
   ) => api.put(`/api/company/series/${id}`, data).then((r) => r.data),
+
+  deleteSeries: (id: number) => api.delete(`/api/company/series/${id}`).then((r) => r.data),
 }
 
 /** Serie por defecto en POS/checkout: nota de venta (SUNAT 00). */

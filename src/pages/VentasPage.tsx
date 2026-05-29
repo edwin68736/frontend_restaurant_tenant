@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -17,10 +17,17 @@ import {
   ExternalLink,
   ChevronLeft,
   ChevronRight,
+  FileSpreadsheet,
+  FileDown,
+  Ban,
+  FileSignature,
+  Receipt,
 } from 'lucide-react'
 import { salesService, formatSaleDocumentNumber, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
 import { billingService } from '@/services/billing.service'
-import { companyService } from '@/services/company.service'
+import { companyService, type SeriesRow } from '@/services/company.service'
+import { getCurrentMonthRange, getTodayPeru } from '@/utils/datesPeru'
+import { exportSalesListExcel, exportSalesListPdf } from '@/utils/salesListExport'
 import { PageShell } from '@/components/layout/PageShell'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { AnchoredDropdown } from '@/components/ui/AnchoredDropdown'
@@ -76,12 +83,46 @@ const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
 const BILLING_FILTER_STATUSES = ['pending', 'sent', 'accepted', 'rejected', 'error'] as const
 
-type Tab = 'notas' | 'facturacion'
+type Tab = 'notas' | 'facturacion' | 'credit_notes'
+
+function rucDigits(docNumber: string) {
+  return (docNumber || '').replace(/\D/g, '')
+}
+
+function contactHasValidRuc(c?: SaleDetail['contact']) {
+  if (!c) return false
+  if (String(c.doc_type || '').trim() !== '6') return false
+  return rucDigits(c.doc_number || '').length === 11
+}
 
 export default function VentasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
-  const [tab, setTab] = useState<Tab>(() => (searchParams.get('tab') === 'facturacion' ? 'facturacion' : 'notas'))
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab')
+    if (t === 'facturacion') return 'facturacion'
+    if (t === 'credit_notes') return 'credit_notes'
+    return 'notas'
+  })
+  const [dateRange, setDateRange] = useState(getCurrentMonthRange)
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | null>(null)
+  const [emitOpen, setEmitOpen] = useState(false)
+  const [emitRow, setEmitRow] = useState<Sale | null>(null)
+  const [emitDetail, setEmitDetail] = useState<SaleDetail | null>(null)
+  const [emitLoading, setEmitLoading] = useState(false)
+  const [emitSubmitting, setEmitSubmitting] = useState(false)
+  const [emitDocKind, setEmitDocKind] = useState<'01' | '03'>('03')
+  const [emitSeriesId, setEmitSeriesId] = useState<string>('')
+  const [emitIssueDate, setEmitIssueDate] = useState(() => getTodayPeru())
+  const [emitSeriesList, setEmitSeriesList] = useState<SeriesRow[]>([])
+  const [voidNotaOpen, setVoidNotaOpen] = useState(false)
+  const [voidNotaRow, setVoidNotaRow] = useState<Sale | null>(null)
+  const [voidNotaReason, setVoidNotaReason] = useState('')
+  const [voidNotaSubmitting, setVoidNotaSubmitting] = useState(false)
+  const [voidNcOpen, setVoidNcOpen] = useState(false)
+  const [voidNcRow, setVoidNcRow] = useState<Sale | null>(null)
+  const [voidNcReason, setVoidNcReason] = useState('')
+  const [voidNcSubmitting, setVoidNcSubmitting] = useState(false)
   const [sales, setSales] = useState<Sale[]>([])
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
@@ -146,16 +187,20 @@ export default function VentasPage() {
     refresh,
   } = useDebouncedApiSearch<{ data: Sale[]; total: number }>({
     cacheScope: 'restaurant-ventas',
-    enabled: !(tab === 'facturacion' && sunatEnabled === false),
-    deps: [tab, page, perPage, sunatEnabled, billingStatus],
+    enabled: !((tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === false),
+    deps: [tab, page, perPage, sunatEnabled, billingStatus, dateRange.from, dateRange.to],
     fetcher: (query, signal) => {
       const params: Parameters<typeof salesService.list>[0] = {
         page,
         per_page: perPage,
+        from: dateRange.from || undefined,
+        to: dateRange.to || undefined,
       }
       if (query) params.q = query
       if (tab === 'notas') {
         params.sunat_code = '00'
+      } else if (tab === 'credit_notes') {
+        params.doc_type = 'NOTA_CREDITO'
       } else {
         params.sunat_code = '01,03'
         params.billing_status = billingStatus
@@ -177,13 +222,190 @@ export default function VentasPage() {
       : d))
   }, [])
 
-  useBillingEvents(applyBillingEvent, tab === 'facturacion' && sunatEnabled === true)
+  useBillingEvents(applyBillingEvent, (tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === true)
 
   const setTabAndUrl = (t: Tab) => {
     setTab(t)
-    setSearchParams(t === 'facturacion' ? { tab: 'facturacion' } : {})
+    if (t === 'facturacion') setSearchParams({ tab: 'facturacion' })
+    else if (t === 'credit_notes') setSearchParams({ tab: 'credit_notes' })
+    else setSearchParams({})
     setPage(1)
   }
+
+  const buildListParams = () => {
+    const params: Parameters<typeof salesService.listAll>[0] = {
+      from: dateRange.from || undefined,
+      to: dateRange.to || undefined,
+      q: searchInput.trim() || undefined,
+    }
+    if (tab === 'notas') params.sunat_code = '00'
+    else if (tab === 'credit_notes') params.doc_type = 'NOTA_CREDITO'
+    else {
+      params.sunat_code = '01,03'
+      params.billing_status = billingStatus
+    }
+    return params
+  }
+
+  const handleExportPdf = async () => {
+    setExportBusy('pdf')
+    try {
+      const { data } = await salesService.listAll(buildListParams())
+      const title =
+        tab === 'notas' ? 'Notas de venta' : tab === 'credit_notes' ? 'Notas de crédito' : 'Facturas y boletas'
+      exportSalesListPdf(title, data, `${title.replace(/\s+/g, '-').toLowerCase()}.pdf`, {
+        includeBilling: tab !== 'notas',
+      })
+      toast.success('PDF exportado')
+    } catch {
+      toast.error('No se pudo exportar el PDF')
+    } finally {
+      setExportBusy(null)
+    }
+  }
+
+  const handleExportExcel = async () => {
+    setExportBusy('excel')
+    try {
+      const { data } = await salesService.listAll(buildListParams())
+      const title =
+        tab === 'notas' ? 'Notas de venta' : tab === 'credit_notes' ? 'Notas de crédito' : 'Facturas y boletas'
+      await exportSalesListExcel(title, data, `${title.replace(/\s+/g, '-').toLowerCase()}.xlsx`, {
+        includeBilling: tab !== 'notas',
+      })
+      toast.success('Excel exportado')
+    } catch {
+      toast.error('No se pudo exportar el Excel')
+    } finally {
+      setExportBusy(null)
+    }
+  }
+
+  const openEmit = async (row: Sale) => {
+    if (row.electronic_issue_sale_id) {
+      toast.info('Esta nota ya tiene comprobante electrónico emitido')
+      return
+    }
+    if (row.status === 'cancelled') {
+      toast.error('La nota está anulada')
+      return
+    }
+    setEmitRow(row)
+    setEmitOpen(true)
+    setEmitDocKind('03')
+    setEmitSeriesId('')
+    setEmitIssueDate(getTodayPeru())
+    setEmitDetail(null)
+    setEmitLoading(true)
+    try {
+      const [det, rawSeries] = await Promise.all([
+        salesService.get(row.id),
+        companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
+      ])
+      setEmitDetail(det)
+      setEmitSeriesList(
+        (rawSeries ?? []).filter((s) => {
+          const code = String(s.sunat_code || '').trim()
+          return code === '01' || code === '03'
+        }),
+      )
+    } catch {
+      toast.error('No se pudieron cargar los datos para emitir')
+      setEmitOpen(false)
+      setEmitRow(null)
+    } finally {
+      setEmitLoading(false)
+    }
+  }
+
+  const submitEmit = async () => {
+    if (!emitRow || !emitDetail) return
+    if (emitDocKind === '01' && !contactHasValidRuc(emitDetail.contact)) {
+      toast.error('Para factura el cliente debe tener RUC (11 dígitos)')
+      return
+    }
+    const sid = Number(emitSeriesId)
+    if (!sid) {
+      toast.error('Seleccione una serie de factura o boleta')
+      return
+    }
+    setEmitSubmitting(true)
+    try {
+      const res = await salesService.issueElectronicFromNota(emitRow.id, {
+        series_id: sid,
+        issue_date: emitIssueDate.trim() || undefined,
+      })
+      toast.success(
+        `Comprobante generado: ${res.sale?.doc_type ?? ''} ${formatSaleDocumentNumber(res.sale ?? {})}. Envíelo a SUNAT desde Facturación.`,
+      )
+      setEmitOpen(false)
+      setEmitRow(null)
+      setEmitDetail(null)
+      refresh()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo emitir')
+    } finally {
+      setEmitSubmitting(false)
+    }
+  }
+
+  const openVoidNota = (row: Sale) => {
+    setVoidNotaRow(row)
+    setVoidNotaReason('')
+    setVoidNotaOpen(true)
+  }
+
+  const submitVoidNota = async () => {
+    if (!voidNotaRow) return
+    if (!voidNotaReason.trim()) {
+      toast.error('Indique el motivo de anulación')
+      return
+    }
+    setVoidNotaSubmitting(true)
+    try {
+      await salesService.cancelNota(voidNotaRow.id, voidNotaReason.trim())
+      toast.success('Nota de venta anulada')
+      setVoidNotaOpen(false)
+      setVoidNotaRow(null)
+      refresh()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al anular')
+    } finally {
+      setVoidNotaSubmitting(false)
+    }
+  }
+
+  const openVoidNc = (row: Sale) => {
+    setVoidNcRow(row)
+    setVoidNcReason('')
+    setVoidNcOpen(true)
+  }
+
+  const submitVoidNc = async () => {
+    if (!voidNcRow) return
+    if (!voidNcReason.trim()) {
+      toast.error('Indique el motivo de anulación')
+      return
+    }
+    setVoidNcSubmitting(true)
+    try {
+      const res = await billingService.voidWithCreditNote(voidNcRow.id, voidNcReason.trim())
+      toast.success(res.message ?? 'Nota de crédito encolada')
+      setVoidNcOpen(false)
+      setVoidNcRow(null)
+      setTabAndUrl('credit_notes')
+      refresh()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al anular')
+    } finally {
+      setVoidNcSubmitting(false)
+    }
+  }
+
+  const filteredSeriesForEmit = useMemo(
+    () => emitSeriesList.filter((s) => String(s.sunat_code || '').trim() === emitDocKind),
+    [emitSeriesList, emitDocKind],
+  )
 
   const handleSend = async (saleId: number) => {
     setSending(saleId)
@@ -700,6 +922,19 @@ export default function VentasPage() {
           >
             Facturación
           </button>
+          {sunatEnabled && (
+            <button
+              type="button"
+              onClick={() => setTabAndUrl('credit_notes')}
+              className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+                tab === 'credit_notes'
+                  ? 'bg-rest-600 text-white border-rest-600'
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
+              }`}
+            >
+              <FileSignature size={16} /> Notas de crédito
+            </button>
+          )}
           {tab === 'facturacion' && sunatEnabled && (
             <div className="w-full sm:w-auto sm:min-w-[11rem]">
               <SearchableSelect
@@ -723,27 +958,79 @@ export default function VentasPage() {
     >
       {tab === 'facturacion' && !sunatEnabled && <SunatRequiredMessage />}
 
-      {(tab === 'notas' || sunatEnabled) && (
+      {(tab === 'notas' || tab === 'credit_notes' || sunatEnabled) && (
         <>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 mb-4 sm:mb-5">
-            <SearchInput
-              value={searchInput}
-              onChange={(v) => {
-                setSearchInput(v)
-                setPage(1)
-              }}
-              isSearching={isSearching}
-              placeholder="Buscar por número..."
-              className="w-full sm:flex-1 sm:min-w-[260px] order-first"
-              inputClassName="bg-white text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => refresh()}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 bg-white shrink-0"
-            >
-              <RefreshCw size={14} /> Actualizar
-            </button>
+          <div className="flex flex-col gap-3 shrink-0 mb-4 sm:mb-5">
+            <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+              <SearchInput
+                value={searchInput}
+                onChange={(v) => {
+                  setSearchInput(v)
+                  setPage(1)
+                }}
+                isSearching={isSearching}
+                placeholder="Buscar por número..."
+                className="w-full lg:flex-1 lg:min-w-[220px] order-first"
+                inputClassName="bg-white text-sm"
+              />
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                <label className="flex flex-col gap-1 text-xs text-stone-600">
+                  <span className="font-medium">Desde</span>
+                  <input
+                    type="date"
+                    value={dateRange.from}
+                    onChange={(e) => {
+                      setDateRange((d) => ({ ...d, from: e.target.value }))
+                      setPage(1)
+                    }}
+                    className="border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-stone-600">
+                  <span className="font-medium">Hasta</span>
+                  <input
+                    type="date"
+                    value={dateRange.to}
+                    onChange={(e) => {
+                      setDateRange((d) => ({ ...d, to: e.target.value }))
+                      setPage(1)
+                    }}
+                    className="border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleExportPdf()}
+                  disabled={exportBusy !== null}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {exportBusy === 'pdf' ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
+                  PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleExportExcel()}
+                  disabled={exportBusy !== null}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {exportBusy === 'excel' ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <FileSpreadsheet size={14} />
+                  )}
+                  Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => refresh()}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 bg-white shrink-0"
+                >
+                  <RefreshCw size={14} /> Actualizar
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col">
@@ -768,6 +1055,12 @@ export default function VentasPage() {
                           <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">SUNAT / PSE</th>
                         </>
                       )}
+                      {tab === 'credit_notes' && (
+                        <>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
+                        </>
+                      )}
                       {tab === 'notas' && (
                         <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
                       )}
@@ -786,6 +1079,9 @@ export default function VentasPage() {
                         <td className="px-4 py-3 text-stone-600">{s.contact_name ?? '—'}</td>
                         <td className="px-4 py-3 font-semibold text-stone-800">
                           S/ {Number(s.total).toFixed(2)}
+                          {s.status === 'cancelled' && (
+                            <span className="ml-2 text-[10px] font-semibold uppercase text-red-600">Anulada</span>
+                          )}
                         </td>
                         {tab === 'facturacion' && (
                           <>
@@ -799,12 +1095,48 @@ export default function VentasPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
-                            <td className="px-4 py-3">{renderSunatPseActions(s, 'fact')}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {renderSunatPseActions(s, 'fact')}
+                                {s.billing_status === 'accepted' && s.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    title="Anular con nota de crédito"
+                                    onClick={() => openVoidNc(s)}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
+                                  >
+                                    <Ban size={13} /> NC
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </>
+                        )}
+                        {tab === 'credit_notes' && (
+                          <>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  STATUS_COLORS[s.billing_status] ?? 'bg-stone-100 text-stone-600'
+                                }`}
+                              >
+                                {STATUS_LABELS[s.billing_status] ?? s.billing_status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => openDetail(s.id)} className={DETAIL_BTN} title="Ver detalle">
+                                  <Eye size={14} />
+                                </button>
+                                {renderLocalPdfActions(s.id, 'nc')}
+                                {renderSunatPseActions(s, 'nc', { hideDetailButton: true })}
+                              </div>
+                            </td>
                           </>
                         )}
                         {tab === 'notas' && (
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <button
                                 type="button"
                                 onClick={() => openDetail(s.id)}
@@ -814,6 +1146,26 @@ export default function VentasPage() {
                                 <Eye size={14} />
                               </button>
                               {renderLocalPdfActions(s.id, 'nota')}
+                              {s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
+                                <button
+                                  type="button"
+                                  title="Convertir a factura o boleta"
+                                  onClick={() => void openEmit(s)}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rest-600 text-white text-xs font-semibold hover:bg-rest-700"
+                                >
+                                  <Receipt size={13} /> FE
+                                </button>
+                              )}
+                              {s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
+                                <button
+                                  type="button"
+                                  title="Anular nota de venta"
+                                  onClick={() => openVoidNota(s)}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
+                                >
+                                  <Ban size={13} /> Anular
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -1141,6 +1493,144 @@ export default function VentasPage() {
               </div>
             )}
           </div>
+      </PortalModal>
+
+      <PortalModal open={emitOpen} onClose={() => setEmitOpen(false)} className="max-w-lg">
+        <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-stone-200">
+            <h3 className="font-bold text-stone-800">Convertir a factura / boleta</h3>
+            <button type="button" onClick={() => setEmitOpen(false)} className="p-2 rounded-lg hover:bg-stone-100">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-4 space-y-4">
+            {emitLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-stone-600">
+                  Se reutilizarán cliente, ítems, impuestos y totales de la nota{' '}
+                  <span className="font-semibold">{emitRow ? formatSaleDocumentNumber(emitRow) : ''}</span>.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEmitDocKind('03')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${
+                      emitDocKind === '03' ? 'bg-rest-600 text-white border-rest-600' : 'border-stone-200'
+                    }`}
+                  >
+                    Boleta
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmitDocKind('01')}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${
+                      emitDocKind === '01' ? 'bg-rest-600 text-white border-rest-600' : 'border-stone-200'
+                    }`}
+                  >
+                    Factura
+                  </button>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Serie</label>
+                  <SearchableSelect
+                    value={emitSeriesId}
+                    onChange={(v) => setEmitSeriesId(String(v ?? ''))}
+                    options={filteredSeriesForEmit.map((s) => ({
+                      value: String(s.id),
+                      label: `${s.series} (${s.doc_type})`,
+                    }))}
+                    placeholder="Seleccione serie"
+                    searchable={filteredSeriesForEmit.length > 6}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Fecha de emisión</label>
+                  <input
+                    type="date"
+                    value={emitIssueDate}
+                    onChange={(e) => setEmitIssueDate(e.target.value)}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={emitSubmitting}
+                  onClick={() => void submitEmit()}
+                  className="w-full py-2.5 bg-rest-600 text-white rounded-xl text-sm font-semibold hover:bg-rest-700 disabled:opacity-50"
+                >
+                  {emitSubmitting ? 'Generando…' : 'Generar comprobante'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </PortalModal>
+
+      <PortalModal open={voidNotaOpen} onClose={() => setVoidNotaOpen(false)} className="max-w-md">
+        <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-stone-200">
+            <h3 className="font-bold text-stone-800">Anular nota de venta</h3>
+            <button type="button" onClick={() => setVoidNotaOpen(false)} className="p-2 rounded-lg hover:bg-stone-100">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-sm text-stone-600">
+              Se revertirán ingresos de caja, stock (si aplica) y el estado de la operación.
+            </p>
+            <textarea
+              value={voidNotaReason}
+              onChange={(e) => setVoidNotaReason(e.target.value)}
+              rows={3}
+              placeholder="Motivo de anulación"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
+            />
+            <button
+              type="button"
+              disabled={voidNotaSubmitting}
+              onClick={() => void submitVoidNota()}
+              className="w-full py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+            >
+              {voidNotaSubmitting ? 'Anulando…' : 'Confirmar anulación'}
+            </button>
+          </div>
+        </div>
+      </PortalModal>
+
+      <PortalModal open={voidNcOpen} onClose={() => setVoidNcOpen(false)} className="max-w-md">
+        <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
+          <div className="flex items-center justify-between p-4 border-b border-stone-200">
+            <h3 className="font-bold text-stone-800">Anular con nota de crédito</h3>
+            <button type="button" onClick={() => setVoidNcOpen(false)} className="p-2 rounded-lg hover:bg-stone-100">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <p className="text-sm text-stone-600">
+              El sistema tomará los datos del comprobante aceptado por SUNAT y generará la NC automáticamente.
+            </p>
+            <textarea
+              value={voidNcReason}
+              onChange={(e) => setVoidNcReason(e.target.value)}
+              rows={3}
+              placeholder="Motivo de anulación (SUNAT)"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
+            />
+            <button
+              type="button"
+              disabled={voidNcSubmitting}
+              onClick={() => void submitVoidNc()}
+              className="w-full py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+            >
+              {voidNcSubmitting ? 'Procesando…' : 'Generar nota de crédito'}
+            </button>
+          </div>
+        </div>
       </PortalModal>
     </PageShell>
   )

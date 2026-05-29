@@ -20,10 +20,15 @@ export interface CashSession {
   register_code?: string | null
   register_name?: string | null
   opened_by: number
+  opened_by_name?: string
+  closed_by?: number | null
+  closed_by_name?: string
   opening_balance: number
   closing_balance: number | null
   expected_balance: number | null
   difference: number | null
+  total_income?: number
+  total_expense?: number
   arqueo_json?: string | null
   status: 'open' | 'closed'
   opened_at: string
@@ -112,6 +117,14 @@ export interface ExpenseDetailRow {
   payment_method: string
 }
 
+export interface CancelledSaleRow {
+  date: string
+  doc_number: string
+  amount: number
+  payment_method: string
+  reason: string
+}
+
 export interface MethodTotal {
   method: string
   total: number
@@ -121,6 +134,7 @@ export interface CashSessionReport {
   session: CashSessionReportSession
   income_detail: IncomeDetailRow[]
   expense_detail: ExpenseDetailRow[]
+  cancelled_sales_detail?: CancelledSaleRow[]
   totals_by_method: {
     sales: MethodTotal[]
     purchases: MethodTotal[]
@@ -133,6 +147,55 @@ export interface CashSessionReport {
     total_purchases: number
     final_balance: number
   }
+}
+
+export interface MovementReportRow {
+  date: string
+  type: string
+  doc_number: string
+  contact_name: string
+  user_name: string
+  branch_name: string
+  payment_method: string
+  amount: number
+  movement_id: number
+  cash_session_id: number
+  category?: string
+  cash_reference?: string
+  notes_detail?: string
+}
+
+export interface MovementReportSummary {
+  total_rows: number
+  sum_income: number
+  sum_expense: number
+  net_movement: number
+}
+
+export interface MovementsReportParams {
+  branch_id?: number
+  user_id?: number
+  date_from?: string
+  date_to?: string
+  session_id?: number
+  type?: string
+  payment_method?: string
+  page?: number
+  per_page?: number
+}
+
+export interface MovementsReportResult {
+  data: MovementReportRow[]
+  total: number
+  summary: MovementReportSummary
+}
+
+export interface SessionProductSoldRow {
+  product_id?: number | null
+  code: string
+  description: string
+  quantity: number
+  total: number
 }
 
 export const cashbankService = {
@@ -189,6 +252,24 @@ export const cashbankService = {
 
   getSessionReport: (sessionId: number): Promise<CashSessionReport> =>
     api.get(`/api/cashbank/sessions/${sessionId}/report`).then((r) => r.data.data ?? r.data),
+
+  getSessionProductsReport: (sessionId: number): Promise<SessionProductSoldRow[]> =>
+    api.get(`/api/cashbank/sessions/${sessionId}/report/products`).then((r) => r.data.data ?? []),
+
+  listMovementsReport: async (params?: MovementsReportParams): Promise<MovementsReportResult> => {
+    const r = await api.get('/api/cashbank/reports/movements', { params: params ?? {} })
+    const summaryRaw = r.data.summary ?? {}
+    return {
+      data: r.data.data ?? [],
+      total: Number(r.data.total ?? 0),
+      summary: {
+        total_rows: Number(summaryRaw.total_rows ?? 0),
+        sum_income: Number(summaryRaw.sum_income ?? 0),
+        sum_expense: Number(summaryRaw.sum_expense ?? 0),
+        net_movement: Number(summaryRaw.net_movement ?? 0),
+      },
+    }
+  },
 
   listBankAccounts: (all?: boolean): Promise<BankAccount[]> =>
     api.get('/api/cashbank/bank-accounts', { params: all ? { all: '1' } : {} }).then((r) => r.data.data ?? []),

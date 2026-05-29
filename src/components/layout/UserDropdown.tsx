@@ -8,6 +8,12 @@ import {
   Settings,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { subscriptionService } from '@/services/subscription.service'
+import {
+  buildSupportWhatsAppHref,
+  DEFAULT_SUPPORT_WHATSAPP_MESSAGE,
+  openExternalUrl,
+} from '@/utils/supportWhatsApp'
 import { canAccessAppSettings, EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { BranchSelectorMenu } from './RestaurantBranchBadge'
 import { AppVersionBadge } from './AppVersionBadge'
@@ -16,9 +22,17 @@ export default function UserDropdown() {
   const { user, logout, employeeType, restaurantPermissions } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [supportHref, setSupportHref] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const isAdmin = employeeType === 'admin' || employeeType === 'supervisor'
   const showSettings = canAccessAppSettings(restaurantPermissions, employeeType)
+
+  useEffect(() => {
+    subscriptionService
+      .getHub()
+      .then((hub) => setSupportHref(buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)))
+      .catch(() => setSupportHref(null))
+  }, [])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -89,12 +103,23 @@ export default function UserDropdown() {
             </Link>
           )}
           <a
-            href="https://wa.me/51999999999"
+            href={supportHref ?? undefined}
             target="_blank"
             rel="noreferrer"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
+            onClick={(e) => {
+              if (!supportHref) {
+                e.preventDefault()
+                return
+              }
+              e.preventDefault()
+              setOpen(false)
+              void openExternalUrl(supportHref)
+            }}
+            className={`flex items-center gap-2.5 px-3 py-2.5 text-sm ${
+              supportHref ? 'text-stone-700 hover:bg-stone-50' : 'text-stone-400 pointer-events-none'
+            }`}
             role="menuitem"
+            aria-disabled={!supportHref}
           >
             <Headphones size={16} className="text-stone-500" />
             Soporte

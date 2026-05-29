@@ -36,5 +36,5 @@ export const CONNECTIVITY_DEFAULTS = {
   apiSuccessGraceMs: 45_000,
 } as const
 
-/** Ruta liviana (sin ping MySQL/Redis). Ver backend GET /health/live */
-export const CONNECTIVITY_PROBE_PATH = '/health/live' as const
+/** Ruta liviana bajo /api (mismo proxy nginx que el resto de la API). Ver GET /api/health/live */
+export const CONNECTIVITY_PROBE_PATH = '/api/health/live' as const

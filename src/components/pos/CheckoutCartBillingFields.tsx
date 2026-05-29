@@ -23,6 +23,8 @@ type Props = {
   onAddContact?: () => void
   /** Al elegir boleta / nota de venta, sugerir Clientes Varios. */
   onPreferVariosContact?: () => void
+  /** Si false, solo notas de venta (series ya filtradas en el padre). */
+  sunatEnabled?: boolean
 }
 
 const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
@@ -39,8 +41,12 @@ export function CheckoutCartBillingFields({
   onContactChange,
   onAddContact,
   onPreferVariosContact,
+  sunatEnabled = true,
 }: Props) {
-  const checkoutSeries = useMemo(() => filterRestaurantCheckoutSeries(series), [series])
+  const checkoutSeries = useMemo(
+    () => filterRestaurantCheckoutSeries(series, { sunatEnabled }),
+    [series, sunatEnabled],
+  )
 
   const selectedSeries = checkoutSeries.find((s) => s.id === seriesId)
   const requiresRuc = isFacturaDocType(docType, selectedSeries?.sunat_code)
@@ -84,6 +90,11 @@ export function CheckoutCartBillingFields({
 
   return (
     <>
+      {!sunatEnabled && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900">
+          Facturación electrónica no habilitada: solo puede emitir <strong>notas de venta</strong>.
+        </p>
+      )}
       <div>
         <label className={LABEL}>{requiresRuc ? 'Cliente (RUC obligatorio)' : 'Cliente'}</label>
         <div className="flex gap-2">

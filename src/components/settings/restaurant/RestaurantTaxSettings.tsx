@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Save, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type SunatConfig } from '@/services/company.service'
+import { DEFAULT_TAX_RATE_PERCENT, resolveTaxRatePercent } from '@/constants/tax'
 
 export function RestaurantTaxSettings() {
   const [sunatEnabled, setSunatEnabled] = useState(false)
   const [form, setForm] = useState<Pick<SunatConfig, 'tax_rate' | 'igv_regime' | 'tax_benefit_zone'>>({
-    tax_rate: 18,
+    tax_rate: DEFAULT_TAX_RATE_PERCENT,
     igv_regime: 'standard',
     tax_benefit_zone: false,
   })
@@ -19,7 +20,7 @@ export function RestaurantTaxSettings() {
       .then((data) => {
         setSunatEnabled(data.sunat_enabled ?? false)
         setForm({
-          tax_rate: data.tax_rate ?? 18,
+          tax_rate: resolveTaxRatePercent(data.tax_rate),
           igv_regime: data.igv_regime || 'standard',
           tax_benefit_zone: data.tax_benefit_zone ?? false,
         })
@@ -77,7 +78,7 @@ export function RestaurantTaxSettings() {
               max={30}
               step={0.01}
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-              value={form.tax_rate ?? 18}
+              value={form.tax_rate ?? DEFAULT_TAX_RATE_PERCENT}
               onChange={(e) => setForm((f) => ({ ...f, tax_rate: Number(e.target.value) || 0 }))}
             />
           </div>

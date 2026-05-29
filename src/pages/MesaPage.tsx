@@ -12,6 +12,7 @@ import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
 import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
+import { resolveTaxRatePercent } from '@/constants/tax'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
@@ -59,6 +60,10 @@ import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHi
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
+  BILLING_NOT_ENABLED_MESSAGE,
+  isElectronicBillingSunatCode,
+} from '@/utils/restaurantCheckoutSeries'
+import {
   contactDocConsultMinLength,
   contactDocNumberPlaceholder,
   contactDocSelectOptions,
@@ -84,7 +89,7 @@ export default function MesaPage() {
   const { canAccess, hasPerm, employeeType, restaurantPermissions } = useAuth()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
   const { activeBranchId } = useBranch()
-  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries } = useBranchCheckoutSeries()
+  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunatEnabled } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const canCerrarMesa = canAccess('cerrar_mesa')
   const canAnularComanda = hasPerm('s.m')
@@ -303,7 +308,7 @@ export default function MesaPage() {
     )
   }
 
-  const taxRate = sunat?.tax_rate ?? 18
+  const taxRate = resolveTaxRatePercent(sunat?.tax_rate)
   const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
   const cartTotal = useMemo(
     () => sumMoney(...cart.map((line) => cartLineTotal(line, taxRate, taxConfig))),
@@ -388,11 +393,16 @@ export default function MesaPage() {
       orderNumber: round.orderNumber,
       tableOrderId: round.orderId,
       comandas: round.comandas,
+      manual: true,
       markPrinted: false,
     })
     if (!printed) {
       setComandaModal({ orderId: round.orderId, orderNumber: round.orderNumber, comandas: round.comandas })
-      toast.info('Vista previa de comanda (impresión automática desactivada)')
+      if (!isNativePrintAvailable()) {
+        toast.info('Vista previa de comanda (impresión solo en app de escritorio o Android)')
+      } else {
+        toast.error('No se pudo imprimir. Revisa la impresora de comandas en Ajustes.')
+      }
     }
   }
 
@@ -511,6 +521,10 @@ export default function MesaPage() {
     }
     if (branchSeriesMissing) return
     if (!seriesId) return
+    if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries?.sunat_code)) {
+      toast.error(BILLING_NOT_ENABLED_MESSAGE)
+      return
+    }
     const selectedContactId = effectiveContactId
     const contactForCheckout = contacts.find((c) => c.id === selectedContactId) ?? null
     if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries?.sunat_code)) {
@@ -1125,6 +1139,7 @@ export default function MesaPage() {
         allowDiscount={allowCheckoutDiscount}
         onConfirm={doCheckout}
         confirmDisabled={!checkoutContactOk || !seriesId}
+        sunatEnabled={sunatEnabled}
       />
 
       {/* Modal Precuenta */}

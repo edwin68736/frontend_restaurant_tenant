@@ -17,6 +17,9 @@ export interface Sale {
   billing_status: 'pending' | 'sent' | 'accepted' | 'observed' | 'rejected' | 'error'
   branch_id: number
   created_at: string
+  /** NV con FE emitida */
+  electronic_issue_sale_id?: number | null
+  original_sale_id?: number | null
   /** Método principal (legacy); si hay `payments`, preferir esa lista. */
   payment_method?: string
 }
@@ -54,6 +57,13 @@ export interface SaleDetail {
   payments?: SalePayment[]
   invoice?: InvoiceInfo
   print_data?: unknown
+  contact?: {
+    id?: number
+    doc_type?: string
+    doc_number?: string
+    business_name?: string
+    phone?: string
+  }
 }
 
 /**
@@ -105,4 +115,29 @@ export const salesService = {
       d.payments = d.payments ?? []
       return d
     }),
+
+  listAll: (
+    params?: {
+      q?: string
+      from?: string
+      to?: string
+      doc_type?: string
+      status?: string
+      billing_status?: string
+      sunat_code?: string
+    },
+    options?: ApiRequestOptions,
+  ) =>
+    api
+      .get<{ data: Sale[]; total?: number }>('/api/sales', {
+        params: { ...(params ?? {}), export_all: '1' },
+        signal: options?.signal,
+      })
+      .then((r) => ({ data: r.data.data ?? [], total: (r.data as { total?: number }).total ?? 0 })),
+
+  issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string }) =>
+    api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),
+
+  cancelNota: (saleId: number, reason: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/sales/${saleId}/cancel`, { reason }).then((r) => r.data),
 }

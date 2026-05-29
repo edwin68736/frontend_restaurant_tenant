@@ -84,6 +84,8 @@ type Props = {
   extraBeforePayments?: ReactNode
   /** Si false, oculta el campo de descuento. */
   allowDiscount?: boolean
+  /** Facturación electrónica habilitada (boleta/factura). */
+  sunatEnabled?: boolean
 }
 
 export function POSCheckoutModal({
@@ -115,6 +117,7 @@ export function POSCheckoutModal({
   confirmLabel = 'Finalizar venta',
   extraBeforePayments,
   allowDiscount = true,
+  sunatEnabled = true,
 }: Props) {
   const [showMoreMethods, setShowMoreMethods] = useState(false)
   const [methodPickerIndex, setMethodPickerIndex] = useState<number | null>(null)
@@ -147,7 +150,20 @@ export function POSCheckoutModal({
     return primary.length > 0 ? primary.slice(0, 4) : methodOptions.slice(0, 4)
   }, [methodOptions, showMoreMethods])
 
-  const checkoutSeries = useMemo(() => filterRestaurantCheckoutSeries(series), [series])
+  const checkoutSeries = useMemo(
+    () => filterRestaurantCheckoutSeries(series, { sunatEnabled }),
+    [series, sunatEnabled],
+  )
+
+  const selectedSeries = useMemo(
+    () => checkoutSeries.find((s) => s.id === seriesId),
+    [checkoutSeries, seriesId],
+  )
+
+  const seriesCodeLabel = useMemo(() => {
+    if (!selectedSeries) return '—'
+    return String(selectedSeries.series ?? '').trim() || '—'
+  }, [selectedSeries])
 
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
@@ -271,39 +287,58 @@ export function POSCheckoutModal({
               onContactChange={onContactChange}
               onAddContact={onAddContact}
               onPreferVariosContact={onPreferVariosContact}
+              sunatEnabled={sunatEnabled}
             />
 
-            {allowDiscount && (
-              <div>
-                <label className={LABEL}>Descuento</label>
-                <div className="flex overflow-hidden rounded-xl border border-stone-200 bg-white">
-                  <button
-                    type="button"
-                    className={clsx(
-                      'w-9 shrink-0 border-r border-stone-200 text-xs font-bold text-white',
-                      discountMode === 'percent' ? 'bg-rest-600' : 'bg-stone-500',
-                    )}
-                    onClick={() =>
-                      onDiscountModeChange(discountMode === 'percent' ? 'amount' : 'percent')
-                    }
+            {allowDiscount ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={LABEL}>Serie</label>
+                  <div
+                    className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800"
+                    title="Serie del comprobante seleccionado"
                   >
-                    {discountMode === 'percent' ? '%' : 'S/'}
-                  </button>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-stone-800 focus:outline-none"
-                    value={discountInputDisplay}
-                    onFocus={handleDiscountFocus}
-                    onChange={(e) => {
-                      if (isEditingDiscount) {
-                        setDiscountDraft(e.target.value)
-                        parseDiscountInput(e.target.value)
+                    {seriesCodeLabel}
+                  </div>
+                </div>
+                <div>
+                  <label className={LABEL}>Descuento</label>
+                  <div className="flex overflow-hidden rounded-xl border border-stone-200 bg-white">
+                    <button
+                      type="button"
+                      className={clsx(
+                        'w-9 shrink-0 border-r border-stone-200 text-xs font-bold text-white',
+                        discountMode === 'percent' ? 'bg-rest-600' : 'bg-stone-500',
+                      )}
+                      onClick={() =>
+                        onDiscountModeChange(discountMode === 'percent' ? 'amount' : 'percent')
                       }
-                    }}
-                    onBlur={handleDiscountBlur}
-                    placeholder={discountMode === 'percent' ? '0' : '0.00'}
-                  />
+                    >
+                      {discountMode === 'percent' ? '%' : 'S/'}
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-stone-800 focus:outline-none"
+                      value={discountInputDisplay}
+                      onFocus={handleDiscountFocus}
+                      onChange={(e) => {
+                        if (isEditingDiscount) {
+                          setDiscountDraft(e.target.value)
+                          parseDiscountInput(e.target.value)
+                        }
+                      }}
+                      onBlur={handleDiscountBlur}
+                      placeholder={discountMode === 'percent' ? '0' : '0.00'}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className={LABEL}>Serie</label>
+                <div className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800">
+                  {seriesCodeLabel}
                 </div>
               </div>
             )}
@@ -378,40 +413,40 @@ export function POSCheckoutModal({
                   </div>
                 </>
               ) : (
-                <div className="mt-2 space-y-1.5">
+                <div className="mt-2 space-y-2">
                   {payments.map((p, idx) => {
                     const opt = getOption(p.method)
                     return (
                       <div
                         key={idx}
-                        className="flex flex-wrap items-center gap-1.5 rounded-lg border border-stone-200 bg-stone-50/60 p-1.5"
+                        className="grid grid-cols-3 gap-2 items-stretch rounded-lg border border-stone-200 bg-stone-50/60 p-2"
                       >
                         <button
                           type="button"
                           onClick={() => setMethodPickerIndex(idx)}
-                          className="flex min-h-[36px] min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-left text-xs hover:border-rest-300"
+                          className="flex min-h-[40px] min-w-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-left text-xs hover:border-rest-300"
                         >
                           {opt ? (
-                            <PaymentMethodIcon code={opt.code} name={opt.name} className="h-5 w-5 object-contain" />
+                            <PaymentMethodIcon code={opt.code} name={opt.name} className="h-5 w-5 shrink-0 object-contain" />
                           ) : (
-                            <span className="text-sm">💳</span>
+                            <span className="text-sm shrink-0">💳</span>
                           )}
                           <span className="truncate font-medium text-stone-800">{opt?.name ?? 'Método'}</span>
-                          <span className="ml-auto text-stone-400">▾</span>
                         </button>
                         <MoneyAmountInput
-                          className={clsx(INPUT, 'w-[5.5rem] shrink-0 text-right py-1.5 tabular-nums')}
+                          className={clsx(INPUT, 'min-w-0 text-right py-1.5 tabular-nums')}
                           value={p.amount}
                           onChange={(amount) => updateLine(idx, { amount })}
                           placeholder="Monto"
                           emptyWhenZero
+                          clearOnFocus
                         />
                         <input
                           type="text"
-                          className={clsx(INPUT, 'w-[5.5rem] shrink-0 py-1.5')}
+                          className={clsx(INPUT, 'min-w-0 py-1.5')}
                           value={p.reference ?? ''}
                           onChange={(e) => updateLine(idx, { reference: e.target.value })}
-                          placeholder="Ref."
+                          placeholder="N° Op / Ref."
                         />
                       </div>
                     )

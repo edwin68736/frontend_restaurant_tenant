@@ -29,6 +29,7 @@ import { contactsService, type Contact, type CreateContactInput } from '@/servic
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
+import { resolveTaxRatePercent } from '@/constants/tax'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
@@ -80,6 +81,10 @@ import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHi
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
+  BILLING_NOT_ENABLED_MESSAGE,
+  isElectronicBillingSunatCode,
+} from '@/utils/restaurantCheckoutSeries'
+import {
   contactDocConsultMinLength,
   contactDocNumberPlaceholder,
   contactDocSelectOptions,
@@ -121,7 +126,7 @@ export default function POSPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { employeeType, restaurantPermissions } = useAuth()
   const { activeBranchId, resetEpoch } = useBranch()
-  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries } = useBranchCheckoutSeries()
+  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunatEnabled } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
   const [categories, setCategories] = useState<Category[]>([])
@@ -383,7 +388,7 @@ export default function POSPage() {
     return Array.from(areas).sort((a, b) => a.localeCompare(b))
   }, [products])
 
-  const taxRate = sunat?.tax_rate ?? 18
+  const taxRate = resolveTaxRatePercent(sunat?.tax_rate)
   const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
 
   const getCartItemTotals = (item: PosCartLine) => {
@@ -537,11 +542,16 @@ export default function POSPage() {
       orderNumber: round.orderNumber,
       tableOrderId: round.orderId,
       comandas: round.comandas,
+      manual: true,
       markPrinted: false,
     })
     if (!printed) {
       setComandaModal({ orderId: round.orderId, orderNumber: round.orderNumber, comandas: round.comandas })
-      toast.info('Vista previa de comanda (impresión automática desactivada)')
+      if (!isNativePrintAvailable()) {
+        toast.info('Vista previa de comanda (impresión solo en app de escritorio o Android)')
+      } else {
+        toast.error('No se pudo imprimir. Revisa la impresora de comandas en Ajustes.')
+      }
     }
   }
 
@@ -1076,6 +1086,35 @@ export default function POSPage() {
     }
   }
 
+  const reprintPrecuenta = async () => {
+    const data = precuentaData
+    if (!data) return
+    if (!isNativePrintAvailable()) {
+      toast.error('La impresión de precuenta requiere la app de escritorio o Android')
+      return
+    }
+    const cfg = getConfiguredPrinter('precuenta')
+    if (!cfg) {
+      toast.error('Configura la impresora de precuenta en Ajustes')
+      return
+    }
+    try {
+      const msg = await printPrecuentaAuto({
+        tableName: data.table_name || null,
+        items: data.lines.map((l) => ({
+          productName: l.product_name,
+          quantity: l.quantity,
+          unitPrice: l.unit_price,
+        })),
+        total: data.total,
+      })
+      toast.success(msg || 'Precuenta enviada a la impresora')
+    } catch (e) {
+      console.error('[precuenta reprint error]', e)
+      toast.error('No se pudo imprimir la precuenta')
+    }
+  }
+
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (cart.length === 0 && sessionTotal <= 0) return
@@ -1115,6 +1154,10 @@ export default function POSPage() {
     }
     if (branchSeriesMissing) return
     if (!seriesId) return
+    if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries?.sunat_code)) {
+      toast.error(BILLING_NOT_ENABLED_MESSAGE)
+      return
+    }
     const selectedContactId = effectiveContactId
     const contactForCheckout = contacts.find((c) => c.id === selectedContactId) ?? null
     if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries?.sunat_code)) {
@@ -1699,6 +1742,7 @@ export default function POSPage() {
         onConfirm={doCheckout}
         confirmDisabled={!checkoutContactOk || !seriesId}
         allowDiscount={allowCheckoutDiscount}
+        sunatEnabled={sunatEnabled}
       />
 
       <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md" stacked>
@@ -2039,13 +2083,15 @@ export default function POSPage() {
               <span>Total</span>
               <span className="text-rest-600 tabular-nums">{formatSoles(Number(precuentaData.total))}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => void openPrecuenta()}
-              className="mt-4 w-full py-2 border border-stone-200 rounded-xl text-sm hover:bg-stone-50"
-            >
-              Reimprimir
-            </button>
+            {isNativePrintAvailable() && getConfiguredPrinter('precuenta') && (
+              <button
+                type="button"
+                onClick={() => void reprintPrecuenta()}
+                className="mt-4 w-full py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
+              >
+                Reimprimir
+              </button>
+            )}
           </div>
         )}
       </PortalModal>

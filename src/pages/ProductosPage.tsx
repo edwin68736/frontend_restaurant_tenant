@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -13,7 +13,9 @@ import {
   SlidersHorizontal,
   FileSpreadsheet,
   Layers,
+  ImagePlus,
 } from 'lucide-react'
+import { clsx } from 'clsx'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
@@ -111,6 +113,26 @@ export default function ProductosPage() {
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const categoryModalInputRef = useRef<HTMLInputElement>(null)
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+
+  const revokeImagePreview = useCallback(() => {
+    setImagePreviewUrl((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+  }, [])
+
+  const handleImageFileChange = () => {
+    const file = fileInputRef.current?.files?.[0]
+    revokeImagePreview()
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Seleccione una imagen JPG, PNG o WebP')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+    setImagePreviewUrl(URL.createObjectURL(file))
+  }
 
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c.name]))
 
@@ -121,6 +143,8 @@ export default function ProductosPage() {
     setNewCategoryName('')
     setAddingCategory(false)
     setShowMoreOptions(false)
+    revokeImagePreview()
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const catId = categoryFilter === '' ? undefined : categoryFilter
@@ -168,6 +192,8 @@ export default function ProductosPage() {
   const loadCategories = () => {
     productsService.listCategories().then(setCategories).catch(() => [])
   }
+
+  useEffect(() => () => revokeImagePreview(), [revokeImagePreview])
 
   useEffect(() => { loadCategories() }, [])
 
@@ -642,23 +668,62 @@ export default function ProductosPage() {
             <div className="p-4 sm:p-6 space-y-4 overflow-y-auto min-h-0">
               {/* Imagen */}
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Imagen</label>
-                {form.image_url && (
-                  <div className="mb-2">
-                    <img
-                      src={getProductImageUrl(form.image_url)}
-                      alt="Vista previa"
-                      className="w-24 h-24 rounded-xl object-cover border border-stone-200"
-                    />
+                <label className="block text-sm font-medium text-stone-700 mb-2">Imagen del producto</label>
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="shrink-0">
+                    <div
+                      className={clsx(
+                        'relative w-32 h-32 sm:w-36 sm:h-36 rounded-2xl overflow-hidden',
+                        imagePreviewUrl || form.image_url
+                          ? 'border border-stone-200 bg-white shadow-sm ring-1 ring-stone-100'
+                          : 'border-2 border-dashed border-stone-200 bg-stone-50/80',
+                      )}
+                    >
+                      {imagePreviewUrl || form.image_url ? (
+                        <img
+                          src={imagePreviewUrl ?? getProductImageUrl(form.image_url)}
+                          alt="Vista previa"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center text-stone-400">
+                          <ImagePlus size={28} strokeWidth={1.5} className="opacity-60" />
+                          <span className="text-[10px] leading-tight">Sin imagen</span>
+                        </div>
+                      )}
+                      {imagePreviewUrl && (
+                        <span className="absolute bottom-0 inset-x-0 bg-rest-600/90 text-white text-[10px] font-medium text-center py-0.5">
+                          Nueva
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="block w-full text-sm text-stone-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border file:border-stone-200 file:text-sm"
-                />
-                <p className="text-xs text-stone-400 mt-1">JPG, PNG o WebP. Máx. 5 MB. {modal === 'create' ? 'Se sube al guardar.' : 'Opcional para cambiar.'}</p>
+                  <div className="min-w-0 flex-1 w-full space-y-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleImageFileChange}
+                      className="block w-full text-sm text-stone-500 file:mr-2 file:py-2 file:px-3 file:rounded-lg file:border file:border-stone-200 file:bg-white file:text-sm file:font-medium file:text-stone-700 hover:file:bg-stone-50"
+                    />
+                    <p className="text-xs text-stone-500 leading-relaxed">
+                      JPG, PNG o WebP · máx. 5 MB.
+                      {modal === 'create' ? ' Se sube al guardar el producto.' : ' Opcional para reemplazar la imagen actual.'}
+                    </p>
+                    {imagePreviewUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          revokeImagePreview()
+                          if (fileInputRef.current) fileInputRef.current.value = ''
+                        }}
+                        className="text-xs font-medium text-stone-500 hover:text-red-600"
+                      >
+                        Cancelar archivo seleccionado
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

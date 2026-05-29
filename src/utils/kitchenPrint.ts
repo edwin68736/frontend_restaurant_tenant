@@ -57,6 +57,8 @@ export async function printKitchenRound(params: {
   orderNumber: number
   tableOrderId: number
   comandas: Comanda[]
+  /** true = botón Reimprimir / impresión explícita (ignora «impresión automática» desactivada). */
+  manual?: boolean
   silentConfigError?: boolean
   markPrinted?: boolean
 }): Promise<boolean> {
@@ -66,7 +68,10 @@ export async function printKitchenRound(params: {
     return false
   }
 
-  if (!isNativePrintAvailable() || !isAutoPrintEnabled('comandas')) {
+  if (!isNativePrintAvailable()) {
+    return false
+  }
+  if (!params.manual && !isAutoPrintEnabled('comandas')) {
     return false
   }
 

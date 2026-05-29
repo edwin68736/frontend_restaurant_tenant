@@ -1,5 +1,6 @@
 import { Mail, Phone } from 'lucide-react'
 import type { SupportConfig } from '@/services/subscription.service'
+import { buildSupportWhatsAppHref, openExternalUrl } from '@/utils/supportWhatsApp'
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -22,13 +23,13 @@ type Channel = {
 
 function buildChannels(support: SupportConfig): Channel[] {
   const channels: Channel[] = []
-  const wa = support.whatsapp?.replace(/\D/g, '')
-  if (wa) {
+  const waHref = buildSupportWhatsAppHref(support)
+  if (waHref) {
     channels.push({
       key: 'whatsapp',
       label: 'WhatsApp',
-      text: support.whatsapp,
-      href: `https://wa.me/${wa}`,
+      text: support.whatsapp ?? '',
+      href: waHref,
       external: true,
       icon: <WhatsAppIcon className="w-5 h-5" />,
       cardClass: 'border-emerald-200 bg-emerald-50/80 hover:bg-emerald-50',
@@ -75,6 +76,11 @@ export default function SupportCard({ support }: { support: SupportConfig }) {
             href={ch.href}
             target={ch.external ? '_blank' : undefined}
             rel={ch.external ? 'noreferrer' : undefined}
+            onClick={(e) => {
+              if (!ch.external) return
+              e.preventDefault()
+              void openExternalUrl(ch.href)
+            }}
             className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${ch.cardClass}`}
           >
             <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${ch.iconWrapClass}`}>

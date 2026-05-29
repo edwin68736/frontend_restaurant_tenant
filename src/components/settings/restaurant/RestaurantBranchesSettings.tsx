@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 
-const empty = (): Partial<BranchRow> => ({ name: '', address: '', phone: '', is_main: false })
+const empty = (): Partial<BranchRow> => ({ name: '', address: '', phone: '', fiscal_domicile_code: '', is_main: false })
 
 export function RestaurantBranchesSettings() {
   const [branches, setBranches] = useState<BranchRow[]>([])
@@ -33,7 +33,7 @@ export function RestaurantBranchesSettings() {
 
   const openEdit = (b: BranchRow) => {
     setEditing(b)
-    setForm({ name: b.name, address: b.address, phone: b.phone, is_main: b.is_main })
+    setForm({ name: b.name, address: b.address, phone: b.phone, fiscal_domicile_code: b.fiscal_domicile_code ?? '', is_main: b.is_main })
     setModalOpen(true)
   }
 
@@ -49,6 +49,7 @@ export function RestaurantBranchesSettings() {
           name: form.name,
           address: form.address ?? '',
           phone: form.phone ?? '',
+          fiscal_domicile_code: form.fiscal_domicile_code ?? '',
           is_main: form.is_main ?? false,
         })
       } else {
@@ -56,6 +57,7 @@ export function RestaurantBranchesSettings() {
           name: form.name,
           address: form.address ?? '',
           phone: form.phone ?? '',
+          fiscal_domicile_code: form.fiscal_domicile_code ?? '',
           is_main: form.is_main ?? false,
         })
       }
@@ -112,6 +114,7 @@ export function RestaurantBranchesSettings() {
                   <th className="px-4 py-2.5">Nombre</th>
                   <th className="px-4 py-2.5">Dirección</th>
                   <th className="px-4 py-2.5">Teléfono</th>
+                  <th className="px-4 py-2.5">Cód. domicilio fiscal</th>
                   <th className="px-4 py-2.5">Principal</th>
                   <th className="px-4 py-2.5 w-24" />
                 </tr>
@@ -127,6 +130,7 @@ export function RestaurantBranchesSettings() {
                     </td>
                     <td className="px-4 py-3 text-stone-600">{b.address || '—'}</td>
                     <td className="px-4 py-3 text-stone-600">{b.phone || '—'}</td>
+                    <td className="px-4 py-3 font-mono text-stone-600">{b.fiscal_domicile_code?.trim() || '—'}</td>
                     <td className="px-4 py-3">
                       {b.is_main && (
                         <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-rest-50 text-rest-800">
@@ -174,6 +178,7 @@ export function RestaurantBranchesSettings() {
                 ['name', 'Nombre *'],
                 ['address', 'Dirección'],
                 ['phone', 'Teléfono'],
+                ['fiscal_domicile_code', 'Código de domicilio fiscal'],
               ] as const
             ).map(([k, label]) => (
               <div key={k}>
@@ -185,6 +190,9 @@ export function RestaurantBranchesSettings() {
                 />
               </div>
             ))}
+            <p className="text-xs text-stone-500 -mt-1">
+              Código de establecimiento anexo (domicilio fiscal) por sucursal. Se usa en facturación electrónica cuando aplica.
+            </p>
             <label className="flex items-center gap-2 text-sm text-stone-700">
               <input
                 type="checkbox"

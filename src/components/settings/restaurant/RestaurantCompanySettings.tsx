@@ -50,6 +50,7 @@ export function RestaurantCompanySettings() {
         email: form.email ?? '',
         currency: form.currency ?? 'PEN',
         logo_url: form.logo_url ?? '',
+        additional_notes: form.additional_notes ?? '',
         color_theme: current.color_theme,
       })
       toast.success('Datos de empresa guardados')
@@ -155,6 +156,19 @@ export function RestaurantCompanySettings() {
               value={form.email ?? ''}
               onChange={(e) => set('email', e.target.value)}
             />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-medium text-stone-600 mb-1">Información adicional</label>
+            <textarea
+              rows={4}
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-y min-h-[96px]"
+              value={form.additional_notes ?? ''}
+              onChange={(e) => set('additional_notes', e.target.value)}
+              placeholder="Notas internas de la empresa: horarios, leyendas en tickets, datos bancarios, políticas, etc."
+            />
+            <p className="text-[11px] text-stone-400 mt-1">
+              Texto libre sobre la empresa. Puede usarse en documentos o consultas internas según la configuración del negocio.
+            </p>
           </div>
         </div>
       </section>

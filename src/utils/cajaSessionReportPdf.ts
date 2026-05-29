@@ -358,6 +358,37 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
     drawDataTable(doc, y, [...detailHeaders], expenseRows, [...detailCols])
   }
 
+  drawSectionTitle(doc, y, 'Ventas anuladas')
+  ensureSpace(doc, y, 8)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7.5)
+  doc.setTextColor(...C_MUTED)
+  doc.text(
+    'Reversiones en caja por anulación de notas de venta (trazabilidad; no elimina el historial).',
+    MARGIN,
+    y.v,
+  )
+  y.v += 5
+
+  const voidCols = [32, 36, 24, 24, 70] as const
+  const voidHeaders = ['Fecha / hora', 'Comprobante', 'Método', 'Monto', 'Motivo']
+  const voidRows = (report.cancelled_sales_detail ?? []).map((r) => [
+    fmtDate(r.date),
+    r.doc_number || '—',
+    paymentMethodLabel(r.payment_method),
+    money(r.amount),
+    r.reason || '—',
+  ])
+  if (voidRows.length === 0) {
+    ensureSpace(doc, y, 6)
+    doc.setFontSize(8.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Sin ventas anuladas en esta sesión.', MARGIN, y.v)
+    y.v += 8
+  } else {
+    drawDataTable(doc, y, [...voidHeaders], voidRows, [...voidCols])
+  }
+
   drawFooterOnAllPages(doc)
   return doc
 }

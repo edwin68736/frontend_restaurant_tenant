@@ -34,7 +34,8 @@ function isAbortError(err: unknown): boolean {
 }
 
 /**
- * Probe liviano sin Authorization (el health es público).
+ * Probe liviano sin Authorization (GET /api/health/live es público).
+ * Usa /api para el mismo proxy nginx/CORS que el resto de peticiones del POS.
  * En dev pasa por el proxy Vite con X-Tenant-Api-Origin.
  */
 export async function probeBackendHealth(

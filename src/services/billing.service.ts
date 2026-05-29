@@ -113,4 +113,7 @@ export const billingService = {
       throw e
     }
   },
+
+  voidWithCreditNote: (saleId: number, reason: string): Promise<{ success: boolean; message?: string; nc_sale?: unknown }> =>
+    api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason }).then((r) => r.data),
 }

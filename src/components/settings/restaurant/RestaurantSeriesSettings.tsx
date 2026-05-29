@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Pencil, Plus } from 'lucide-react'
+import { FileText, Pencil, Plus, Trash2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -48,6 +48,16 @@ function normalizeSeries(list: SeriesRow[], branches: { id: number; name: string
     current_number: s.current_number ?? s.correlative ?? 0,
     branch_name: s.branch_name ?? branches.find((b) => b.id === s.branch_id)?.name,
     category: s.category ?? 'venta',
+    locked: s.locked ?? (Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
+    can_delete: s.can_delete ?? !(Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
+  }))
+}
+
+function groupSeriesByBranch(series: SeriesRow[], branches: { id: number; name: string }[]) {
+  return branches.map((b) => ({
+    branchId: b.id,
+    branchName: b.name,
+    items: series.filter((s) => s.branch_id === b.id),
   }))
 }
 
@@ -62,6 +72,19 @@ export function RestaurantSeriesSettings() {
   const [editing, setEditing] = useState<SeriesRow | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [activeBranchId, setActiveBranchId] = useState<number>(0)
+
+  const grouped = groupSeriesByBranch(series, branches)
+  const activeBranchGroup = grouped.find((g) => g.branchId === activeBranchId) ?? grouped[0]
+  const editingLocked = editing?.locked ?? false
+
+  useEffect(() => {
+    if (branches.length === 0) return
+    if (!branches.some((b) => b.id === activeBranchId)) {
+      setActiveBranchId(branches[0].id)
+    }
+  }, [branches, activeBranchId])
 
   const load = () =>
     Promise.all([
@@ -86,9 +109,9 @@ export function RestaurantSeriesSettings() {
   const sunatOptions = sunatEnabled ? SUNAT_CODES : SUNAT_CODES.filter((o) => o.code === '00')
 
   const openNew = () => {
-    const main = branches.find((b) => b.id) ?? branches[0]
+    const branchId = activeBranchId || branches[0]?.id || 0
     setEditing(null)
-    setForm(sunatEnabled ? emptyForm(main?.id ?? 0) : { ...emptyForm(main?.id ?? 0), sunat_code: '00' })
+    setForm(sunatEnabled ? emptyForm(branchId) : { ...emptyForm(branchId), sunat_code: '00' })
     setModalOpen(true)
   }
 
@@ -150,6 +173,26 @@ export function RestaurantSeriesSettings() {
     }
   }
 
+  const handleDelete = async (s: SeriesRow) => {
+    if (!s.can_delete) {
+      toast.error('No se puede eliminar: la serie ya tiene documentos emitidos')
+      return
+    }
+    if (!confirm(`¿Eliminar la serie ${s.series}? Esta acción no se puede deshacer.`)) return
+    setDeletingId(s.id)
+    try {
+      await companyService.deleteSeries(s.id)
+      toast.success('Serie eliminada')
+      invalidateCheckoutSeries(s.branch_id)
+      setLoading(true)
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -196,49 +239,122 @@ export function RestaurantSeriesSettings() {
         ))}
       </div>
 
-      <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+      <div className="space-y-3">
         {loading ? (
-          <div className="py-12 flex justify-center">
+          <div className="py-12 flex justify-center bg-white border border-stone-200 rounded-2xl">
             <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
           </div>
+        ) : branches.length === 0 ? (
+          <p className="text-center py-10 text-stone-400 text-sm bg-white border border-stone-200 rounded-2xl">
+            Registre sucursales antes de configurar series
+          </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-stone-50/80 text-left text-xs text-stone-500 uppercase">
-                  <th className="px-4 py-2.5">Sucursal</th>
-                  <th className="px-4 py-2.5">Tipo</th>
-                  <th className="px-4 py-2.5">Serie</th>
-                  <th className="px-4 py-2.5">Número</th>
-                  <th className="px-4 py-2.5">SUNAT</th>
-                  <th className="px-4 py-2.5 w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {series.map((s) => (
-                  <tr key={s.id}>
-                    <td className="px-4 py-3 text-stone-700">{s.branch_name ?? s.branch_id}</td>
-                    <td className="px-4 py-3 text-stone-700">{s.doc_type}</td>
-                    <td className="px-4 py-3 font-mono font-medium text-stone-900">{s.series}</td>
-                    <td className="px-4 py-3 tabular-nums text-stone-600">{s.current_number}</td>
-                    <td className="px-4 py-3 text-stone-600">{s.sunat_code ?? '—'}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(s)}
-                        className="p-1.5 text-stone-500 hover:text-rest-700 hover:bg-rest-50 rounded-lg"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {series.length === 0 && (
-              <p className="text-center py-10 text-stone-400 text-sm">No hay series con este filtro</p>
-            )}
-          </div>
+          <>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {grouped.map((group) => {
+                const active = group.branchId === activeBranchGroup?.branchId
+                return (
+                  <button
+                    key={group.branchId}
+                    type="button"
+                    onClick={() => setActiveBranchId(group.branchId)}
+                    className={`shrink-0 px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
+                      active
+                        ? 'bg-rest-600 text-white border-rest-600'
+                        : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                    }`}
+                  >
+                    {group.branchName}
+                    <span
+                      className={`ml-1.5 text-xs tabular-nums ${active ? 'text-rest-100' : 'text-stone-400'}`}
+                    >
+                      ({group.items.length})
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-stone-100 bg-stone-50/80 flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-800">{activeBranchGroup?.branchName}</h3>
+                  <p className="text-xs text-stone-500">{activeBranchGroup?.items.length ?? 0} serie(s)</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openNew}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-rest-600 text-white rounded-lg text-xs font-medium hover:bg-rest-700"
+                >
+                  <Plus size={14} />
+                  Nueva serie
+                </button>
+              </div>
+              {activeBranchGroup && activeBranchGroup.items.length === 0 ? (
+                <p className="text-center py-10 text-stone-400 text-sm">
+                  {filterCategory ? 'No hay series con este filtro en esta sucursal' : 'Sin series en esta sucursal'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-stone-50/50 text-left text-xs text-stone-500 uppercase">
+                        <th className="px-4 py-2.5">Tipo</th>
+                        <th className="px-4 py-2.5">Serie</th>
+                        <th className="px-4 py-2.5">Número</th>
+                        <th className="px-4 py-2.5">SUNAT</th>
+                        <th className="px-4 py-2.5">Estado</th>
+                        <th className="px-4 py-2.5 w-24" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100">
+                      {(activeBranchGroup?.items ?? []).map((s) => (
+                        <tr key={s.id}>
+                          <td className="px-4 py-3 text-stone-700">{s.doc_type}</td>
+                          <td className="px-4 py-3 font-mono font-medium text-stone-900">{s.series}</td>
+                          <td className="px-4 py-3 tabular-nums text-stone-600">{s.current_number}</td>
+                          <td className="px-4 py-3 text-stone-600">{s.sunat_code ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            {s.locked ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                                <Lock size={11} />
+                                En uso
+                              </span>
+                            ) : (
+                              <span className="text-xs text-stone-400">Sin uso</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(s)}
+                                className="p-1.5 text-stone-500 hover:text-rest-700 hover:bg-rest-50 rounded-lg"
+                                title="Editar"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              {s.can_delete && (
+                                <button
+                                  type="button"
+                                  disabled={deletingId === s.id}
+                                  onClick={() => void handleDelete(s)}
+                                  className="p-1.5 text-stone-500 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40"
+                                  title="Eliminar serie"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -246,6 +362,12 @@ export function RestaurantSeriesSettings() {
         <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
           <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-3 shadow-xl max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-stone-800">{editing ? 'Editar serie' : 'Nueva serie'}</h3>
+            {editingLocked && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                Esta serie ya tiene documentos emitidos o numeración iniciada. Solo puede cambiar si está activa o inactiva.
+                No se permiten cambios en serie, tipo, correlativo ni código SUNAT.
+              </p>
+            )}
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Sucursal</label>
               <select
@@ -266,9 +388,10 @@ export function RestaurantSeriesSettings() {
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Categoría</label>
                 <select
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
                   value={form.category}
                   onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  disabled={editingLocked}
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c} value={c}>
@@ -280,9 +403,10 @@ export function RestaurantSeriesSettings() {
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Código SUNAT</label>
                 <select
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
                   value={form.sunat_code}
                   onChange={(e) => setForm((f) => ({ ...f, sunat_code: e.target.value }))}
+                  disabled={editingLocked}
                 >
                   {sunatOptions.map((o) => (
                     <option key={o.code} value={o.code}>
@@ -295,9 +419,10 @@ export function RestaurantSeriesSettings() {
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Tipo documento</label>
               <select
-                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
                 value={form.doc_type}
                 onChange={(e) => setForm((f) => ({ ...f, doc_type: e.target.value }))}
+                disabled={editingLocked}
               >
                 {DOC_TYPES.map((d) => (
                   <option key={d} value={d}>
@@ -310,9 +435,10 @@ export function RestaurantSeriesSettings() {
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Serie *</label>
                 <input
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm font-mono uppercase"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm font-mono uppercase disabled:bg-stone-50 disabled:text-stone-500"
                   value={form.series}
                   onChange={(e) => setForm((f) => ({ ...f, series: e.target.value.toUpperCase() }))}
+                  disabled={editingLocked}
                 />
               </div>
               {editing && (
@@ -321,11 +447,12 @@ export function RestaurantSeriesSettings() {
                   <input
                     type="number"
                     min={0}
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
                     value={form.current_number}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, current_number: Math.max(0, parseInt(e.target.value, 10) || 0) }))
                     }
+                    disabled={editingLocked}
                   />
                 </div>
               )}

@@ -50,13 +50,17 @@ export function BackendConnectivityProvider({ children }: { children: ReactNode 
     if (monitoringStartedRef.current) return
     monitoringStartedRef.current = true
 
-    connectivityManager.startMonitoring((onSuccess) => {
+    connectivityManager.startMonitoring((onReachable) => {
       const reqId = api.interceptors.response.use(
         (res) => {
-          onSuccess()
+          onReachable()
           return res
         },
-        (err) => Promise.reject(err),
+        (err) => {
+          // Cualquier respuesta HTTP (4xx/5xx) confirma que el servidor es alcanzable.
+          if (err.response) onReachable()
+          return Promise.reject(err)
+        },
       )
       return () => api.interceptors.response.eject(reqId)
     })

@@ -15,6 +15,8 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { CashOpenSessionForm } from '@/components/cash/CashOpenSessionForm'
+import { CajaMovementsPanel } from '@/components/cash/CajaMovementsPanel'
+import { CajaSessionReportsModal } from '@/components/cash/CajaSessionReportsModal'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { PortalModal } from '@/components/ui/PortalModal'
 
@@ -34,8 +36,6 @@ const EXPENSE_CATEGORIES = [
   { value: 'prestamo_entrega', label: 'Préstamo entregado' },
   { value: 'otro_egreso', label: 'Otro egreso' },
 ]
-
-const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
 
 const ARQUEO_DENOMINATIONS = [
   { value: '200', label: 'Billete S/ 200', kind: 'bill' as const },
@@ -131,18 +131,23 @@ function parseArqueoJson(v: string | null | undefined) {
   }
 }
 
-function categoryLabel(category: string) {
-  return ALL_CATEGORIES.find((x) => x.value === category)?.label ?? category
-}
-
 const REPORT_SESSION_NOTE_MAX = 72
 
-/** Etiqueta del select de reporte: fecha/estado (o sesión actual) y nota de apertura separada por " - ". */
+function cashSessionOpenerLabel(s: CashSession): string {
+  const name = (s.opened_by_name ?? '').trim()
+  if (name) return name
+  if (s.opened_by > 0) return `Usuario #${s.opened_by}`
+  return ''
+}
+
+/** Etiqueta del select de reporte: fecha/estado, usuario que abrió y nota de apertura. */
 function formatReportSessionSelectLabel(s: CashSession, style: 'current' | 'history') {
+  const opener = cashSessionOpenerLabel(s)
+  const openerPart = opener ? ` · ${opener}` : ''
   const base =
     style === 'current'
-      ? `Sesión actual (ID ${s.id})`
-      : `${s.opened_at ? new Date(s.opened_at).toLocaleString() : `Sesión ${s.id}`} · ${s.status === 'open' ? 'Abierta' : 'Cerrada'}`
+      ? `Sesión actual (ID ${s.id})${openerPart}`
+      : `${s.opened_at ? new Date(s.opened_at).toLocaleString() : `Sesión ${s.id}`} · ${s.status === 'open' ? 'Abierta' : 'Cerrada'}${openerPart}`
   const opening = parseSessionNotesBlock(s.notes).opening.trim()
   if (!opening) return base
   const short = opening.length > REPORT_SESSION_NOTE_MAX ? `${opening.slice(0, REPORT_SESSION_NOTE_MAX)}…` : opening
@@ -164,31 +169,10 @@ export default function CajaPage() {
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [sessions, setSessions] = useState<CashSession[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
-  const [movementsPage, setMovementsPage] = useState(1)
-  const MOVEMENTS_PAGE_SIZE = 20
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [tab, setTab] = useState<'sesion' | 'movimientos' | 'reporte' | 'config'>('sesion')
 
-  const movementsTotalPages = useMemo(
-    () => Math.max(1, Math.ceil(movements.length / MOVEMENTS_PAGE_SIZE)),
-    [movements.length],
-  )
-
-  const paginatedMovements = useMemo(() => {
-    const start = (movementsPage - 1) * MOVEMENTS_PAGE_SIZE
-    return movements.slice(start, start + MOVEMENTS_PAGE_SIZE)
-  }, [movements, movementsPage])
-
-  useEffect(() => {
-    setMovementsPage(1)
-  }, [session?.id])
-
-  useEffect(() => {
-    if (movementsPage > movementsTotalPages) {
-      setMovementsPage(movementsTotalPages)
-    }
-  }, [movementsPage, movementsTotalPages])
   const [loading, setLoading] = useState(true)
   const [openModal, setOpenModal] = useState(false)
   const [closeModal, setCloseModal] = useState(false)
@@ -214,6 +198,9 @@ export default function CajaPage() {
   const [selectedReportSessionId, setSelectedReportSessionId] = useState<number | null>(null)
   const [report, setReport] = useState<CashSessionReport | null>(null)
   const [loadingReport, setLoadingReport] = useState(false)
+  const [historyReportsSession, setHistoryReportsSession] = useState<CashSession | null>(null)
+
+  const isSessionOpen = session?.status === 'open'
 
   const [configTab, setConfigTab] = useState<'accounts' | 'methods'>('accounts')
 
@@ -522,6 +509,27 @@ export default function CajaPage() {
     void load()
   }, [activeBranchId, load])
 
+  useEffect(() => {
+    if (contextSessionLoading) return
+    if (contextSession === undefined) return
+    const valid =
+      contextSession && (contextSession.branch_id === activeBranchId || !contextSession.branch_id)
+        ? contextSession
+        : null
+    setSession(valid)
+  }, [contextSession, contextSessionLoading, activeBranchId])
+
+  const movementSessionOptions = useMemo(
+    () =>
+      sessions.map((s) => ({
+        id: s.id,
+        label: s.opened_at
+          ? `${new Date(s.opened_at).toLocaleString()} · ${s.status === 'open' ? 'Abierta' : 'Cerrada'}`
+          : `Sesión ${s.id}`,
+      })),
+    [sessions],
+  )
+
   useOnBranchChange(() => {
     setSession(null)
     setMovements([])
@@ -590,7 +598,8 @@ export default function CajaPage() {
       setCloseWithArqueo(false)
       setCloseArqueo(emptyArqueo())
       setReport(null)
-      load()
+      await load()
+      await refreshCashContext()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     } finally {
@@ -663,38 +672,44 @@ export default function CajaPage() {
     )
   }
 
+  const cajaTabs = [
+    { key: 'sesion' as const, label: 'Sesión', icon: Wallet },
+    { key: 'movimientos' as const, label: 'Movimientos', icon: TrendingUp },
+    { key: 'reporte' as const, label: 'Reporte', icon: FileText },
+    { key: 'config' as const, label: 'Cuentas y métodos', icon: CreditCard },
+  ]
+
   return (
     <div className="w-full flex flex-col flex-1 min-h-0">
-      <div className="mb-3 shrink-0">
-        <h2 className="text-lg font-bold text-stone-800">Caja</h2>
-        <p className="text-sm text-stone-500">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
+      <div className="sticky top-0 z-20 -mx-3 px-3 pt-0 pb-2 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5 bg-stone-50/95 backdrop-blur-sm border-b border-stone-200/80 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
+        <div className="mb-2 pt-0.5">
+          <h2 className="text-lg font-bold text-stone-800">Caja</h2>
+          <p className="text-sm text-stone-500">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin" role="tablist" aria-label="Secciones de caja">
+          {cajaTabs.map((t) => {
+            const Icon = t.icon
+            const active = tab === t.key
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(t.key)}
+                className={`shrink-0 px-3 py-2 rounded-xl border text-sm font-medium flex items-center gap-2 ${
+                  active ? 'bg-rest-600 text-white border-rest-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                }`}
+              >
+                <Icon size={16} />
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="flex gap-2 mb-6 overflow-x-auto">
-        {([
-          { key: 'sesion', label: 'Sesión', icon: Wallet },
-          { key: 'movimientos', label: 'Movimientos', icon: TrendingUp },
-          { key: 'reporte', label: 'Reporte', icon: FileText },
-          { key: 'config', label: 'Cuentas y métodos', icon: CreditCard },
-        ] as const).map((t) => {
-          const Icon = t.icon
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`shrink-0 px-3 py-2 rounded-xl border text-sm font-medium flex items-center gap-2 ${
-                active ? 'bg-rest-600 text-white border-rest-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
-              }`}
-            >
-              <Icon size={16} />
-              {t.label}
-            </button>
-          )
-        })}
-      </div>
-
+      <div className="flex-1 min-h-0 pt-3">
       {tab === 'sesion' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-stone-200 p-6">
@@ -702,7 +717,7 @@ export default function CajaPage() {
               <Wallet size={18} />
               Sesión de caja
             </h3>
-            {session ? (
+            {isSessionOpen && session ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="rounded-xl border border-stone-200 p-3">
@@ -814,7 +829,7 @@ export default function CajaPage() {
                   onClick={() => setOpenModal(true)}
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
                 >
-                  <Plus size={16} /> Abrir caja
+                  <Plus size={16} /> Aperturar caja
                 </button>
               </div>
             )}
@@ -829,11 +844,11 @@ export default function CajaPage() {
               <p className="text-sm text-stone-400">Sin historial.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[880px]">
+                <table className="w-full text-sm min-w-[1100px]">
                   <thead className="bg-stone-50">
                     <tr>
-                      {['Apertura', 'Cierre', 'Inicial', 'Saldo cierre', 'Estado', 'Arqueo', 'Notas'].map((h) => (
-                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
+                      {['Apertura', 'Cierre', 'Aperturó', 'Cerró', 'Inicial', 'Ingresos', 'Egresos', 'Saldo cierre', 'Estado', ''].map((h) => (
+                        <th key={h || 'actions'} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
                           {h}
                         </th>
                       ))}
@@ -844,7 +859,15 @@ export default function CajaPage() {
                       <tr key={s.id} className="border-b border-stone-100">
                         <td className="px-3 py-2 text-xs whitespace-nowrap">{s.opened_at ? new Date(s.opened_at).toLocaleString() : '-'}</td>
                         <td className="px-3 py-2 text-xs whitespace-nowrap">{s.closed_at ? new Date(s.closed_at).toLocaleString() : '-'}</td>
+                        <td className="px-3 py-2 text-xs text-stone-700">{s.opened_by_name || '—'}</td>
+                        <td className="px-3 py-2 text-xs text-stone-700">{s.closed_by_name || '—'}</td>
                         <td className="px-3 py-2 font-medium whitespace-nowrap">S/ {Number(s.opening_balance).toFixed(2)}</td>
+                        <td className="px-3 py-2 text-green-700 font-medium whitespace-nowrap">
+                          S/ {Number(s.total_income ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-red-600 font-medium whitespace-nowrap">
+                          S/ {Number(s.total_expense ?? 0).toFixed(2)}
+                        </td>
                         <td className="px-3 py-2 font-medium whitespace-nowrap">
                           {s.closing_balance != null ? `S/ ${Number(s.closing_balance).toFixed(2)}` : '-'}
                         </td>
@@ -857,9 +880,14 @@ export default function CajaPage() {
                             {s.status === 'open' ? 'Abierta' : 'Cerrada'}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-xs text-stone-600">{s.arqueo_json ? 'Sí' : '—'}</td>
-                        <td className="px-3 py-2 text-xs text-stone-600 max-w-[200px] truncate" title={s.notes || undefined}>
-                          {s.notes?.trim() ? (s.notes.length > 48 ? `${s.notes.slice(0, 48)}…` : s.notes) : '—'}
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryReportsSession(s)}
+                            className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50 whitespace-nowrap"
+                          >
+                            Reportes
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -871,14 +899,14 @@ export default function CajaPage() {
         </div>
       )}
 
-      {tab === 'movimientos' && (
-        <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-stone-800">Movimientos de la sesión</p>
-              <p className="text-xs text-stone-500">{session ? `${movements.length} registros` : 'Sin sesión abierta'}</p>
-            </div>
-            {session && (
+      {tab === 'movimientos' && activeBranchId && (
+        <div className="space-y-4">
+          {isSessionOpen && session && (
+            <div className="bg-white rounded-2xl border border-stone-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-800">Sesión abierta (ID {session.id})</p>
+                <p className="text-xs text-stone-500">{movements.length} movimiento(s) en la sesión actual</p>
+              </div>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -905,80 +933,13 @@ export default function CajaPage() {
                   - Egreso
                 </button>
               </div>
-            )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[960px]">
-              <thead className="bg-stone-50">
-                <tr>
-                  {['Fecha', 'Tipo', 'Categoría', 'Referencia', 'Notas', 'Método', 'Monto'].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {session &&
-                  paginatedMovements.map((m) => (
-                    <tr key={m.id} className="border-b border-stone-100">
-                      <td className="px-4 py-2 text-xs whitespace-nowrap">{m.created_at ? new Date(m.created_at).toLocaleString() : '-'}</td>
-                      <td className="px-4 py-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.type === 'income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                          {m.type === 'income' ? 'Ingreso' : 'Egreso'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-stone-700">{categoryLabel(m.category)}</td>
-                      <td className="px-4 py-2 text-stone-600">{m.reference || '—'}</td>
-                      <td className="px-4 py-2 text-stone-600 max-w-[140px] truncate text-xs" title={m.notes || undefined}>
-                        {m.notes?.trim() || '—'}
-                      </td>
-                      <td className="px-4 py-2 text-stone-600">{paymentMethodLabel(m.payment_method)}</td>
-                      <td className={`px-4 py-2 font-bold whitespace-nowrap ${m.type === 'income' ? 'text-green-700' : 'text-red-700'}`}>
-                        {m.type === 'income' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                {(!session || movements.length === 0) && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-stone-400">
-                      {session ? 'Sin movimientos en esta sesión.' : 'Abra la caja para ver y registrar movimientos.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          {session && movements.length > MOVEMENTS_PAGE_SIZE && (
-            <div className="px-4 py-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-stone-500">
-                Mostrando {(movementsPage - 1) * MOVEMENTS_PAGE_SIZE + 1}–
-                {Math.min(movementsPage * MOVEMENTS_PAGE_SIZE, movements.length)} de {movements.length}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={movementsPage <= 1}
-                  onClick={() => setMovementsPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
-                >
-                  Anterior
-                </button>
-                <span className="text-xs text-stone-600 tabular-nums">
-                  Página {movementsPage} / {movementsTotalPages}
-                </span>
-                <button
-                  type="button"
-                  disabled={movementsPage >= movementsTotalPages}
-                  onClick={() => setMovementsPage((p) => Math.min(movementsTotalPages, p + 1))}
-                  className="px-3 py-1.5 rounded-lg border border-stone-200 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
-                >
-                  Siguiente
-                </button>
-              </div>
             </div>
           )}
+          <CajaMovementsPanel
+            branchId={activeBranchId}
+            paymentMethods={paymentMethods}
+            sessionOptions={movementSessionOptions}
+          />
         </div>
       )}
 
@@ -996,7 +957,17 @@ export default function CajaPage() {
                     setReport(null)
                   }}
                   options={[
-                    ...(session?.id != null ? [{ value: session.id, label: formatReportSessionSelectLabel(session, 'current') }] : []),
+                    ...(session?.id != null
+                      ? [
+                          {
+                            value: session.id,
+                            label: formatReportSessionSelectLabel(
+                              sessions.find((s) => s.id === session.id) ?? session,
+                              'current',
+                            ),
+                          },
+                        ]
+                      : []),
                     ...sessions
                       .filter((s) => s.id !== session?.id)
                       .map((s) => ({
@@ -1227,6 +1198,50 @@ export default function CajaPage() {
                       </table>
                     </div>
                   </div>
+
+                  <div className="rounded-xl border border-red-200 overflow-hidden w-full bg-red-50/30">
+                    <div className="px-4 py-3 border-b border-red-100">
+                      <p className="text-sm font-semibold text-red-900">Ventas anuladas</p>
+                      <p className="text-xs text-red-800/80 mt-0.5">
+                        Reversiones registradas en caja por anulación de notas de venta (trazabilidad).
+                      </p>
+                    </div>
+                    <div className="overflow-x-auto bg-white">
+                      <table className="w-full text-sm min-w-[660px]">
+                        <thead className="bg-red-50">
+                          <tr>
+                            {['Fecha', 'Comprobante', 'Método', 'Monto', 'Motivo'].map((h) => (
+                              <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-red-800 uppercase whitespace-nowrap">
+                                {h}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(report.cancelled_sales_detail ?? []).map((r, idx) => (
+                            <tr key={`void-${idx}`} className="border-b border-stone-100">
+                              <td className="px-4 py-2 text-xs whitespace-nowrap">
+                                {r.date ? new Date(r.date).toLocaleString() : '—'}
+                              </td>
+                              <td className="px-4 py-2 font-mono text-stone-700">{r.doc_number || '—'}</td>
+                              <td className="px-4 py-2 text-stone-600">{paymentMethodLabel(r.payment_method)}</td>
+                              <td className="px-4 py-2 font-bold text-red-700 whitespace-nowrap">
+                                S/ {Number(r.amount).toFixed(2)}
+                              </td>
+                              <td className="px-4 py-2 text-xs text-stone-600">{r.reason || '—'}</td>
+                            </tr>
+                          ))}
+                          {(report.cancelled_sales_detail ?? []).length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-stone-400">
+                                Sin ventas anuladas en esta sesión
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1431,6 +1446,8 @@ export default function CajaPage() {
           )}
         </div>
       )}
+
+      </div>
 
       <PortalModal open={showAccountModal} onClose={() => setShowAccountModal(false)} className="max-w-xl">
           <div className="bg-white rounded-2xl shadow-xl w-full p-6">
@@ -2107,6 +2124,18 @@ export default function CajaPage() {
           )
         })()}
       </PortalModal>
+
+      {historyReportsSession && (
+        <CajaSessionReportsModal
+          sessionId={historyReportsSession.id}
+          sessionLabel={
+            historyReportsSession.opened_at
+              ? new Date(historyReportsSession.opened_at).toLocaleString()
+              : `Sesión ${historyReportsSession.id}`
+          }
+          onClose={() => setHistoryReportsSession(null)}
+        />
+      )}
     </div>
   )
 }
