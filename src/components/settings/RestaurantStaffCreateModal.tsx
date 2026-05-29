@@ -1,24 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { RESTAURANT_EMPLOYEE_TYPES, restaurantService } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { StaffBranchMultiSelect } from './StaffBranchMultiSelect'
+import { companyService } from '@/services/company.service'
 
 const OPERATIVE_ROLES = RESTAURANT_EMPLOYEE_TYPES.filter((r) => r.value !== '')
 
 type Props = {
   onClose: () => void
   onSaved: () => void
+  onFailed?: () => void
 }
 
-export function RestaurantStaffCreateModal({ onClose, onSaved }: Props) {
+export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [employeeType, setEmployeeType] = useState('waiter')
   const [pin, setPin] = useState('')
+  const [branchIds, setBranchIds] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    companyService
+      .listBranches()
+      .then((rows) => {
+        const active = (rows ?? []).filter((b) => b.active !== false)
+        const main = active.find((b) => b.is_main) ?? active[0]
+        if (main) setBranchIds([main.id])
+      })
+      .catch(() => setBranchIds([]))
+  }, [])
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -34,6 +49,10 @@ export function RestaurantStaffCreateModal({ onClose, onSaved }: Props) {
       toast.error('PIN de acceso: 4 a 6 dígitos')
       return
     }
+    if (branchIds.length === 0) {
+      toast.error('Seleccione al menos una sucursal')
+      return
+    }
     setSaving(true)
     try {
       await restaurantService.createStaffUser({
@@ -42,6 +61,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved }: Props) {
         phone: phone.trim() || undefined,
         employee_type: employeeType,
         pin: pinDigits,
+        branch_ids: branchIds,
       })
       toast.success('Usuario creado')
       onSaved()
@@ -51,6 +71,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved }: Props) {
       const isDup =
         msg?.toLowerCase().includes('pin ya está asignado') || msg?.toLowerCase().includes('pin duplicado')
       toast.error(isDup ? 'Ese PIN ya lo usa otro usuario. Elija otro PIN.' : msg ?? 'Error al crear')
+      onFailed?.()
     } finally {
       setSaving(false)
     }
@@ -98,6 +119,10 @@ export function RestaurantStaffCreateModal({ onClose, onSaved }: Props) {
               placeholder="Opcional"
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-stone-600 mb-1">Sucursales *</label>
+            <StaffBranchMultiSelect value={branchIds} onChange={setBranchIds} disabled={saving} />
           </div>
           <div>
             <label className="block text-xs font-medium text-stone-600 mb-1">Rol en restaurante *</label>

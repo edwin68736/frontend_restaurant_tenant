@@ -66,10 +66,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
       const task = (async () => {
         try {
           const [raw, sunat] = await Promise.all([
-            companyService.listSeries({
-              branch_id: branchId,
-              category: 'venta',
-            }),
+            companyService.listSeries({ branch_id: branchId }),
             companyService.getSunat().catch(() => ({ sunat_enabled: false } as const)),
           ])
           const enabled = Boolean(sunat.sunat_enabled)
@@ -99,8 +96,8 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
       return
     }
     if (!activeBranchId) return
-    void loadForBranch(activeBranchId)
-  }, [isAuthenticated, activeBranchId, resetEpoch, loadForBranch, bump])
+    void loadForBranch(activeBranchId, true)
+  }, [isAuthenticated, activeBranchId, resetEpoch, loadForBranch])
 
   const invalidateCheckoutSeries = useCallback(
     (branchId?: number) => {
@@ -129,7 +126,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
     () => ({
       checkoutSeries,
       seriesMetaReady,
-      hasCheckoutSeries: hasRestaurantCheckoutSeries(checkoutSeries),
+      hasCheckoutSeries: hasRestaurantCheckoutSeries(checkoutSeries, { sunatEnabled }),
       sunatEnabled,
       refreshCheckoutSeries,
       invalidateCheckoutSeries,

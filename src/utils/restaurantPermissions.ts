@@ -85,6 +85,32 @@ export function canApplyCheckoutDiscount(
   return hasPermission(permissions, PERM_ORDERS_CHARGE)
 }
 
+/** Cuentas y métodos de pago del restaurante (crear/editar/eliminar). */
+export function canManageCashSettings(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  if (hasPermission(permissions, 's.m')) return true
+  const et = String(employeeType ?? '').toLowerCase()
+  return et === 'admin' || et === 'supervisor'
+}
+
+/** Ver configuración global de caja (cajero: solo lectura). */
+export function canViewCashSettings(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  return canManageCashSettings(permissions, employeeType) || hasPermission(permissions, 'c.v')
+}
+
+/** Historial y reportes de todas las sesiones de la sucursal. */
+export function canViewAllCashSessions(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  return canManageCashSettings(permissions, employeeType)
+}
+
 export function defaultRouteForPermissions(permissions: string[] | null | undefined): string {
   const order: { feature: RestaurantFeature; route: string }[] = [
     { feature: 'pos', route: '/pos' },

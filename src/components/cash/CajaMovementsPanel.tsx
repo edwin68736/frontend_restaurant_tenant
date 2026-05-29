@@ -23,16 +23,23 @@ type Props = {
   branchId: number
   paymentMethods: PaymentMethodRecord[]
   sessionOptions?: { id: number; label: string }[]
+  /** Si se define, el reporte solo incluye movimientos de ese usuario (cajero). */
+  restrictToUserId?: number
 }
 
-export function CajaMovementsPanel({ branchId, paymentMethods, sessionOptions = [] }: Props) {
+export function CajaMovementsPanel({
+  branchId,
+  paymentMethods,
+  sessionOptions = [],
+  restrictToUserId,
+}: Props) {
   const today = new Date().toISOString().slice(0, 10)
   const monthStart = `${today.slice(0, 7)}-01`
 
   const [filters, setFilters] = useState({
     date_from: monthStart,
     date_to: today,
-    user_id: '' as number | '',
+    user_id: (restrictToUserId ?? '') as number | '',
     payment_method: '',
     type: '' as '' | 'income' | 'expense',
     session_id: '' as number | '',
@@ -46,6 +53,10 @@ export function CajaMovementsPanel({ branchId, paymentMethods, sessionOptions = 
   const perPage = 25
 
   useEffect(() => {
+    if (restrictToUserId) {
+      setStaffUsers([])
+      return
+    }
     restaurantService
       .listStaff()
       .then((list) =>
@@ -57,7 +68,7 @@ export function CajaMovementsPanel({ branchId, paymentMethods, sessionOptions = 
         ),
       )
       .catch(() => setStaffUsers([]))
-  }, [])
+  }, [restrictToUserId])
 
   const paymentMethodOptions = useMemo(() => {
     const active = paymentMethods.filter((m) => m.active)
@@ -86,13 +97,14 @@ export function CajaMovementsPanel({ branchId, paymentMethods, sessionOptions = 
       }
       if (filters.date_from) params.date_from = filters.date_from
       if (filters.date_to) params.date_to = filters.date_to
-      if (filters.user_id) params.user_id = Number(filters.user_id)
+      if (restrictToUserId) params.user_id = restrictToUserId
+      else if (filters.user_id) params.user_id = Number(filters.user_id)
       if (filters.payment_method) params.payment_method = filters.payment_method
       if (filters.type) params.type = filters.type
       if (filters.session_id) params.session_id = Number(filters.session_id)
       return params
     },
-    [branchId, filters, page],
+    [branchId, filters, page, restrictToUserId],
   )
 
   const load = useCallback(async () => {
@@ -181,24 +193,26 @@ export function CajaMovementsPanel({ branchId, paymentMethods, sessionOptions = 
               className="border border-stone-200 rounded-xl px-3 py-2 text-sm"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-stone-500 mb-1">Usuario</label>
-            <select
-              value={filters.user_id}
-              onChange={(e) => {
-                setPage(1)
-                setFilters((f) => ({ ...f, user_id: e.target.value ? Number(e.target.value) : '' }))
-              }}
-              className="border border-stone-200 rounded-xl px-3 py-2 text-sm min-w-[140px]"
-            >
-              <option value="">Todos</option>
-              {staffUsers.map((u) => (
-                <option key={u.user_id} value={u.user_id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!restrictToUserId && (
+            <div>
+              <label className="block text-xs font-medium text-stone-500 mb-1">Usuario</label>
+              <select
+                value={filters.user_id}
+                onChange={(e) => {
+                  setPage(1)
+                  setFilters((f) => ({ ...f, user_id: e.target.value ? Number(e.target.value) : '' }))
+                }}
+                className="border border-stone-200 rounded-xl px-3 py-2 text-sm min-w-[140px]"
+              >
+                <option value="">Todos</option>
+                {staffUsers.map((u) => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-stone-500 mb-1">Medio de pago</label>
             <select

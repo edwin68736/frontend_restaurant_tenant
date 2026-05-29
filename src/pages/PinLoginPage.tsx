@@ -47,7 +47,7 @@ export default function PinLoginPage() {
         station: station as PinLoginPayload['station'],
       })
       applySession(data)
-      setFromLogin(data.active_branch ?? null, !!data.can_switch_branch)
+      setFromLogin(data.active_branch ?? null, !!data.can_switch_branch, data.allowed_branches)
       const route = defaultRouteForPermissions(data.restaurant_permissions)
       if (station === 'kitchen') {
         navigate('/comandas', { replace: true })

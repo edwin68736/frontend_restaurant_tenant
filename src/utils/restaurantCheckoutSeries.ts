@@ -3,6 +3,25 @@ import type { SeriesRow } from '@/services/company.service'
 /** SUNAT: nota de venta, factura, boleta — únicos tipos en checkout restaurante. */
 const RESTAURANT_CHECKOUT_SUNAT = new Set(['00', '01', '03'])
 
+/** Código SUNAT efectivo (infiere 00 desde doc_type si falta en BD). */
+export function effectiveSunatCode(series: Pick<SeriesRow, 'sunat_code' | 'doc_type'>): string {
+  const code = String(series.sunat_code ?? '').trim()
+  if (code) return code
+  const d = String(series.doc_type ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/\s+/g, '')
+  if ((d.includes('nota') && d.includes('venta') && !d.includes('credito')) || d === 'notadeventa') return '00'
+  if (d.includes('factura') && !d.includes('credito')) return '01'
+  if (d.includes('boleta')) return '03'
+  return ''
+}
+
+export function isNotaVentaSeries(series: Pick<SeriesRow, 'sunat_code' | 'doc_type'>): boolean {
+  return effectiveSunatCode(series) === '00'
+}
+
 export function isElectronicBillingSunatCode(code?: string | null): boolean {
   const c = String(code ?? '').trim()
   return c === '01' || c === '03'
@@ -44,7 +63,11 @@ export function hasRestaurantCheckoutSeries(
   list: SeriesRow[],
   opts?: RestaurantCheckoutSeriesFilterOpts,
 ): boolean {
-  return filterRestaurantCheckoutSeries(list, opts).length > 0
+  const filtered = filterRestaurantCheckoutSeries(list, opts)
+  if (filtered.length > 0) return true
+  const sunatEnabled = opts?.sunatEnabled !== false
+  if (!sunatEnabled) return false
+  return list.some((s) => s.active !== false && isNotaVentaSeries(s))
 }
 
 export const BILLING_NOT_ENABLED_MESSAGE =

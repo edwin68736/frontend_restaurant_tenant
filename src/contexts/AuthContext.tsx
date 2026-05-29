@@ -63,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('active_branch', JSON.stringify(data.active_branch))
     }
     localStorage.setItem('can_switch_branch', data.can_switch_branch ? 'true' : 'false')
+    if (data.allowed_branches?.length) {
+      localStorage.setItem('allowed_branches', JSON.stringify(data.allowed_branches))
+    } else {
+      localStorage.removeItem('allowed_branches')
+    }
 
     setState({
       user,
@@ -159,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     authService.logout()
     localStorage.removeItem('active_branch')
+    localStorage.removeItem('allowed_branches')
     localStorage.removeItem('can_switch_branch')
     localStorage.removeItem(PERMS_KEY)
     setState({

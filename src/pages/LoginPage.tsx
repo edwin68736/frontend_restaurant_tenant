@@ -22,7 +22,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       const data = await login({ email, password, slug: tenant?.slug })
-      setFromLogin(data.active_branch ?? null, !!data.can_switch_branch)
+      setFromLogin(data.active_branch ?? null, !!data.can_switch_branch, data.allowed_branches)
       navigate('/', { replace: true })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al iniciar sesión'

@@ -106,7 +106,7 @@ export function RestaurantOperationSettings() {
             <div className="min-w-0">
               <h2 className="font-bold text-stone-900">Usuarios del restaurante</h2>
               <p className="text-sm text-stone-600">
-                Roles operativos y PIN de acceso ({staffWithAccess.length} con acceso).
+                {rows.length} en total · {staffWithAccess.length} con acceso al restaurante
               </p>
             </div>
           </div>
@@ -141,6 +141,7 @@ export function RestaurantOperationSettings() {
               <thead>
                 <tr className="bg-stone-50/80 text-left text-xs text-stone-500 uppercase tracking-wide">
                   <th className="px-4 py-2.5 font-medium">Usuario</th>
+                  <th className="px-4 py-2.5 font-medium">Sucursales</th>
                   <th className="px-4 py-2.5 font-medium">Rol</th>
                   <th className="px-4 py-2.5 font-medium">PIN acceso</th>
                   <th className="px-4 py-2.5 font-medium w-24" />
@@ -153,13 +154,28 @@ export function RestaurantOperationSettings() {
                       <div className="font-medium text-stone-800">{row.name}</div>
                       <div className="text-xs text-stone-500 truncate max-w-[200px]">{row.email}</div>
                     </td>
+                    <td className="px-4 py-3 text-xs text-stone-600 max-w-[180px]">
+                      {row.branch_names?.length ? (
+                        <span className="line-clamp-2" title={row.branch_names.join(', ')}>
+                          {row.branch_names.join(', ')}
+                        </span>
+                      ) : row.employee_type ? (
+                        <span className="text-stone-400">Sin asignar</span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {row.employee_type ? (
                         <span className="inline-flex px-2 py-0.5 rounded-lg bg-rest-50 text-rest-800 text-xs font-medium">
                           {EMPLOYEE_TYPE_LABELS[row.employee_type] ?? row.employee_type}
                         </span>
+                      ) : row.profile_complete === false && row.active ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 text-xs font-medium">
+                          Registro incompleto
+                        </span>
                       ) : (
-                        <span className="text-stone-400 text-xs">Sin acceso</span>
+                        <span className="text-stone-400 text-xs">Sin acceso restaurante</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs text-stone-600">
@@ -187,7 +203,11 @@ export function RestaurantOperationSettings() {
         <RestaurantStaffEditModal row={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
       )}
       {creating && (
-        <RestaurantStaffCreateModal onClose={() => setCreating(false)} onSaved={() => void load()} />
+        <RestaurantStaffCreateModal
+          onClose={() => setCreating(false)}
+          onSaved={() => void load()}
+          onFailed={() => void load()}
+        />
       )}
     </div>
   )

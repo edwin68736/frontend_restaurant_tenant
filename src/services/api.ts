@@ -42,7 +42,7 @@ export function getDisplayedTenantApiUrl(): string {
     const central = getCentralApiBaseUrl()
     return central ? `${central} (proxy dev)` : 'Proxy local (Vite)'
   }
-  return 'â€”'
+  return 'âÿÿ'
 }
 
 /** En DEV todas las peticiones van por proxy local (sin CORS). */
@@ -121,6 +121,7 @@ function forceRelogin(message: string) {
   localStorage.removeItem('token')
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
+  localStorage.removeItem('allowed_branches')
   localStorage.removeItem('can_switch_branch')
   localStorage.removeItem('restaurant_permissions')
   import('sonner').then(({ toast }) => toast.error(message))

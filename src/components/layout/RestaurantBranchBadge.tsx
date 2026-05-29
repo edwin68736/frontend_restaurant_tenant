@@ -14,27 +14,29 @@ const selectClass =
 
 /** Selector de sucursal para el menú del usuario (no va en el header). */
 export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
-  const { activeBranch, canSwitchBranch, switchBranch } = useBranch()
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
+  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch } = useBranch()
+  const [fallbackBranches, setFallbackBranches] = useState<{ id: number; name: string }[]>([])
   const [loading, setLoading] = useState(false)
   const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
-    if (!canSwitchBranch) return
+    if (!canSwitchBranch || allowedBranches.length > 0) return
     setLoading(true)
     companyService
       .listBranches()
-      .then((b) => setBranches(b ?? []))
-      .catch(() => setBranches([]))
+      .then((b) => setFallbackBranches((b ?? []).filter((x) => x.active !== false).map((x) => ({ id: x.id, name: x.name }))))
+      .catch(() => setFallbackBranches([]))
       .finally(() => setLoading(false))
-  }, [canSwitchBranch])
+  }, [canSwitchBranch, allowedBranches.length])
 
   if (!activeBranch) return null
 
   const options =
-    branches.length > 0
-      ? branches
-      : [{ id: activeBranch.id, name: activeBranch.name }]
+    allowedBranches.length > 0
+      ? allowedBranches.map((b) => ({ id: b.id, name: b.name }))
+      : fallbackBranches.length > 0
+        ? fallbackBranches
+        : [{ id: activeBranch.id, name: activeBranch.name }]
 
   if (!canSwitchBranch) {
     return (

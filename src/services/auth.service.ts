@@ -25,6 +25,7 @@ export interface LoginResponse {
   restaurant_permissions?: string[]
   active_branch?: BranchBrief | null
   can_switch_branch?: boolean
+  allowed_branches?: BranchBrief[]
 }
 
 export function decodeJWT<T = Record<string, unknown>>(token: string): T | null {

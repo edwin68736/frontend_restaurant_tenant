@@ -8,6 +8,7 @@ import {
 } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { StaffBranchMultiSelect } from './StaffBranchMultiSelect'
 
 type Props = {
   row: RestaurantStaffManagementRow | null
@@ -19,6 +20,7 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
   const [employeeType, setEmployeeType] = useState('')
   const [pin, setPin] = useState('')
   const [clearPin, setClearPin] = useState(false)
+  const [branchIds, setBranchIds] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -26,6 +28,7 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
     setEmployeeType(row.employee_type ?? '')
     setPin('')
     setClearPin(false)
+    setBranchIds(row.branch_ids?.length ? [...row.branch_ids] : [])
   }, [row])
 
   if (!row) return null
@@ -38,12 +41,17 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
       toast.error('PIN de acceso: 4 a 6 dígitos')
       return
     }
+    if (employeeType && branchIds.length === 0) {
+      toast.error('Seleccione al menos una sucursal')
+      return
+    }
     setSaving(true)
     try {
       await restaurantService.setUserStaff(row.user_id, {
         employee_type: employeeType,
         ...(pinDigits ? { pin: pinDigits } : {}),
         ...(clearPin ? { clear_pin: true } : {}),
+        ...(employeeType && branchIds.length > 0 ? { branch_ids: branchIds } : {}),
       })
       toast.success(employeeType ? 'Perfil guardado' : 'Acceso al restaurante quitado')
       onSaved()
@@ -91,6 +99,11 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
           </div>
 
           {employeeType ? (
+            <>
+            <div>
+              <label className="block text-xs font-medium text-stone-600 mb-1">Sucursales</label>
+              <StaffBranchMultiSelect value={branchIds} onChange={setBranchIds} disabled={saving} />
+            </div>
             <div className="border border-stone-200 rounded-xl p-3 space-y-3 bg-stone-50/50">
               <div>
                 <p className="text-xs font-medium text-stone-700">PIN de acceso (login rápido)</p>
@@ -133,6 +146,7 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
                 </p>
               )}
             </div>
+            </>
           ) : (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
               Sin rol de restaurante: este usuario no podrá usar Tukichef.

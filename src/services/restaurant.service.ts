@@ -39,6 +39,9 @@ export interface RestaurantStaffManagementRow {
   staff_code: string
   has_pin: boolean
   staff_active: boolean
+  profile_complete?: boolean
+  branch_ids?: number[]
+  branch_names?: string[]
 }
 
 export const RESTAURANT_EMPLOYEE_TYPES = [
@@ -153,6 +156,7 @@ export const restaurantService = {
     pin: string
     staff_code?: string
     display_name?: string
+    branch_ids: number[]
   }) =>
     api.post<{ success: boolean; data: RestaurantStaffManagementRow }>('/api/restaurant/staff/users', body).then((r) => r.data),
 
@@ -164,6 +168,7 @@ export const restaurantService = {
       clear_pin?: boolean
       staff_code?: string
       display_name?: string
+      branch_ids?: number[]
     },
   ) =>
     api

@@ -103,7 +103,13 @@ export function pickDefaultNotaVentaSeries<T extends { id: number; doc_type: str
   list: T[],
 ): T | null {
   if (!list.length) return null
-  const bySunat = list.find((s) => String(s.sunat_code ?? '').trim() === '00')
+  const bySunat = list.find((s) => {
+    const code = String(s.sunat_code ?? '').trim()
+    if (code === '00') return true
+    if (code) return false
+    const d = String(s.doc_type ?? '').toLowerCase().replace(/\s+/g, '')
+    return (d.includes('nota') && d.includes('venta') && !d.includes('credito')) || d === 'notadeventa'
+  })
   if (bySunat) return bySunat
   const byDoc = list.find((s) => {
     const d = String(s.doc_type ?? '').toLowerCase().replace(/\s+/g, '')
