@@ -23,7 +23,7 @@ import {
   FileSignature,
   Receipt,
 } from 'lucide-react'
-import { salesService, formatSaleDocumentNumber, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
+import { salesService, formatSaleDocumentNumber, emptySaleListSummary, type Sale, type SaleDetail, type SaleItem, type SaleListSummary } from '@/services/sales.service'
 import { billingService } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import { getCurrentMonthRange, getTodayPeru } from '@/utils/datesPeru'
@@ -45,6 +45,7 @@ import {
   type ReceiptPdfOptions,
 } from '@/utils/receiptPdf'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { formatSoles } from '@/utils/format'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
   billingStatusForUI,
@@ -127,6 +128,7 @@ export default function VentasPage() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
   const [total, setTotal] = useState(0)
+  const [listSummary, setListSummary] = useState<SaleListSummary>(() => emptySaleListSummary())
   const [sending, setSending] = useState<number | null>(null)
   const [resending, setResending] = useState<number | null>(null)
   const [downloading, setDownloading] = useState<{ saleId: number; kind: string } | null>(null)
@@ -178,6 +180,8 @@ export default function VentasPage() {
   const totalPages = Math.max(1, Math.ceil(total / perPage))
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
+  const summaryDocCount = listSummary.count_active + listSummary.count_cancelled
+  const tableTrailingColSpan = tab === 'facturacion' ? 3 : tab === 'credit_notes' ? 2 : 1
 
   const {
     inputValue: searchInput,
@@ -185,7 +189,7 @@ export default function VentasPage() {
     loading,
     isSearching,
     refresh,
-  } = useDebouncedApiSearch<{ data: Sale[]; total: number }>({
+  } = useDebouncedApiSearch<{ data: Sale[]; total: number; summary: SaleListSummary }>({
     cacheScope: 'restaurant-ventas',
     enabled: !((tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === false),
     deps: [tab, page, perPage, sunatEnabled, billingStatus, dateRange.from, dateRange.to],
@@ -207,9 +211,10 @@ export default function VentasPage() {
       }
       return salesService.list(params, { signal })
     },
-    onSuccess: ({ data, total: t }) => {
+    onSuccess: ({ data, total: t, summary }) => {
       setSales((data ?? []).map((s) => ({ ...s, billing_status: normalizeBillingStatus(s.billing_status) })))
       setTotal(t ?? 0)
+      setListSummary(summary ?? emptySaleListSummary())
     },
     onError: () => toast.error('Error al cargar'),
   })
@@ -1172,6 +1177,27 @@ export default function VentasPage() {
                       </tr>
                     ))}
                   </tbody>
+                  {summaryDocCount > 0 && (
+                    <tfoot className="sticky bottom-0 z-[5] bg-stone-100 border-t-2 border-stone-300 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)]">
+                      <tr>
+                        <td colSpan={3} className="px-4 py-2.5 text-right text-xs font-semibold text-stone-600">
+                          Total del período ({summaryDocCount} comprobante{summaryDocCount === 1 ? '' : 's'})
+                          {listSummary.count_cancelled > 0 && (
+                            <span className="block font-normal text-stone-500 mt-0.5">
+                              Activas: {formatSoles(listSummary.sum_active)}
+                              {listSummary.sum_cancelled > 0 && (
+                                <> · Anuladas: {formatSoles(listSummary.sum_cancelled)}</>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 font-bold text-rest-700 text-base tabular-nums whitespace-nowrap">
+                          {formatSoles(listSummary.sum_active)}
+                        </td>
+                        <td colSpan={tableTrailingColSpan} />
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
                 {sales.length === 0 && !loading && (
                   <div className="px-4 py-12 text-center text-stone-500 text-sm">

@@ -23,6 +23,7 @@ import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, print
 import {
   cartToOrderItems,
   getActiveKitchenRounds,
+  getActiveSessionOrders,
   getOrderRoundHistory,
   sumSessionComandaQty,
   type KitchenRound,
@@ -141,13 +142,19 @@ export default function MesaPage() {
   const { flyToCart, FlyToCartLayer, cancelFlyAnimations } = useFlyToCart(cartBtnRef, { desktopCartRef })
   const configuringRef = useRef(false)
 
-  const load = () => {
+  const load = useCallback((opts?: { silent?: boolean }) => {
     if (!id) return
-    setLoading(true)
-    restaurantService.getSession(id).then(setSession).catch(() => toast.error('Sesión no encontrada')).finally(() => setLoading(false))
-  }
+    if (!opts?.silent) setLoading(true)
+    restaurantService
+      .getSession(id)
+      .then(setSession)
+      .catch(() => toast.error('Sesión no encontrada'))
+      .finally(() => {
+        if (!opts?.silent) setLoading(false)
+      })
+  }, [id])
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => { load() }, [load])
 
   const loadMesaMeta = useCallback(() => {
     if (!activeBranchId) return
@@ -329,9 +336,16 @@ export default function MesaPage() {
   const soloCerrarMesa = session?.status === 'open' && sessionTotal <= 0 && cart.length === 0
 
   const sessionItemQty = useMemo(() => sumSessionComandaQty(session), [session])
+  const activeSessionOrders = useMemo(() => getActiveSessionOrders(session), [session])
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(session), [session])
   const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(session), [session])
   const newCartQty = useMemo(() => sumCartQty(cart), [cart])
+
+  useEffect(() => {
+    if (ordersModalOpen && activeSessionOrders.length === 0) {
+      setOrdersModalOpen(false)
+    }
+  }, [ordersModalOpen, activeSessionOrders.length])
 
   const resolveOrderItems = () => {
     try {
@@ -461,9 +475,14 @@ export default function MesaPage() {
                   const mods = parseStoredModifiers(c.modifiers_json)
                   const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
                   return (
-                    <li key={c.id} className="truncate" title={summary || undefined}>
-                      {c.quantity}x {c.product_name}
-                      {summary ? ` · ${summary}` : ''}
+                    <li key={c.id} className="flex justify-between gap-2 text-[11px] text-stone-600">
+                      <span className="truncate min-w-0" title={summary || undefined}>
+                        {c.quantity}x {c.product_name}
+                        {summary ? ` · ${summary}` : ''}
+                      </span>
+                      <span className="shrink-0 tabular-nums font-medium text-stone-700">
+                        {formatSoles(c.quantity * c.unit_price)}
+                      </span>
                     </li>
                   )
                 })}
@@ -633,11 +652,13 @@ export default function MesaPage() {
     }
     if (totalToPay <= 0) return
     const lines = [
-      ...(s.orders?.flatMap((ord) => ord.comandas ?? []) ?? []).map((c) => ({
-        productName: c.product_name,
-        quantity: c.quantity,
-        unitPrice: c.unit_price,
-      })),
+      ...activeSessionOrders.flatMap((ord) =>
+        ord.comandas.map((c) => ({
+          productName: c.product_name,
+          quantity: c.quantity,
+          unitPrice: c.unit_price,
+        })),
+      ),
       ...cart.map((c) => ({
         productName: cartLineLabel(c),
         quantity: c.quantity,
@@ -701,7 +722,7 @@ export default function MesaPage() {
       setAnulComanda(null)
       setAnulReason('')
       setAnulPin('')
-      load()
+      load({ silent: true })
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     } finally {
@@ -814,7 +835,7 @@ export default function MesaPage() {
           >
             <ArrowLeft size={16} /> Mesas
           </button>
-          {!!session.orders?.length && (
+          {activeSessionOrders.length > 0 && (
             <button
               type="button"
               onClick={() => setOrdersModalOpen(true)}
@@ -823,7 +844,7 @@ export default function MesaPage() {
               <FileText size={14} />
               <span>Pedidos</span>
               <span className="inline-flex min-w-[1.25rem] h-5 px-1 items-center justify-center rounded-md bg-rest-600 text-white text-xs font-bold">
-                {session.orders.length}
+                {activeSessionOrders.length}
               </span>
             </button>
           )}
@@ -1045,7 +1066,7 @@ export default function MesaPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-stone-800">Pedidos en mesa</h3>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-rest-600 text-white text-sm font-bold">
-                    {session.orders?.length ?? 0}
+                    {activeSessionOrders.length}
                   </span>
                 </div>
                 <button
@@ -1058,7 +1079,10 @@ export default function MesaPage() {
                 </button>
               </div>
               <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
-                {session.orders?.map((ord) => (
+                {activeSessionOrders.length === 0 ? (
+                  <p className="text-sm text-stone-500 text-center py-6">No hay ítems activos en pedidos</p>
+                ) : (
+                activeSessionOrders.map((ord) => (
                   <div key={ord.id} className="rounded-xl border border-stone-200 overflow-hidden">
                     <div className="px-3 py-2 bg-stone-50/60 flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-stone-800">#{ord.order_number}</span>
@@ -1090,7 +1114,8 @@ export default function MesaPage() {
                       </ul>
                     </div>
                   </div>
-                ))}
+                ))
+                )}
               </div>
               <div className="p-4 border-t border-stone-200 bg-stone-50/30">
                 <button
@@ -1164,8 +1189,8 @@ export default function MesaPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {session?.orders?.flatMap((ord) =>
-                    ord.comandas?.map((c) => (
+                  {activeSessionOrders.flatMap((ord) =>
+                    ord.comandas.map((c) => (
                       <tr key={c.id} className="border-b border-stone-100">
                         <td className="py-2 pr-2">
                           <div>{c.product_name}</div>

@@ -8,6 +8,7 @@ import { ticketDetailLayout4Col } from '@/utils/receiptTicketLayout'
 import { renderA4ReceiptPdf } from '@/utils/receiptPdfA4'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
+import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
@@ -249,6 +250,10 @@ export async function generateReceiptPdf(
     addPaymentsBlock()
     if (data.seller_name) {
       addWrapped(`Vendedor: ${data.seller_name}`, FONT_SIZE_SM, 'left')
+    }
+
+    if (paymentWalletVisible(data, 'ticket')) {
+      y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
     }
 
     if (showQr) {

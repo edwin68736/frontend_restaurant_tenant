@@ -22,7 +22,18 @@ export type KitchenRound = {
 }
 
 function activeComandas(comandas: Comanda[]): Comanda[] {
-  return (comandas ?? []).filter((c) => !(c as Comanda & { cancelled_at?: string | null }).cancelled_at)
+  return (comandas ?? []).filter((c) => !c.cancelled_at)
+}
+
+/** Pedidos de sesión con solo comandas activas (no anuladas). */
+export function getActiveSessionOrders(detail: SessionDetail | null) {
+  if (!detail?.orders?.length) return []
+  return detail.orders
+    .map((ord) => ({
+      ...ord,
+      comandas: activeComandas(ord.comandas ?? []),
+    }))
+    .filter((ord) => ord.comandas.length > 0)
 }
 
 /** Historial completo de rondas/comandas (para reimpresión exacta por order_id). */

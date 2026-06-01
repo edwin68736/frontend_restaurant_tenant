@@ -13,6 +13,11 @@ export interface CompanyConfig {
   logo_url: string
   color_theme?: string
   additional_notes?: string
+  wallet_provider?: string
+  wallet_phone?: string
+  wallet_qr_url?: string
+  wallet_show_on_a4?: boolean
+  wallet_show_on_ticket?: boolean
 }
 
 export interface SunatConfig {
@@ -54,6 +59,14 @@ export const companyService = {
 
   updateConfig: (data: Partial<CompanyConfig>) =>
     api.put<{ success: boolean; data: CompanyConfig }>('/api/company/config', data).then((r) => r.data),
+
+  updateReceiptWallet: (data: {
+    wallet_provider: string
+    wallet_phone: string
+    wallet_qr_url: string
+    wallet_show_on_a4: boolean
+    wallet_show_on_ticket: boolean
+  }) => api.put<{ success: boolean; data: CompanyConfig }>('/api/company/receipt-wallet', data).then((r) => r.data),
 
   getSunat: (): Promise<SunatConfig> =>
     api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),

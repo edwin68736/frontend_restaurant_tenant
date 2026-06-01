@@ -8,6 +8,7 @@ import { TableCardFooter, TableWithChairsVisual } from '@/components/restaurant/
 import { useOnBranchChange } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
+import { sortRestaurantTables } from '@/utils/sortRestaurantTables'
 import { PortalModal } from '@/components/ui/PortalModal'
 
 export default function SalasPage() {
@@ -81,11 +82,13 @@ export default function SalasPage() {
     }
   }
 
+  const sortedTables = useMemo(() => sortRestaurantTables(tables, floors), [tables, floors])
+
   const filteredTables = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return tables
-    return tables.filter((t) => t.name.toLowerCase().includes(term))
-  }, [tables, search])
+    if (!term) return sortedTables
+    return sortedTables.filter((t) => t.name.toLowerCase().includes(term))
+  }, [sortedTables, search])
 
   const stats = useMemo(() => {
     let libre = 0

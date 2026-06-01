@@ -102,6 +102,7 @@ export interface Comanda {
   igv_affectation_type?: string
   price_includes_igv?: boolean
   status: string
+  cancelled_at?: string | null
   preparation_area?: string
   printed?: boolean
   printed_at?: string | null

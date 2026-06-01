@@ -3,14 +3,16 @@ import { useLocation } from 'react-router-dom'
 import { RestaurantBranchesSettings } from './restaurant/RestaurantBranchesSettings'
 import { RestaurantCompanySettings } from './restaurant/RestaurantCompanySettings'
 import { RestaurantOperationSettings } from './restaurant/RestaurantOperationSettings'
+import { RestaurantReceiptWalletSettings } from './restaurant/RestaurantReceiptWalletSettings'
 import { RestaurantSeriesSettings } from './restaurant/RestaurantSeriesSettings'
 import { RestaurantTaxSettings } from './restaurant/RestaurantTaxSettings'
 
-type RestTab = 'operacion' | 'empresa' | 'impuestos' | 'sucursales' | 'series'
+type RestTab = 'operacion' | 'empresa' | 'impuestos' | 'sucursales' | 'series' | 'comprobantes'
 
 const TABS: { id: RestTab; label: string }[] = [
   { id: 'operacion', label: 'Operación' },
   { id: 'empresa', label: 'Empresa' },
+  { id: 'comprobantes', label: 'Comprobantes' },
   { id: 'impuestos', label: 'Impuestos' },
   { id: 'sucursales', label: 'Sucursales' },
   { id: 'series', label: 'Series' },
@@ -49,6 +51,7 @@ export function RestaurantSettingsTab() {
       {tab === 'impuestos' && <RestaurantTaxSettings />}
       {tab === 'sucursales' && <RestaurantBranchesSettings />}
       {tab === 'series' && <RestaurantSeriesSettings />}
+      {tab === 'comprobantes' && <RestaurantReceiptWalletSettings />}
     </div>
   )
 }

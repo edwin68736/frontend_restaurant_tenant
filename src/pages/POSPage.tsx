@@ -589,10 +589,13 @@ export default function POSPage() {
                   const mods = parseStoredModifiers(c.modifiers_json)
                   const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
                   return (
-                    <li key={c.id} className="flex justify-between gap-1">
-                      <span className="truncate">
+                    <li key={c.id} className="flex justify-between gap-1 text-[11px] text-stone-600">
+                      <span className="truncate min-w-0">
                         {c.quantity}x {c.product_name}
                         {summary ? ` · ${summary}` : ''}
+                      </span>
+                      <span className="shrink-0 tabular-nums font-medium text-stone-700">
+                        {formatSoles(c.quantity * c.unit_price)}
                       </span>
                     </li>
                   )

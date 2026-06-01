@@ -6,6 +6,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { restaurantService, type Floor, type RestaurantTable } from '@/services/restaurant.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
+import { sortRestaurantTables } from '@/utils/sortRestaurantTables'
 import { TableCardFooter, TableWithChairsVisual } from '@/components/restaurant/TableWithChairsVisual'
 import { PortalModal } from '@/components/ui/PortalModal'
 
@@ -105,15 +106,17 @@ export default function MesasPage() {
   }, [load])
   useEffect(() => { setPage(1) }, [floorFilter, search])
 
+  const sortedTables = useMemo(() => sortRestaurantTables(tables, floors), [tables, floors])
+
   const filteredTables = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return tables
-    return tables.filter((t) => {
+    if (!term) return sortedTables
+    return sortedTables.filter((t) => {
       const name = (t.name || '').toLowerCase()
       const floor = (t.floor_name || '').toLowerCase()
       return name.includes(term) || floor.includes(term)
     })
-  }, [tables, search])
+  }, [sortedTables, search])
 
   const totalPages = Math.max(1, Math.ceil(filteredTables.length / PAGE_SIZE))
   const paginatedTables = useMemo(() => {

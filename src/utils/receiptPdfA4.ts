@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 
@@ -376,6 +377,11 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     doc.setFont('helvetica', 'normal')
     doc.text(data.seller_name, MARGIN + 22, y)
     y += LINE_H + 4
+  }
+
+  if (paymentWalletVisible(data, 'a4')) {
+    y = await renderPaymentWalletBlock(doc, data, 'a4', y, A4_WIDTH, MARGIN)
+    y += 2
   }
 
   if (showQr && data.qr_data) {

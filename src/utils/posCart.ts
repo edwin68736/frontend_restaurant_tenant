@@ -11,6 +11,8 @@ import { roundMoney } from '@/utils/checkoutDiscount'
 
 export type CatalogCartLine = {
   kind: 'catalog'
+  /** Identificador estable para React (no cambia al editar notas/precio). */
+  lineId: string
   product: Product
   quantity: number
   /** Nota libre de cocina (sin cebolla, etc.). */
@@ -44,9 +46,13 @@ export function isCatalogCartLine(line: PosCartLine): line is CatalogCartLine {
   return line.kind === 'catalog'
 }
 
-export function cartLineKey(line: PosCartLine, index: number): string {
+export function cartLineKey(line: PosCartLine, _index?: number): string {
   if (line.kind === 'manual') return line.lineId
-  return `p-${line.product.id}-${line.configureKey}-${index}`
+  return line.lineId
+}
+
+function newCartLineId(prefix = 'cart'): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 export function cartLineLabel(line: PosCartLine): string {
@@ -112,6 +118,7 @@ export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: numb
 export function createCatalogCartLine(
   product: Product,
   partial?: {
+    lineId?: string
     quantity?: number
     notes?: string
     modifiers?: CartModifierEntry[]
@@ -124,6 +131,7 @@ export function createCatalogCartLine(
   const unit_price = calcUnitPriceWithModifiers(base, modifiers)
   return {
     kind: 'catalog',
+    lineId: partial?.lineId ?? newCartLineId(),
     product,
     quantity: partial?.quantity ?? 1,
     notes,

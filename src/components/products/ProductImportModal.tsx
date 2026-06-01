@@ -44,6 +44,7 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
   })
   const [importResult, setImportResult] = useState<{
     created: number
+    updated: number
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
@@ -106,12 +107,15 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
       const result = await importRestaurantProducts(validation.rows, categories, reportImportProgress)
       setImportResult(result)
       setStep('done')
-      if (result.created > 0) {
+      if (result.created > 0 || result.updated > 0) {
+        const parts: string[] = []
+        if (result.created > 0) parts.push(`${result.created} creado(s)`)
+        if (result.updated > 0) parts.push(`${result.updated} actualizado(s)`)
         const stockMsg =
           result.stockRegistered > 0
             ? ` · ${result.stockRegistered} con stock inicial en kardex`
             : ''
-        toast.success(`${result.created} producto(s) importados${stockMsg}`)
+        toast.success(`${parts.join(', ')}${stockMsg}`)
         onImported()
       }
       if (result.failed.length > 0) {
@@ -196,7 +200,9 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
           {step === 'done' && importResult && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm">
               <p className="font-medium text-emerald-800">
-                Importación finalizada: {importResult.created} creado(s)
+                Importación finalizada:
+                {importResult.created > 0 && ` ${importResult.created} creado(s)`}
+                {importResult.updated > 0 && `${importResult.created > 0 ? ',' : ''} ${importResult.updated} actualizado(s)`}
                 {importResult.stockRegistered > 0 &&
                   `, ${importResult.stockRegistered} con stock inicial (kardex)`}
                 {importResult.failed.length > 0 && `, ${importResult.failed.length} con error`}.

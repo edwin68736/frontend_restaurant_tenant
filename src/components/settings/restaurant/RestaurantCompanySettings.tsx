@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Building2, ImagePlus, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type CompanyConfig } from '@/services/company.service'
+import { RestaurantReceiptWalletSettings } from './RestaurantReceiptWalletSettings'
 
 const CURRENCIES = ['PEN', 'USD', 'EUR']
 
@@ -208,6 +209,8 @@ export function RestaurantCompanySettings() {
           </div>
         </div>
       </section>
+
+      <RestaurantReceiptWalletSettings embedded />
 
       <div className="flex justify-end">
         <button

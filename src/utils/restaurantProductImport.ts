@@ -270,18 +270,7 @@ export async function validateRestaurantProductExcel(file: File): Promise<Import
     const codigoRaw = String(row.codigo ?? '').trim()
     const codigo = codigoRaw || ''
     if (codigo) {
-      const prev = codesInFile.get(codigo)
-      if (prev != null) {
-        extraErrors.push({
-          row: rowNumber,
-          column: 'codigo',
-          field: 'codigo',
-          message: `Código duplicado en fila ${prev}`,
-          value: codigo,
-        })
-      } else {
-        codesInFile.set(codigo, rowNumber)
-      }
+      codesInFile.set(codigo, rowNumber)
     }
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
     const controlStock = Boolean(row.control_stock) || stockInicial > 0
@@ -403,17 +392,19 @@ export async function importRestaurantProducts(
   onProgress?: (p: ImportProgress) => void
 ): Promise<{
   created: number
+  updated: number
   stockRegistered: number
   failed: { row: number; name: string; error: string }[]
 }> {
   const failed: { row: number; name: string; error: string }[] = []
   let created = 0
+  let updated = 0
   let stockRegistered = 0
   const total = rows.length
 
   if (total === 0) {
     await reportImportProgress(onProgress, { done: 0, total: 0 })
-    return { created: 0, stockRegistered: 0, failed }
+    return { created: 0, updated: 0, stockRegistered: 0, failed }
   }
 
   await reportImportProgress(onProgress, { done: 0, total, current: 'Preparando envío…' })
@@ -429,6 +420,7 @@ export async function importRestaurantProducts(
     try {
       const res = await productsService.bulkImportRestaurant(chunk.map(rowToBulkPayload))
       created += res.created
+      updated += res.updated ?? 0
       stockRegistered += res.stock_registered
       failed.push(...res.failed)
       await reportImportProgress(onProgress, {
@@ -448,5 +440,5 @@ export async function importRestaurantProducts(
   }
 
   await reportImportProgress(onProgress, { done: total, total })
-  return { created, stockRegistered, failed }
+  return { created, updated, stockRegistered, failed }
 }

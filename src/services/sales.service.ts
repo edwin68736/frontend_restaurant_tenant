@@ -86,6 +86,39 @@ export function formatSaleDocumentNumber(s: { series?: string; number?: string |
 
 export type ApiRequestOptions = { signal?: AbortSignal }
 
+export interface SaleListSummary {
+  sum_total: number
+  sum_subtotal: number
+  sum_tax: number
+  sum_cancelled: number
+  sum_active: number
+  count_cancelled: number
+  count_active: number
+}
+
+export const emptySaleListSummary = (): SaleListSummary => ({
+  sum_total: 0,
+  sum_subtotal: 0,
+  sum_tax: 0,
+  sum_cancelled: 0,
+  sum_active: 0,
+  count_cancelled: 0,
+  count_active: 0,
+})
+
+function parseSaleListSummary(raw: unknown): SaleListSummary {
+  const s = (raw ?? {}) as Partial<SaleListSummary>
+  return {
+    sum_total: Number(s.sum_total) || 0,
+    sum_subtotal: Number(s.sum_subtotal) || 0,
+    sum_tax: Number(s.sum_tax) || 0,
+    sum_cancelled: Number(s.sum_cancelled) || 0,
+    sum_active: Number(s.sum_active) || 0,
+    count_cancelled: Number(s.count_cancelled) || 0,
+    count_active: Number(s.count_active) || 0,
+  }
+}
+
 export const salesService = {
   list: (
     params?: {
@@ -102,10 +135,11 @@ export const salesService = {
     options?: ApiRequestOptions,
   ) => {
     const p = params ?? {}
-    return api.get<{ data: Sale[]; total?: number }>('/api/sales', { params: p, signal: options?.signal }).then((r) => {
+    return api.get<{ data: Sale[]; total?: number; summary?: SaleListSummary }>('/api/sales', { params: p, signal: options?.signal }).then((r) => {
       const data = r.data.data ?? []
       const total = (r.data as { total?: number }).total ?? 0
-      return { data, total }
+      const summary = parseSaleListSummary(r.data.summary)
+      return { data, total, summary }
     })
   },
   get: (id: number): Promise<SaleDetail> =>
@@ -129,11 +163,15 @@ export const salesService = {
     options?: ApiRequestOptions,
   ) =>
     api
-      .get<{ data: Sale[]; total?: number }>('/api/sales', {
+      .get<{ data: Sale[]; total?: number; summary?: SaleListSummary }>('/api/sales', {
         params: { ...(params ?? {}), export_all: '1' },
         signal: options?.signal,
       })
-      .then((r) => ({ data: r.data.data ?? [], total: (r.data as { total?: number }).total ?? 0 })),
+      .then((r) => ({
+        data: r.data.data ?? [],
+        total: (r.data as { total?: number }).total ?? 0,
+        summary: parseSaleListSummary(r.data.summary),
+      })),
 
   issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string }) =>
     api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),

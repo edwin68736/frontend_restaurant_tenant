@@ -68,6 +68,7 @@ export interface BulkImportItemPayload {
 
 export interface BulkImportResultPayload {
   created: number
+  updated?: number
   stock_registered: number
   failed: { row: number; name: string; error: string }[]
 }
