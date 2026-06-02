@@ -20,6 +20,8 @@ export interface Product {
   presentations?: ProductPresentation[]
   manage_stock?: boolean
   active: boolean
+  /** Sucursal dueña del plato (catálogo independiente por sucursal). */
+  branch_id?: number
   /** Catálogo SUNAT N°07: 10 Gravado, 20 Exonerado, 30 Inafecto, 40 Exportación */
   igv_affectation_type?: string
   /** Si el precio de venta ya incluye IGV (solo aplica cuando es gravado) */
@@ -106,6 +108,8 @@ export const productsService = {
     categoryId?: number | null,
     preparationArea?: string | null,
     branchId?: number | null,
+    activeOnly = true,
+    inactiveOnly = false,
     options?: ApiRequestOptions,
   ) =>
     api
@@ -113,7 +117,8 @@ export const productsService = {
         params: {
           q,
           restaurant_only: restaurantOnly ? 'true' : 'false',
-          active_only: 'true',
+          active_only: inactiveOnly ? 'false' : activeOnly ? 'true' : 'false',
+          inactive_only: inactiveOnly ? 'true' : 'false',
           page,
           per_page: perPage,
           category_id: categoryId ?? undefined,
@@ -190,6 +195,12 @@ export const productsService = {
 
   update: (id: number, data: Partial<CreateProductInput>) =>
     api.put(`/api/products/${id}`, data).then((r) => r.data),
+
+  /** Activa/desactiva sin tocar el resto del producto (evita PUT parcial). */
+  toggleActive: (id: number) =>
+    api
+      .patch<{ success: boolean; active: boolean }>(`/api/products/${id}/toggle`)
+      .then((r) => r.data.active),
 
   delete: (id: number) => api.delete(`/api/products/${id}`).then((r) => r.data),
 

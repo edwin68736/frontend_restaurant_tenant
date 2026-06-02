@@ -3,7 +3,9 @@ import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
-import { buildEscPosLogoRaster } from '@/utils/escposRasterImage'
+import { buildEscPosLogoRaster, buildEscPosWalletQrRaster } from '@/utils/escposRasterImage'
+import { paymentWalletVisible, walletProviderLabel } from '@/utils/receiptPaymentWallet'
+import { resolvePublicAssetUrl } from '@/services/api'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
@@ -152,7 +154,20 @@ export async function testPrint(input: {
     return typeof out === 'string' ? out : 'OK'
   }
 
-  const data = buildTestEscPosTicket(input.kind, input.paperWidthMm)
+  const data =
+    input.kind === 'precuenta'
+      ? buildPrecuentaEscPos({
+          tableName: 'Mesa 01',
+          orderCode: 'PRUEBA-001',
+          issueDate: new Date().toLocaleDateString('es-PE'),
+          items: [
+            { productName: 'Lomo saltado', quantity: 2, unitPrice: 28, lineTotal: 56 },
+            { productName: 'Chicha morada', quantity: 1, unitPrice: 8, lineTotal: 8 },
+          ],
+          total: 64,
+          paperWidthMm: input.paperWidthMm,
+        })
+      : buildTestEscPosTicket(input.kind, input.paperWidthMm)
   return sendEscPosPayload(cfg, data, 'Tukichef - Prueba')
 }
 
@@ -322,47 +337,76 @@ export function buildComandaEscPos(input: {
   return new Uint8Array(out)
 }
 
+export type PrecuentaPrintItem = {
+  productName: string
+  quantity: number
+  unitPrice: number
+  lineTotal?: number
+  modifierLines?: string[]
+  notes?: string
+}
+
 export function buildPrecuentaEscPos(input: {
   tableName?: string | null
-  items: { productName: string; quantity: number; unitPrice: number }[]
+  orderCode?: string | null
+  customerName?: string | null
+  issueDate?: string | null
+  items: PrecuentaPrintItem[]
   total: number
+  currency?: string
   paperWidthMm: PrinterPaperWidth
 }): Uint8Array {
   const cols = columnsForWidth(input.paperWidthMm)
+  const narrow = input.paperWidthMm === 58
+  const currency = String(input.currency ?? 'PEN').toUpperCase()
+  const money = (n: number) => moneyEsc(currency, n)
+
+  const headerLines: string[] = []
+  if (input.tableName) wrapText(`Mesa: ${input.tableName}`, cols).forEach((x) => headerLines.push(x))
+  if (input.orderCode) headerLines.push(`Pedido: ${input.orderCode}`)
+  if (input.issueDate) headerLines.push(`Fecha: ${input.issueDate}`)
+  if (input.customerName) wrapText(`Cliente: ${input.customerName}`, cols).forEach((x) => headerLines.push(x))
+
+  const detailLines: string[] = []
+  detailLines.push('-'.repeat(cols))
+  detailLines.push(itemDetailHeaderRow(cols, narrow))
+  detailLines.push('-'.repeat(cols))
+
+  for (const it of input.items) {
+    const qty = String(it.quantity ?? 0).replace(/\.0+$/, '')
+    let desc = normalizeTextForTicketPrint(String(it.productName ?? '').trim())
+    for (const mod of it.modifierLines ?? []) {
+      const m = normalizeTextForTicketPrint(String(mod).trim())
+      if (m) desc = desc ? `${desc}; ${m}` : m
+    }
+    const note = normalizeTextForTicketPrint(String(it.notes ?? '').trim())
+    if (note) desc = desc ? `${desc} (Obs: ${note})` : `(Obs: ${note})`
+    const lineTotal = it.lineTotal ?? Number(it.quantity) * Number(it.unitPrice)
+    itemDetailRows(cols, qty, desc || '—', money(it.unitPrice), money(lineTotal), narrow).forEach((r) =>
+      detailLines.push(r),
+    )
+  }
+
+  const totalLines: string[] = [amountLine('TOTAL A PAGAR:', money(input.total), cols)]
+  const docLabel = 'Documento:'
+  const docLine = docLabel + '_'.repeat(Math.max(10, cols - docLabel.length))
+
   const out: number[] = []
   out.push(...escposInit())
   out.push(...escposAlign('center'))
   out.push(...escposBold(true))
-  out.push(...escposSize(2, 2))
-  out.push(...Array.from(textBytes(`PRECUENTA\n`)))
+  escposPushLines(out, ['PRECUENTA'], 'center')
   out.push(...escposBold(false))
-  out.push(...escposSize(1, 1))
-
   out.push(...escposAlign('left'))
-  if (input.tableName) out.push(...Array.from(textBytes(`${wrapText(`Mesa: ${input.tableName}`, cols).join('\n')}\n`)))
-  out.push(...Array.from(textBytes(`${'-'.repeat(cols)}\n`)))
-
-  for (const it of input.items) {
-    const qty = String(it.quantity ?? 0).replace(/\.0+$/, '')
-    const subtotal = (Number(it.quantity) * Number(it.unitPrice)).toFixed(2)
-    const right = `S/ ${subtotal}`
-    const leftCols = cols - right.length - 1
-    const descWrapped = wrapText(String(it.productName ?? '').trim(), Math.max(8, leftCols - (qty.length + 2)))
-    const firstLeft = `${qty}x ${descWrapped[0] ?? ''}`.padEnd(leftCols)
-    out.push(...Array.from(textBytes(`${firstLeft} ${right}\n`)))
-    for (const w of descWrapped.slice(1)) out.push(...Array.from(textBytes(`   ${w}\n`)))
-  }
-
-  out.push(...Array.from(textBytes(`${'-'.repeat(cols)}\n`)))
-  out.push(...escposBold(true))
-  out.push(...escposSize(2, 2))
-  const totalStr = `S/ ${Number(input.total).toFixed(2)}`
-  const bigCols = Math.max(12, Math.floor(cols / 2))
-  const totalLine = `TOTAL ${totalStr}`
-  for (const l of wrapText(totalLine, bigCols)) out.push(...Array.from(textBytes(`${l}\n`)))
-  out.push(...escposBold(false))
-  out.push(...escposSize(1, 1))
-  out.push(...Array.from(textBytes(`\n\n`)))
+  if (headerLines.length) escposPushLines(out, headerLines, 'left')
+  escposPushLines(out, detailLines, 'left')
+  escposPushLines(out, ['-'.repeat(cols)], 'left')
+  out.push(...escposAlign('right'))
+  escposPushLines(out, totalLines, 'right')
+  out.push(...Array.from(textBytes('\n')))
+  out.push(...escposAlign('left'))
+  escposPushLines(out, [docLine], 'left')
+  out.push(...Array.from(textBytes('\n\n')))
   out.push(...escposCutPartial())
   return new Uint8Array(out)
 }
@@ -544,6 +588,24 @@ export async function buildSaleDocumentEscPos(
   }
   if (tailLines.length) escposPushLines(out, tailLines, 'left')
 
+  if (paymentWalletVisible(printData, 'ticket')) {
+    const w = printData.payment_wallet!
+    const label = walletProviderLabel(w.provider)
+    out.push(...Array.from(textBytes('\n')))
+    escposPushLines(
+      out,
+      ['-'.repeat(cols), `Paga con ${label}`, w.phone.trim()],
+      'center',
+    )
+    const qrSrc = w.qr_url.trim().startsWith('data:') ? w.qr_url.trim() : resolvePublicAssetUrl(w.qr_url)
+    const walletRaster = await buildEscPosWalletQrRaster(qrSrc, paperWidthMm)
+    if (walletRaster?.length) {
+      out.push(...escposAlign('center'))
+      out.push(...Array.from(walletRaster))
+      out.push(...Array.from(textBytes('\n')))
+    }
+  }
+
   if (showQr && printData.qr_data) {
     out.push(...escposAlign('center'))
     out.push(...Array.from(textBytes('\n')))
@@ -591,8 +653,12 @@ export async function printComandaAuto(
 
 export async function printPrecuentaAuto(input: {
   tableName?: string | null
-  items: { productName: string; quantity: number; unitPrice: number }[]
+  orderCode?: string | null
+  customerName?: string | null
+  issueDate?: string | null
+  items: PrecuentaPrintItem[]
   total: number
+  currency?: string
 }): Promise<string> {
   const cfg = getConfiguredPrinter('precuenta')
   if (!cfg) return 'Impresora de precuenta no configurada'

@@ -132,21 +132,19 @@ function grayscaleToEscPosRaster(grayscale: Uint8Array, width: number, height: n
   return out
 }
 
-/**
- * Logo recortado y centrado por alineación ESC/POS (sin lienzo blanco extra arriba).
- */
-export async function buildEscPosLogoRaster(
-  logoUrl: string,
+/** Raster ESC/POS (GS v 0) con recorte de márgenes blancos. */
+export async function buildEscPosImageRaster(
+  imageUrl: string,
   paperWidthMm: 58 | 80,
+  maxW: number,
+  maxH: number,
 ): Promise<Uint8Array | null> {
   if (typeof document === 'undefined' || typeof Image === 'undefined') return null
-  const src = String(logoUrl ?? '').trim()
+  const src = String(imageUrl ?? '').trim()
   if (!src) return null
 
   try {
     const img = await loadImageElement(src)
-    const maxW = escposLogoMaxWidthPx(paperWidthMm)
-    const maxH = escposLogoMaxHeightPx(paperWidthMm)
     const printW = escposPrintWidthPx(paperWidthMm)
 
     const srcW = img.naturalWidth || img.width
@@ -206,4 +204,26 @@ export async function buildEscPosLogoRaster(
   } catch {
     return null
   }
+}
+
+/** Logo recortado y centrado por alineación ESC/POS (sin lienzo blanco extra arriba). */
+export async function buildEscPosLogoRaster(
+  logoUrl: string,
+  paperWidthMm: 58 | 80,
+): Promise<Uint8Array | null> {
+  return buildEscPosImageRaster(
+    logoUrl,
+    paperWidthMm,
+    escposLogoMaxWidthPx(paperWidthMm),
+    escposLogoMaxHeightPx(paperWidthMm),
+  )
+}
+
+/** QR Yape/Plin en ticket térmico (cuadrado, más grande que el logo). */
+export async function buildEscPosWalletQrRaster(
+  qrUrl: string,
+  paperWidthMm: 58 | 80,
+): Promise<Uint8Array | null> {
+  const side = paperWidthMm === 58 ? 220 : 280
+  return buildEscPosImageRaster(qrUrl, paperWidthMm, side, side)
 }

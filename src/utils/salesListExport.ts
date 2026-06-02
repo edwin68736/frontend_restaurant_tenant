@@ -1,6 +1,6 @@
 import type { Sale } from '@/services/sales.service'
 import { formatSaleDocumentNumber } from '@/services/sales.service'
-import { BILLING_STATUS_LABELS } from '@/constants/billingStatus'
+import { billingStatusDisplayLabel } from '@/constants/billingStatus'
 import { formatDisplayDate } from '@/utils/datesPeru'
 import { exportTableToExcel, type ExportColumn as ExcelExportColumn } from '@/utils/exportExcel'
 import { exportTableToPdf, type ExportColumn as PdfExportColumn } from '@/utils/exportPdf'
@@ -21,9 +21,7 @@ function toExportRows(sales: Sale[], opts?: { includeBilling?: boolean }): Sales
     cliente: s.contact_name ?? '—',
     total: Number(s.total) || 0,
     estado: s.status === 'cancelled' ? 'Anulada' : 'Activa',
-    estadoSunat: opts?.includeBilling
-      ? BILLING_STATUS_LABELS[s.billing_status] ?? s.billing_status
-      : undefined,
+    estadoSunat: opts?.includeBilling ? billingStatusDisplayLabel(s.billing_status) : undefined,
   }))
 }
 

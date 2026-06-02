@@ -22,8 +22,10 @@ import {
   Ban,
   FileSignature,
   Receipt,
+  Printer,
 } from 'lucide-react'
 import { salesService, formatSaleDocumentNumber, emptySaleListSummary, type Sale, type SaleDetail, type SaleItem, type SaleListSummary } from '@/services/sales.service'
+import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { billingService } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import { getCurrentMonthRange, getTodayPeru } from '@/utils/datesPeru'
@@ -36,7 +38,7 @@ import { SearchInput } from '@/components/SearchInput'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import type { PrintData } from '@/types/printData'
-import { getConfiguredPrinter } from '@/services/printers.service'
+import { getConfiguredPrinter, isNativePrintAvailable, printDocumentAuto } from '@/services/printers.service'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
 import {
   downloadReceiptPdf,
@@ -54,17 +56,17 @@ import {
   resolveManualBillingStatus,
 } from '@/utils/manualBilling'
 import {
+  BILLING_FILTER_GROUPS,
   BILLING_STATUS,
-  BILLING_STATUS_COLORS,
-  BILLING_STATUS_LABELS,
+  billingFilterGroupToApiParam,
+  billingStatusDisplayColor,
+  billingStatusDisplayLabel,
+  BILLING_DISPLAY_GROUP_LABELS,
   canShowCdr,
   canShowSunatOfficialPdf,
   canShowXmlGenerated,
   canShowXmlSent,
 } from '@/constants/billingStatus'
-
-const STATUS_COLORS = BILLING_STATUS_COLORS
-const STATUS_LABELS = BILLING_STATUS_LABELS
 
 const ROW_DROPDOWN_ITEM =
   'flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-stone-700 hover:bg-stone-50 disabled:opacity-50'
@@ -77,12 +79,12 @@ const SUNAT_SEND_BTN =
   'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
 const SUNAT_RESEND_BTN =
   'inline-flex items-center justify-center p-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 shrink-0'
+const THERMAL_PRINT_BTN =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
 const DOWNLOAD_DROPDOWN_TRIGGER =
   'inline-flex items-center gap-0.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
-
-const BILLING_FILTER_STATUSES = ['pending', 'sent', 'accepted', 'rejected', 'error'] as const
 
 type Tab = 'notas' | 'facturacion' | 'credit_notes'
 
@@ -146,6 +148,7 @@ export default function VentasPage() {
   const [localPdfPreviewBusy, setLocalPdfPreviewBusy] = useState<{ saleId: number; format: 'a4' | 'ticket' } | null>(null)
   const [localTicketTabBusyId, setLocalTicketTabBusyId] = useState<number | null>(null)
   const [localPdfDownloadBusy, setLocalPdfDownloadBusy] = useState<{ saleId: number; format: 'a4' | 'ticket' } | null>(null)
+  const [thermalPrintBusyId, setThermalPrintBusyId] = useState<number | null>(null)
   const [xmlViewerOpen, setXmlViewerOpen] = useState(false)
   const [xmlViewerText, setXmlViewerText] = useState<string | null>(null)
   const [xmlViewerTitle, setXmlViewerTitle] = useState<string>('XML')
@@ -181,7 +184,7 @@ export default function VentasPage() {
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
   const summaryDocCount = listSummary.count_active + listSummary.count_cancelled
-  const tableTrailingColSpan = tab === 'facturacion' ? 3 : tab === 'credit_notes' ? 2 : 1
+  const tableTrailingColSpan = tab === 'facturacion' ? 4 : tab === 'credit_notes' ? 3 : 2
 
   const {
     inputValue: searchInput,
@@ -207,7 +210,7 @@ export default function VentasPage() {
         params.doc_type = 'NOTA_CREDITO'
       } else {
         params.sunat_code = '01,03'
-        params.billing_status = billingStatus
+        params.billing_status = billingFilterGroupToApiParam(billingStatus)
       }
       return salesService.list(params, { signal })
     },
@@ -247,7 +250,7 @@ export default function VentasPage() {
     else if (tab === 'credit_notes') params.doc_type = 'NOTA_CREDITO'
     else {
       params.sunat_code = '01,03'
-      params.billing_status = billingStatus
+      params.billing_status = billingFilterGroupToApiParam(billingStatus)
     }
     return params
   }
@@ -576,6 +579,43 @@ export default function VentasPage() {
       setLocalTicketTabBusyId(null)
     }
   }
+
+  const printSaleThermal = async (saleId: number) => {
+    if (!isNativePrintAvailable()) {
+      toast.error('La impresión directa requiere la app de escritorio o Android')
+      return
+    }
+    if (!getConfiguredPrinter('documentos')) {
+      toast.error('Configura la impresora de documentos en Ajustes')
+      return
+    }
+    setThermalPrintBusyId(saleId)
+    try {
+      const pd = await requirePrintData(saleId)
+      const msg = await printDocumentAuto(pd)
+      toast.success(msg || 'Comprobante enviado a la impresora')
+    } catch (e: unknown) {
+      toast.error((e as Error)?.message ?? 'No se pudo imprimir')
+    } finally {
+      setThermalPrintBusyId(null)
+    }
+  }
+
+  const renderThermalPrintButton = (saleId: number) => (
+    <button
+      type="button"
+      className={THERMAL_PRINT_BTN}
+      title="Imprimir en impresora térmica"
+      disabled={thermalPrintBusyId === saleId}
+      onClick={() => void printSaleThermal(saleId)}
+    >
+      {thermalPrintBusyId === saleId ? (
+        <RefreshCw size={14} className="animate-spin" />
+      ) : (
+        <Printer size={14} />
+      )}
+    </button>
+  )
 
   /** PDF devuelto por el PSE / almacenado tras envío a SUNAT (puede no existir si aún está pendiente). */
   const openSunatPdfViewer = async (saleId: number) => {
@@ -947,9 +987,9 @@ export default function VentasPage() {
                 onChange={(v) => setBillingStatusFilter(String(v ?? ''))}
                 options={[
                   { value: '', label: 'Todos los estados' },
-                  ...BILLING_FILTER_STATUSES.map((status) => ({
-                    value: status,
-                    label: STATUS_LABELS[status],
+                  ...BILLING_FILTER_GROUPS.map((group) => ({
+                    value: group,
+                    label: BILLING_DISPLAY_GROUP_LABELS[group],
                   })),
                 ]}
                 placeholder="Estado SUNAT"
@@ -1053,6 +1093,7 @@ export default function VentasPage() {
                       <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Comprobante</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Cliente</th>
                       <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Total</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Imprimir</th>
                       {tab === 'facturacion' && (
                         <>
                           <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
@@ -1088,15 +1129,14 @@ export default function VentasPage() {
                             <span className="ml-2 text-[10px] font-semibold uppercase text-red-600">Anulada</span>
                           )}
                         </td>
+                        <td className="px-4 py-3">{renderThermalPrintButton(s.id)}</td>
                         {tab === 'facturacion' && (
                           <>
                             <td className="px-4 py-3">
                               <span
-                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  STATUS_COLORS[s.billing_status] ?? 'bg-stone-100 text-stone-600'
-                                }`}
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusDisplayColor(s.billing_status)}`}
                               >
-                                {STATUS_LABELS[s.billing_status] ?? s.billing_status}
+                                {billingStatusDisplayLabel(s.billing_status)}
                               </span>
                             </td>
                             <td className="px-4 py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
@@ -1121,11 +1161,9 @@ export default function VentasPage() {
                           <>
                             <td className="px-4 py-3">
                               <span
-                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  STATUS_COLORS[s.billing_status] ?? 'bg-stone-100 text-stone-600'
-                                }`}
+                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusDisplayColor(s.billing_status)}`}
                               >
-                                {STATUS_LABELS[s.billing_status] ?? s.billing_status}
+                                {billingStatusDisplayLabel(s.billing_status)}
                               </span>
                             </td>
                             <td className="px-4 py-3">
@@ -1410,21 +1448,15 @@ export default function VentasPage() {
                   </div>
                 </div>
 
-                {tab === 'facturacion' && (
+                {(tab === 'facturacion' || tab === 'credit_notes') && detail.invoice && (
                   <div className="bg-stone-50 border border-stone-200 rounded-xl p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-stone-800">SUNAT</div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          STATUS_COLORS[detail.sale.billing_status] ?? 'bg-stone-100 text-stone-600'
-                        }`}
-                      >
-                        {STATUS_LABELS[detail.sale.billing_status] ?? detail.sale.billing_status}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xs text-stone-600">
-                      {detail.invoice?.sunat_message ? detail.invoice.sunat_message : '—'}
-                    </div>
+                    <p className="text-sm font-semibold text-stone-800 mb-3">Envío y respuesta SUNAT</p>
+                    <SunatResponseDetail
+                      billingStatus={detail.sale.billing_status}
+                      invoice={detail.invoice}
+                      statusLabel={billingStatusDisplayLabel(detail.sale.billing_status)}
+                      statusColorClass={billingStatusDisplayColor(detail.sale.billing_status)}
+                    />
                   </div>
                 )}
               </div>

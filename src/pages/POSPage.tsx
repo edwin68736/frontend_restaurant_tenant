@@ -51,7 +51,7 @@ import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { isCapacitorNative } from '@/lib/app'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
-import { cartToOrderItems, getActiveKitchenRounds, getOrderRoundHistory, type KitchenRound } from '@/utils/posOrderHelpers'
+import { cartToOrderItems, comandaLineTotal, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import {
   appendCatalogLine,
@@ -73,7 +73,7 @@ import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
 import { CartClearButton } from '@/components/pos/CartClearButton'
 import { playCartAddSound, playCartClearSound } from '@/utils/cartSounds'
 import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
-import { formatModifierSummary, parseStoredModifiers } from '@/utils/productModifiers'
+import { formatModifierLines, formatModifierSummary, parseStoredModifiers } from '@/utils/productModifiers'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
@@ -595,7 +595,7 @@ export default function POSPage() {
                         {summary ? ` · ${summary}` : ''}
                       </span>
                       <span className="shrink-0 tabular-nums font-medium text-stone-700">
-                        {formatSoles(c.quantity * c.unit_price)}
+                        {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
                       </span>
                     </li>
                   )
@@ -804,11 +804,15 @@ export default function POSPage() {
         setConfigureProduct(p)
         return
       }
+      const imageUrl = getProductImageUrl(p.image_url)
+      const line = createCatalogCartLine(p, { quantity: 1, notes: '' })
+      let merged = false
       setCart((c) => {
-        const { cart: next, merged } = appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' }))
-        if (!merged && sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
-        return next
+        const result = appendCatalogLine(c, line)
+        merged = result.merged
+        return result.cart
       })
+      if (!merged && sourceEl) flyToCart(sourceEl, imageUrl)
       playCartAddSound()
     },
     [flyToCart, cancelFlyAnimations],
@@ -820,11 +824,14 @@ export default function POSPage() {
       configureFlySourceRef.current = undefined
       configuringRef.current = false
       setConfigureProduct(null)
+      const imageUrl = getProductImageUrl(line.product.image_url)
+      let merged = false
       setCart((c) => {
-        const { cart: next, merged } = appendCatalogLine(c, line)
-        if (!merged && source) flyToCart(source, getProductImageUrl(line.product.image_url))
-        return next
+        const result = appendCatalogLine(c, line)
+        merged = result.merged
+        return result.cart
       })
+      if (!merged && source) flyToCart(source, imageUrl)
       playCartAddSound()
     },
     [flyToCart],
@@ -1076,11 +1083,10 @@ export default function POSPage() {
       if (isNativePrintAvailable() && isAutoPrintEnabled('precuenta') && getConfiguredPrinter('precuenta')) {
         await printPrecuentaAuto({
           tableName: data.table_name || null,
-          items: data.lines.map((l) => ({
-            productName: l.product_name,
-            quantity: l.quantity,
-            unitPrice: l.unit_price,
-          })),
+          orderCode: data.order_code,
+          customerName: data.customer_name || null,
+          issueDate: formatPrecuentaIssueDate(data.opened_at),
+          items: data.lines.map(precuentaApiLineToPrintItem),
           total: data.total,
         })
       }
@@ -1104,11 +1110,10 @@ export default function POSPage() {
     try {
       const msg = await printPrecuentaAuto({
         tableName: data.table_name || null,
-        items: data.lines.map((l) => ({
-          productName: l.product_name,
-          quantity: l.quantity,
-          unitPrice: l.unit_price,
-        })),
+        orderCode: data.order_code,
+        customerName: data.customer_name || null,
+        issueDate: formatPrecuentaIssueDate(data.opened_at),
+        items: data.lines.map(precuentaApiLineToPrintItem),
         total: data.total,
       })
       toast.success(msg || 'Precuenta enviada a la impresora')
@@ -2073,19 +2078,41 @@ export default function POSPage() {
               <p className="text-sm text-stone-600 mb-2">Notas: {precuentaData.notes}</p>
             )}
             <ul className="text-sm space-y-1 mb-3 border-t border-stone-100 pt-2">
+              <li className="grid grid-cols-[2.5rem_1fr_4rem_4.5rem] gap-1 text-xs text-stone-500 font-medium pb-1 border-b border-stone-100">
+                <span className="text-center">Cant.</span>
+                <span>Descripción</span>
+                <span className="text-right">P.U.</span>
+                <span className="text-right">Importe</span>
+              </li>
               {precuentaData.lines.map((l, i) => (
-                <li key={i} className="flex justify-between gap-2">
-                  <span className="text-stone-700">
-                    {l.quantity}x {l.product_name}
+                <li key={i} className="grid grid-cols-[2.5rem_1fr_4rem_4.5rem] gap-1 text-sm py-1 border-b border-stone-50">
+                  <span className="text-center tabular-nums text-stone-700">{l.quantity}</span>
+                  <span className="text-stone-700 min-w-0">
+                    <span>{l.product_name}</span>
+                    {formatModifierLines(parseStoredModifiers(l.modifiers_json)).map((line) => (
+                      <span key={line} className="block text-xs text-stone-500 pl-1">
+                        {line}
+                      </span>
+                    ))}
+                    {l.notes?.trim() ? (
+                      <span className="block text-xs text-amber-700 italic pl-1">Obs: {l.notes.trim()}</span>
+                    ) : null}
                   </span>
-                  <span className="shrink-0 tabular-nums">{formatSoles(Number(l.line_total))}</span>
+                  <span className="text-right tabular-nums text-stone-600">{formatSoles(Number(l.unit_price))}</span>
+                  <span className="text-right tabular-nums font-medium text-stone-800">
+                    {formatSoles(Number(l.line_total))}
+                  </span>
                 </li>
               ))}
             </ul>
             <div className="flex justify-between font-bold text-stone-800 border-t border-stone-200 pt-2">
-              <span>Total</span>
+              <span>Total a pagar</span>
               <span className="text-rest-600 tabular-nums">{formatSoles(Number(precuentaData.total))}</span>
             </div>
+            <p className="mt-4 text-sm text-stone-600 border-b border-stone-400 pb-1">
+              Documento:{' '}
+              <span className="inline-block min-w-[12rem] border-b border-stone-400">&nbsp;</span>
+            </p>
             {isNativePrintAvailable() && getConfiguredPrinter('precuenta') && (
               <button
                 type="button"

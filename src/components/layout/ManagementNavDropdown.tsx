@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, LayoutGrid } from 'lucide-react'
+import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NavItem } from '@/config/restaurantNav'
 
@@ -94,18 +94,18 @@ export default function ManagementNavDropdown({ items, compact }: Props) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={clsx(
-          'inline-flex items-center gap-1.5 font-medium transition-all whitespace-nowrap',
+          'inline-flex items-center gap-1.5 font-semibold transition-all whitespace-nowrap',
           compact ? 'rounded-lg px-2.5 py-1.5 text-xs' : 'rounded-full px-3.5 py-2 text-sm',
           isActive
-            ? 'bg-stone-800 text-white shadow-sm'
-            : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900 border border-stone-200/80 bg-white',
+            ? 'bg-blue-900 text-white shadow-md shadow-blue-900/25'
+            : 'bg-blue-700 text-white shadow-sm shadow-blue-700/20 hover:bg-blue-800',
         )}
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <LayoutGrid size={compact ? 15 : 16} strokeWidth={2} className="shrink-0 opacity-80" />
+        <SlidersHorizontal size={compact ? 15 : 17} strokeWidth={2.25} className="shrink-0" />
         <span>Gestión</span>
-        <ChevronDown size={14} className={clsx('transition-transform opacity-70', open && 'rotate-180')} />
+        <ChevronDown size={14} className={clsx('transition-transform opacity-90', open && 'rotate-180')} />
       </button>
       {menu}
     </div>

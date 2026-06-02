@@ -41,6 +41,52 @@ export function billingStatusLabel(status: unknown): string {
   return BILLING_STATUS_LABELS[normalizeBillingStatus(status)]
 }
 
+/** Grupos visibles en Ventas (restaurante): no enviado / aceptado / rechazado. */
+export type BillingStatusDisplayGroup = 'registered' | 'accepted' | 'rejected'
+
+/** pending, sent y error → Registrado (aún no aceptado por SUNAT). */
+export function billingStatusDisplayGroup(status: unknown): BillingStatusDisplayGroup {
+  const s = normalizeBillingStatus(status)
+  if (s === BILLING_STATUS.accepted || s === BILLING_STATUS.observed) return 'accepted'
+  if (s === BILLING_STATUS.rejected) return 'rejected'
+  return 'registered'
+}
+
+export const BILLING_DISPLAY_GROUP_LABELS: Record<BillingStatusDisplayGroup, string> = {
+  registered: 'Registrado',
+  accepted: 'Aceptado',
+  rejected: 'Rechazado',
+}
+
+export const BILLING_DISPLAY_GROUP_COLORS: Record<BillingStatusDisplayGroup, string> = {
+  registered: 'bg-slate-100 text-slate-700',
+  accepted: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-600',
+}
+
+export function billingStatusDisplayLabel(status: unknown): string {
+  return BILLING_DISPLAY_GROUP_LABELS[billingStatusDisplayGroup(status)]
+}
+
+export function billingStatusDisplayColor(status: unknown): string {
+  return BILLING_DISPLAY_GROUP_COLORS[billingStatusDisplayGroup(status)]
+}
+
+/** Valores del filtro «Estado SUNAT» en Ventas → query billing_status del API. */
+export const BILLING_FILTER_GROUPS = ['registered', 'accepted', 'rejected'] as const
+
+export type BillingFilterGroup = (typeof BILLING_FILTER_GROUPS)[number]
+
+export function billingFilterGroupToApiParam(group: string | undefined): string | undefined {
+  const g = (group ?? '').trim().toLowerCase()
+  if (!g) return undefined
+  if (g === 'registered') return 'pending,sent,error'
+  if (g === 'accepted' || g === 'rejected') return g
+  // Compatibilidad: filtro antiguo por estado canónico
+  if (VALID.has(g)) return g
+  return undefined
+}
+
 export function canShowCdr(status: unknown): boolean {
   const s = normalizeBillingStatus(status)
   return s === BILLING_STATUS.accepted || s === BILLING_STATUS.observed || s === BILLING_STATUS.rejected

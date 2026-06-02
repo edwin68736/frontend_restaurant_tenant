@@ -21,7 +21,11 @@ import { consultaService } from '@/services/consulta.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
 import {
+  cartLineToPrecuentaPrintItem,
   cartToOrderItems,
+  comandaToPrecuentaPrintItem,
+  comandaLineTotal,
+  formatPrecuentaIssueDate,
   getActiveKitchenRounds,
   getActiveSessionOrders,
   getOrderRoundHistory,
@@ -259,11 +263,15 @@ export default function MesaPage() {
         setConfigureProduct(p)
         return
       }
+      const imageUrl = getProductImageUrl(p.image_url)
+      const line = createCatalogCartLine(p, { quantity: 1, notes: '' })
+      let merged = false
       setCart((c) => {
-        const { cart: next, merged } = appendCatalogLine(c, createCatalogCartLine(p, { quantity: 1, notes: '' }))
-        if (!merged && sourceEl) flyToCart(sourceEl, getProductImageUrl(p.image_url))
-        return next
+        const result = appendCatalogLine(c, line)
+        merged = result.merged
+        return result.cart
       })
+      if (!merged && sourceEl) flyToCart(sourceEl, imageUrl)
       playCartAddSound()
     },
     [flyToCart, cancelFlyAnimations],
@@ -275,11 +283,14 @@ export default function MesaPage() {
       configureFlySourceRef.current = undefined
       configuringRef.current = false
       setConfigureProduct(null)
+      const imageUrl = getProductImageUrl(line.product.image_url)
+      let merged = false
       setCart((c) => {
-        const { cart: next, merged } = appendCatalogLine(c, line)
-        if (!merged && source) flyToCart(source, getProductImageUrl(line.product.image_url))
-        return next
+        const result = appendCatalogLine(c, line)
+        merged = result.merged
+        return result.cart
       })
+      if (!merged && source) flyToCart(source, imageUrl)
       playCartAddSound()
     },
     [flyToCart],
@@ -481,7 +492,7 @@ export default function MesaPage() {
                         {summary ? ` · ${summary}` : ''}
                       </span>
                       <span className="shrink-0 tabular-nums font-medium text-stone-700">
-                        {formatSoles(c.quantity * c.unit_price)}
+                        {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
                       </span>
                     </li>
                   )
@@ -651,22 +662,19 @@ export default function MesaPage() {
       return
     }
     if (totalToPay <= 0) return
-    const lines = [
+    const items = [
       ...activeSessionOrders.flatMap((ord) =>
-        ord.comandas.map((c) => ({
-          productName: c.product_name,
-          quantity: c.quantity,
-          unitPrice: c.unit_price,
-        })),
+        ord.comandas.map((c) => comandaToPrecuentaPrintItem(c, taxRate, taxConfig)),
       ),
-      ...cart.map((c) => ({
-        productName: cartLineLabel(c),
-        quantity: c.quantity,
-        unitPrice: cartLineUnitPrice(c),
-      })),
+      ...cart.map((c) => cartLineToPrecuentaPrintItem(c, taxRate, taxConfig)),
     ]
     try {
-      const msg = await printPrecuentaAuto({ tableName: s.table_name ?? null, items: lines, total: totalToPay })
+      const msg = await printPrecuentaAuto({
+        tableName: s.table_name ?? null,
+        issueDate: formatPrecuentaIssueDate(s.opened_at),
+        items,
+        total: totalToPay,
+      })
       toast.success(msg || 'Precuenta enviada a la impresora')
     } catch (e) {
       console.error('[precuenta print error]', e)
@@ -1088,7 +1096,7 @@ export default function MesaPage() {
                       <span className="text-sm font-semibold text-stone-800">#{ord.order_number}</span>
                       <span className="text-sm font-semibold text-rest-700">
                         {formatSoles(
-                          sumMoney(...(ord.comandas ?? []).map((c) => c.quantity * c.unit_price)),
+                          sumMoney(...(ord.comandas ?? []).map((c) => comandaLineTotal(c, taxRate, taxConfig))),
                         )}
                       </span>
                     </div>
@@ -1097,7 +1105,7 @@ export default function MesaPage() {
                         {ord.comandas?.map((c) => (
                           <li key={c.id} className="flex items-start justify-between gap-2 text-stone-600">
                             <span className="min-w-0">
-                              {c.product_name} x{c.quantity} — {formatSoles(c.quantity * c.unit_price)}
+                              {c.product_name} x{c.quantity} — {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
                             </span>
                             {session.status === 'open' && canAnularComanda && (
                               <button
@@ -1181,17 +1189,18 @@ export default function MesaPage() {
               <p className="text-sm text-stone-500 mb-3">Detalle para que el cliente revise antes de pagar.</p>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-stone-200 text-left text-stone-500">
-                    <th className="py-2 pr-2">Producto</th>
-                    <th className="py-2 text-center w-16">Cant.</th>
-                    <th className="py-2 text-right w-20">P. unit.</th>
-                    <th className="py-2 text-right">Subtotal</th>
+                  <tr className="border-b border-stone-200 text-left text-stone-500 text-xs">
+                    <th className="py-2 pr-1 w-12 text-center">Cant.</th>
+                    <th className="py-2 pr-2">Descripción</th>
+                    <th className="py-2 text-right w-20">P.U.</th>
+                    <th className="py-2 text-right w-20">Importe</th>
                   </tr>
                 </thead>
                 <tbody>
                   {activeSessionOrders.flatMap((ord) =>
                     ord.comandas.map((c) => (
                       <tr key={c.id} className="border-b border-stone-100">
+                        <td className="py-2 text-center tabular-nums">{c.quantity}</td>
                         <td className="py-2 pr-2">
                           <div>{c.product_name}</div>
                           {formatModifierLines(parseStoredModifiers(c.modifiers_json)).map((line) => (
@@ -1203,16 +1212,16 @@ export default function MesaPage() {
                             <div className="text-xs text-amber-700 italic pl-2">Obs: {c.notes.trim()}</div>
                           ) : null}
                         </td>
-                        <td className="py-2 text-center">{c.quantity}</td>
                         <td className="py-2 text-right tabular-nums">{formatSoles(Number(c.unit_price))}</td>
                         <td className="py-2 text-right font-medium tabular-nums">
-                          {formatSoles(c.quantity * c.unit_price)}
+                          {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
                         </td>
                       </tr>
                     )) ?? []
                   )}
                   {cart.map((item, i) => (
                     <tr key={`cart-${cartLineKey(item, i)}`} className="border-b border-stone-100">
+                      <td className="py-2 text-center tabular-nums">{item.quantity}</td>
                       <td className="py-2 pr-2">
                         {cartLineLabel(item)}
                         {item.kind === 'catalog' &&
@@ -1225,7 +1234,6 @@ export default function MesaPage() {
                           <div className="text-xs text-stone-500">{item.notes.trim()}</div>
                         ) : null}
                       </td>
-                      <td className="py-2 text-center">{item.quantity}</td>
                       <td className="py-2 text-right tabular-nums">{formatSoles(cartLineUnitPrice(item))}</td>
                       <td className="py-2 text-right font-medium tabular-nums">
                         {formatSoles(cartLineTotal(item, taxRate, taxConfig))}
@@ -1238,6 +1246,10 @@ export default function MesaPage() {
                 <span>Total a pagar</span>
                 <span className="text-lg tabular-nums">{formatSoles(totalToPay)}</span>
               </div>
+              <p className="mt-4 text-sm text-stone-600 border-b border-stone-400 pb-1">
+                Documento:{' '}
+                <span className="inline-block min-w-[12rem] border-b border-stone-400">&nbsp;</span>
+              </p>
             </div>
             <div className="p-4 border-t border-stone-200">
               <div className="flex gap-2">
@@ -1339,7 +1351,7 @@ export default function MesaPage() {
             <h3 className="font-bold text-stone-800 mb-2">Anular comanda</h3>
             <p className="text-sm text-stone-600 mb-4">
               {anulComanda.product_name} x{anulComanda.quantity} —{' '}
-              {formatSoles(anulComanda.quantity * anulComanda.unit_price)}
+              {formatSoles(comandaLineTotal(anulComanda, taxRate, taxConfig))}
             </p>
             <p className="text-xs text-rest-700 mb-3">Se requiere el PIN de operaciones (Ajustes → Restaurante).</p>
             <input

@@ -86,6 +86,8 @@ export function usePosInfiniteProducts({
         categoryFilter ?? undefined,
         preparationAreaFilter ?? undefined,
         activeBranchId,
+        true,
+        false,
         { signal: controller.signal },
       )
       .then(({ data, total }) => {

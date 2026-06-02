@@ -1,12 +1,34 @@
 import type { Product } from '@/services/products.service'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
+import type { PrecuentaPrintItem } from '@/services/printers.service'
 import {
   buildCatalogConfigureKey,
+  cartLineLabel,
+  cartLineTotal,
+  cartLineUnitPrice,
   cartToOrderItems as cartLinesToOrderItems,
   createCatalogCartLine,
   type PosCartLine,
 } from '@/utils/posCart'
-import { parseStoredModifiers, storedToCartModifiers } from '@/utils/productModifiers'
+import { formatModifierLines, parseStoredModifiers, storedToCartModifiers } from '@/utils/productModifiers'
+import { calcItem } from '@/utils/taxCalc'
+import type { TaxConfig } from '@/utils/taxCalc'
+/** Total de línea de comanda (misma lógica tributaria que el backend al facturar). */
+export function comandaLineTotal(
+  c: Pick<Comanda, 'unit_price' | 'quantity' | 'igv_affectation_type' | 'price_includes_igv'>,
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): number {
+  return calcItem(
+    Number(c.unit_price) || 0,
+    c.quantity,
+    0,
+    c.igv_affectation_type ?? '10',
+    c.price_includes_igv ?? true,
+    taxRate,
+    taxConfig,
+  ).total
+}
 
 /** @deprecated Use PosCartLine from @/utils/posCart */
 export type PosCartItem = PosCartLine
@@ -173,4 +195,59 @@ export function sumSessionComandaQty(detail: SessionDetail | null): number {
 
 export function cartToOrderItems(cart: PosCartLine[]) {
   return cartLinesToOrderItems(cart)
+}
+
+/** Fecha legible para ticket de precuenta (misma convención que comprobantes). */
+export function formatPrecuentaIssueDate(iso?: string | null): string {
+  const d = iso ? new Date(iso) : new Date()
+  if (Number.isNaN(d.getTime())) return new Date().toLocaleDateString('es-PE')
+  return d.toLocaleDateString('es-PE')
+}
+
+export function comandaToPrecuentaPrintItem(
+  c: Comanda,
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): PrecuentaPrintItem {
+  return {
+    productName: c.product_name,
+    quantity: c.quantity,
+    unitPrice: c.unit_price,
+    lineTotal: comandaLineTotal(c, taxRate, taxConfig),
+    modifierLines: formatModifierLines(parseStoredModifiers(c.modifiers_json)),
+    notes: c.notes,
+  }
+}
+
+export function cartLineToPrecuentaPrintItem(
+  line: PosCartLine,
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): PrecuentaPrintItem {
+  return {
+    productName: cartLineLabel(line),
+    quantity: line.quantity,
+    unitPrice: cartLineUnitPrice(line),
+    lineTotal: cartLineTotal(line, taxRate, taxConfig),
+    modifierLines: line.kind === 'catalog' ? formatModifierLines(line.modifiers) : [],
+    notes: line.notes,
+  }
+}
+
+export function precuentaApiLineToPrintItem(l: {
+  product_name: string
+  quantity: number
+  unit_price: number
+  line_total: number
+  notes?: string
+  modifiers_json?: string
+}): PrecuentaPrintItem {
+  return {
+    productName: l.product_name,
+    quantity: l.quantity,
+    unitPrice: l.unit_price,
+    lineTotal: l.line_total,
+    modifierLines: formatModifierLines(parseStoredModifiers(l.modifiers_json)),
+    notes: l.notes,
+  }
 }

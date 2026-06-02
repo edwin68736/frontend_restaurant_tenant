@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { Menu } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getStoredTenant } from '@/services/public.service'
-import { BRAND_LOGO_H } from '@/config/branding'
 import { NAV_GROUPS } from '@/config/restaurantNav'
+import BrandWordmark from './BrandWordmark'
 import TopNavigation from './TopNavigation'
 import ManagementNavDropdown from './ManagementNavDropdown'
 import ResponsiveMenu from './ResponsiveMenu'
@@ -41,11 +41,8 @@ export default function RestaurantHeader() {
           ) : null}
           {/* Marca + empresa (+ plan en lg+) */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 overflow-hidden">
-            <img
-              src={BRAND_LOGO_H}
-              alt="Tukichef"
-              className="h-[clamp(1.375rem,6.5vw,2.5rem)] w-auto max-w-[clamp(3rem,14vw,7.5rem)] object-contain object-left shrink-0"
-            />
+            <BrandWordmark size="sm" className="sm:hidden" />
+            <BrandWordmark size="md" className="hidden sm:inline" />
             <div className="flex items-center gap-2 min-w-0 flex-1 lg:flex-none">
               <div className="min-w-0 flex-1 lg:max-w-[min(100%,12rem)] xl:max-w-[14rem]">
                 <p className="text-[11px] min-[360px]:text-xs sm:text-sm md:text-base font-bold text-stone-900 leading-tight truncate">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, FileText, Loader2, MessageCircle, Printer, Receipt, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Loader2, MessageCircle, Printer, Receipt, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
@@ -7,7 +7,7 @@ import { PortalModal } from '@/components/ui/PortalModal'
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
-import { printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
+import { downloadReceiptPdf, printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
   getConfiguredPrinter,
@@ -163,6 +163,22 @@ export function ReceiptPrintModal({
     }
   }
 
+  const handleDownloadPdf = async (format: PdfFormat) => {
+    if (!printData) return
+    const busyKey = format === 'ticket' ? 'download-ticket' : 'download-a4'
+    setBusy(busyKey)
+    try {
+      const pdfOpts = format === 'ticket' ? ticketPdfOptions() : undefined
+      await downloadReceiptPdf(printData, format, pdfOpts)
+      toast.success(format === 'ticket' ? 'PDF ticket descargado' : 'PDF A4 descargado')
+    } catch (e) {
+      console.error(e)
+      toast.error('No se pudo descargar el PDF')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   if (!open) return null
 
   const client = printData?.client
@@ -285,6 +301,38 @@ export function ReceiptPrintModal({
                   )}
                   Enviar por Whatsapp
                 </button>
+
+                <div className="rounded-xl border border-stone-200 bg-white p-2.5">
+                  <p className="mb-2 text-center text-xs font-semibold text-stone-600">Descargar PDF</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={!!busy || !printData}
+                      onClick={() => void handleDownloadPdf('ticket')}
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      {busy === 'download-ticket' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      Ticket
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!busy || !printData}
+                      onClick={() => void handleDownloadPdf('a4')}
+                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      {busy === 'download-a4' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="h-3.5 w-3.5" />
+                      )}
+                      A4
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -318,6 +366,20 @@ export function ReceiptPrintModal({
                       )}
                     >
                       A4
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!busy || pdfLoading || !printData}
+                      onClick={() => void handleDownloadPdf(pdfFormat)}
+                      title={`Descargar PDF ${pdfFormat === 'ticket' ? 'ticket' : 'A4'}`}
+                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                    >
+                      {busy === 'download-ticket' || busy === 'download-a4' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4" />
+                      )}
+                      Descargar
                     </button>
                   </div>
                   {pdfLoading || !pdfUrl ? (

@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { UtensilsCrossed } from 'lucide-react'
 
 export { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 
-const FLY_DURATION_MS = 480
-/** Un solo vuelo visible cada ~750 ms (clics rápidos en productos distintos). */
-const FLY_GLOBAL_THROTTLE_MS = 750
+/** Vuelo directo al carrito, sin pausa inicial. */
+const FLY_DURATION_MS = 320
 
 type FlyItem = {
   id: number
@@ -40,33 +39,31 @@ function FlyParticle({
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
 
     const { from, to } = item
-    const endSize = Math.max(28, to.size * 0.5)
+    const endSize = Math.max(24, to.size * 0.35)
 
     const anim = el.animate(
       [
         {
-          transform: `translate(${from.x}px, ${from.y}px) translate(-50%, -50%) scale(1)`,
+          transform: `translate3d(${from.x}px, ${from.y}px, 0) translate(-50%, -50%) scale(1)`,
           width: `${from.size}px`,
           height: `${from.size}px`,
           opacity: 1,
-          filter: 'drop-shadow(0 10px 20px rgba(15, 23, 42, 0.3))',
         },
         {
-          transform: `translate(${to.x}px, ${to.y}px) translate(-50%, -50%) scale(0.25)`,
+          transform: `translate3d(${to.x}px, ${to.y}px, 0) translate(-50%, -50%) scale(0.22)`,
           width: `${endSize}px`,
           height: `${endSize}px`,
-          opacity: 0.9,
-          filter: 'drop-shadow(0 4px 8px rgba(15, 23, 42, 0.15))',
+          opacity: 1,
         },
       ],
       {
         duration: FLY_DURATION_MS,
-        easing: 'cubic-bezier(0.15, 0.85, 0.25, 1)',
+        easing: 'cubic-bezier(0.33, 0, 0.2, 1)',
         fill: 'forwards',
       },
     )
@@ -101,13 +98,12 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
   const desktopCartRef = options?.desktopCartRef
   const [items, setItems] = useState<FlyItem[]>([])
   const idRef = useRef(0)
-  const lastFlyAtRef = useRef(0)
 
   const resolveCartRect = useCallback((): DOMRect | null => {
     if (isMobileViewport()) {
       return cartRef.current?.getBoundingClientRect() ?? getFloatingCartRect()
     }
-    return desktopCartRef?.current?.getBoundingClientRect() ?? null
+    return desktopCartRef?.current?.getBoundingClientRect() ?? cartRef.current?.getBoundingClientRect() ?? null
   }, [cartRef, desktopCartRef])
 
   const removeItem = useCallback((id: number) => {
@@ -116,7 +112,6 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
 
   const cancelFlyAnimations = useCallback(() => {
     setItems([])
-    lastFlyAtRef.current = 0
   }, [])
 
   const flyToCart = useCallback(
@@ -124,13 +119,9 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
       const cartRect = resolveCartRect()
       if (!cartRect) return
 
-      const now = Date.now()
-      if (now - lastFlyAtRef.current < FLY_GLOBAL_THROTTLE_MS) return
-      lastFlyAtRef.current = now
-
       const srcRect = sourceEl.getBoundingClientRect()
       const tileSize = Math.max(srcRect.width, srcRect.height)
-      const fromSize = Math.min(112, Math.max(tileSize, 72))
+      const fromSize = Math.min(96, Math.max(tileSize, 64))
 
       const from = {
         x: srcRect.left + srcRect.width / 2,
@@ -144,7 +135,8 @@ export function useFlyToCart(cartRef: RefObject<HTMLElement | null>, options?: F
       }
 
       const id = ++idRef.current
-      setItems([{ id, imageUrl, from, to }])
+      const next: FlyItem = { id, imageUrl, from, to }
+      setItems([next])
     },
     [resolveCartRect],
   )

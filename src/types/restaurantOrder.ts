@@ -98,5 +98,12 @@ export interface PrecuentaPayload {
   subtotal: number
   tax_amount: number
   total: number
-  lines: { product_name: string; quantity: number; unit_price: number; line_total: number; notes: string }[]
+  lines: {
+    product_name: string
+    quantity: number
+    unit_price: number
+    line_total: number
+    notes: string
+    modifiers_json?: string
+  }[]
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ImagePlus, QrCode, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { resolvePublicAssetUrl } from '@/services/api'
 import { companyService, type CompanyConfig } from '@/services/company.service'
 
 const PROVIDERS = [
@@ -13,6 +14,7 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
   const [form, setForm] = useState<Partial<CompanyConfig>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingQr, setUploadingQr] = useState(false)
   const qrInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -33,10 +35,27 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
       toast.error('Selecciona una imagen (PNG, JPG, etc.)')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => set('wallet_qr_url', reader.result as string)
-    reader.readAsDataURL(file)
+    setUploadingQr(true)
+    void companyService
+      .uploadReceiptWalletQr(file)
+      .then((r) => {
+        set('wallet_qr_url', r.wallet_qr_url)
+        toast.success('QR guardado en el servidor')
+      })
+      .catch((err: unknown) => {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'No se pudo subir el QR'
+        toast.error(msg)
+      })
+      .finally(() => setUploadingQr(false))
   }
+
+  const qrPreviewSrc = form.wallet_qr_url
+    ? form.wallet_qr_url.startsWith('data:')
+      ? form.wallet_qr_url
+      : resolvePublicAssetUrl(form.wallet_qr_url)
+    : ''
 
   const handleSave = async () => {
     const provider = String(form.wallet_provider ?? '').trim().toLowerCase()
@@ -120,9 +139,10 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
             {form.wallet_qr_url ? (
               <div className="relative">
                 <img
-                  src={form.wallet_qr_url}
+                  src={qrPreviewSrc}
                   alt="QR de pago"
                   className="w-28 h-28 object-contain border border-stone-200 rounded-xl bg-white p-1"
+                  onError={() => toast.error('No se pudo mostrar el QR. Verifique que Nginx reenvíe /uploads al backend.')}
                 />
                 <button
                   type="button"
@@ -139,17 +159,17 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
             ) : null}
             <label
               className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed text-sm cursor-pointer ${
-                provider ? 'border-stone-300 hover:bg-stone-50' : 'border-stone-200 opacity-50 pointer-events-none'
+                provider && !uploadingQr ? 'border-stone-300 hover:bg-stone-50' : 'border-stone-200 opacity-50 pointer-events-none'
               }`}
             >
               <ImagePlus size={16} />
-              Subir QR
+              {uploadingQr ? 'Subiendo…' : 'Subir QR'}
               <input
                 ref={qrInputRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                disabled={!provider}
+                disabled={!provider || uploadingQr}
                 onChange={handleQrFile}
               />
             </label>

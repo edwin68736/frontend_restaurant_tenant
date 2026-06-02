@@ -24,6 +24,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   guia_remision: 'Guía',
 }
 
+const NC_SERIES_HINT =
+  'Nota de crédito (SUNAT 07): serie FC## para anular facturas (ej. FC01) y BC## para anular boletas (ej. BC01).'
+
+function isValidNotaCreditoSeries(code: string): boolean {
+  return /^(FC|BC)\d{2}$/i.test(code.trim())
+}
+
 type FormState = {
   branch_id: number
   doc_type: string
@@ -135,6 +142,10 @@ export function RestaurantSeriesSettings() {
   const handleSave = async () => {
     if (!form.series.trim()) {
       toast.error('Serie requerida')
+      return
+    }
+    if (form.category === 'nota_credito' && !isValidNotaCreditoSeries(form.series)) {
+      toast.error('Serie NC inválida: use FC01–FC99 para facturas o BC01–BC99 para boletas')
       return
     }
     if (!form.branch_id) {
@@ -390,7 +401,16 @@ export function RestaurantSeriesSettings() {
                 <select
                   className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
                   value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                  onChange={(e) => {
+                    const category = e.target.value
+                    setForm((f) => ({
+                      ...f,
+                      category,
+                      ...(category === 'nota_credito'
+                        ? { sunat_code: '07', doc_type: 'NOTA DE CRÉDITO' }
+                        : {}),
+                    }))
+                  }}
                   disabled={editingLocked}
                 >
                   {CATEGORIES.map((c) => (
@@ -431,6 +451,11 @@ export function RestaurantSeriesSettings() {
                 ))}
               </select>
             </div>
+            {form.category === 'nota_credito' && (
+              <p className="text-xs text-violet-800 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                {NC_SERIES_HINT}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Serie *</label>
@@ -439,6 +464,7 @@ export function RestaurantSeriesSettings() {
                   value={form.series}
                   onChange={(e) => setForm((f) => ({ ...f, series: e.target.value.toUpperCase() }))}
                   disabled={editingLocked}
+                  placeholder={form.category === 'nota_credito' ? 'FC01 o BC01' : undefined}
                 />
               </div>
               {editing && (

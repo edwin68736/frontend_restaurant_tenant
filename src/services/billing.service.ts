@@ -11,6 +11,7 @@ export interface InvoiceInfo {
   sunat_status: string
   sunat_cdr_code?: string
   sunat_cdr_notes?: string
+  pipeline_status?: string
   sunat_hash?: string
 }
 

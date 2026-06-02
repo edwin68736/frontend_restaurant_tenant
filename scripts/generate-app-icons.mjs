@@ -9,7 +9,7 @@ import sharp from 'sharp'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, '..')
-const SOURCE = join(ROOT, 'public', 'logo-tukichef.png')
+const SOURCE = join(ROOT, 'public', 'logo-app.png')
 const ASSETS_DIR = join(ROOT, 'assets')
 const ICON_ONLY = join(ASSETS_DIR, 'icon-only.png')
 const SPLASH = join(ASSETS_DIR, 'splash.png')

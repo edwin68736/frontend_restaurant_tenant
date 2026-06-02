@@ -5,6 +5,8 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Eye,
+  EyeOff,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -32,9 +34,14 @@ import { PageShell } from '@/components/layout/PageShell'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { useAuth } from '@/contexts/AuthContext'
-import { useBranch } from '@/contexts/BranchContext'
+import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+const BTN_ACTION_EDIT =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
+const BTN_ACTION_DELETE =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 shrink-0'
 
 const PREPARATION_AREAS = [
   { value: '', label: 'Sin área' },
@@ -89,7 +96,7 @@ const emptyForm = (): CreateProductInput => ({
 export default function ProductosPage() {
   const navigate = useNavigate()
   const { canAccess } = useAuth()
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, activeBranch } = useBranch()
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('')
@@ -110,6 +117,8 @@ export default function ProductosPage() {
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [presentationsModalOpen, setPresentationsModalOpen] = useState(false)
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false)
+  const [togglingActiveId, setTogglingActiveId] = useState<number | null>(null)
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const categoryModalInputRef = useRef<HTMLInputElement>(null)
@@ -158,9 +167,21 @@ export default function ProductosPage() {
     refresh,
   } = useDebouncedApiSearch<{ data: Product[]; total: number }>({
     cacheScope: 'restaurant-productos',
-    deps: [page, perPage, categoryFilter, areaFilter, activeBranchId],
+    deps: [page, perPage, categoryFilter, areaFilter, activeBranchId, showInactiveOnly],
+    enabled: activeBranchId > 0,
     fetcher: (query, signal) =>
-      productsService.list(query, true, page, perPage, catId, area, activeBranchId ?? undefined, { signal }),
+      productsService.list(
+        query,
+        true,
+        page,
+        perPage,
+        catId,
+        area,
+        activeBranchId,
+        !showInactiveOnly,
+        showInactiveOnly,
+        { signal },
+      ),
     onSuccess: ({ data, total: t }) => {
       setProducts(data)
       setTotal(t)
@@ -197,11 +218,23 @@ export default function ProductosPage() {
 
   useEffect(() => { loadCategories() }, [])
 
+  useOnBranchChange(() => {
+    setPage(1)
+    setCategoryFilter('')
+    setAreaFilter('')
+    setShowInactiveOnly(false)
+    refresh()
+  })
+
   const loadModifierGroups = () => {
     productsService.listModifierGroups().then(setModifierGroups).catch(() => [])
   }
 
   const openCreate = () => {
+    if (!activeBranchId) {
+      toast.error('Seleccione una sucursal activa para crear productos')
+      return
+    }
     setForm({ ...emptyForm(), code: generateEan13() })
     setEditing(null)
     setNewCategoryName('')
@@ -401,6 +434,19 @@ export default function ProductosPage() {
     }
   }
 
+  const toggleActive = async (p: Product) => {
+    setTogglingActiveId(p.id)
+    try {
+      const nextActive = await productsService.toggleActive(p.id)
+      toast.success(nextActive ? 'Producto activado' : 'Producto desactivado')
+      refresh()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    } finally {
+      setTogglingActiveId(null)
+    }
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / perPage))
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
@@ -409,6 +455,11 @@ export default function ProductosPage() {
     <PageShell
       className="flex-1 min-h-0"
       title="Productos"
+      subtitle={
+        activeBranch
+          ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
+          : 'Seleccione una sucursal activa para administrar el catálogo.'
+      }
       actions={
         <>
           <button
@@ -481,6 +532,30 @@ export default function ProductosPage() {
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
             />
           </div>
+          <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none rounded-xl border border-stone-200 bg-white px-3 py-2">
+            <span className="text-xs font-medium text-stone-700 whitespace-nowrap">Solo inactivos</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showInactiveOnly}
+              aria-label="Mostrar solo productos inactivos"
+              onClick={() => {
+                setShowInactiveOnly((v) => !v)
+                setPage(1)
+              }}
+              className={clsx(
+                'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50',
+                showInactiveOnly ? 'bg-amber-500' : 'bg-stone-300',
+              )}
+            >
+              <span
+                className={clsx(
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  showInactiveOnly ? 'translate-x-5' : 'translate-x-1',
+                )}
+              />
+            </button>
+          </label>
         </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
@@ -508,7 +583,13 @@ export default function ProductosPage() {
               </thead>
               <tbody>
                 {products.map((p) => (
-                  <tr key={p.id} className="border-b border-stone-100 hover:bg-stone-50/50">
+                  <tr
+                    key={p.id}
+                    className={clsx(
+                      'border-b border-stone-100 hover:bg-stone-50/50',
+                      !p.active && 'bg-stone-50/80 opacity-75',
+                    )}
+                  >
                     <td className="px-3 py-2">
                       <div className="w-10 h-10 rounded-lg bg-stone-100 overflow-hidden flex-shrink-0">
                         {p.image_url ? (
@@ -526,7 +607,16 @@ export default function ProductosPage() {
                       </div>
                     </td>
                     <td className="px-3 py-2 font-mono text-stone-600">{p.code || '—'}</td>
-                    <td className="px-3 py-2 font-medium text-stone-800">{p.name}</td>
+                    <td className="px-3 py-2 font-medium text-stone-800">
+                      <span className="inline-flex items-center gap-1.5 flex-wrap">
+                        {p.name}
+                        {!p.active && (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                            Inactivo
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-3 py-2 text-stone-600 max-w-[14rem]">
                       {p.description?.trim() ? (
                         <span
@@ -563,17 +653,39 @@ export default function ProductosPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex justify-end gap-0.5">
+                      <div className="flex justify-end items-center gap-1">
                         <button
+                          type="button"
+                          onClick={() => void toggleActive(p)}
+                          disabled={togglingActiveId === p.id}
+                          title={p.active ? 'Desactivar producto' : 'Activar producto'}
+                          className={clsx(
+                            'inline-flex items-center justify-center p-1.5 rounded-lg disabled:opacity-50 shrink-0',
+                            p.active
+                              ? 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                              : 'bg-amber-100 text-amber-800 hover:bg-amber-200',
+                          )}
+                        >
+                          {togglingActiveId === p.id ? (
+                            <RefreshCw size={16} className="animate-spin" />
+                          ) : p.active ? (
+                            <Eye size={16} />
+                          ) : (
+                            <EyeOff size={16} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => openEdit(p)}
-                          className="p-1.5 rounded-lg text-stone-500 hover:text-rest-600 hover:bg-rest-50"
+                          className={BTN_ACTION_EDIT}
                           title="Editar"
                         >
                           <Pencil size={16} />
                         </button>
                         <button
-                          onClick={() => remove(p)}
-                          className="p-1.5 rounded-lg text-stone-500 hover:text-red-600 hover:bg-red-50"
+                          type="button"
+                          onClick={() => void remove(p)}
+                          className={BTN_ACTION_DELETE}
                           title="Eliminar"
                         >
                           <Trash2 size={16} />
@@ -586,7 +698,11 @@ export default function ProductosPage() {
               </table>
               {products.length === 0 && (
                 <div className="text-center py-10 text-stone-400 text-sm">
-                  No hay productos de restaurante. Agrega uno con el botón anterior.
+                  {!activeBranchId
+                    ? 'Seleccione una sucursal activa en el encabezado para ver y administrar productos.'
+                    : showInactiveOnly
+                      ? 'No hay productos inactivos en esta sucursal.'
+                      : 'No hay productos en esta sucursal. Agrega uno con el botón anterior.'}
                 </div>
               )}
             </div>
