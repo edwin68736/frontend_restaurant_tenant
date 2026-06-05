@@ -4,6 +4,7 @@ import { navPillClasses } from '@/utils/restaurantUiColors'
 type Props = {
   groups: NavGroup[]
   variant?: 'desktop' | 'mobile-scroll'
+  className?: string
 }
 
 function NavPill({ item, compact }: { item: NavItem; compact?: boolean }) {
@@ -20,7 +21,7 @@ function NavPill({ item, compact }: { item: NavItem; compact?: boolean }) {
   )
 }
 
-export default function TopNavigation({ groups, variant = 'desktop' }: Props) {
+export default function TopNavigation({ groups, variant = 'desktop', className = '' }: Props) {
   const operations = groups.find((g) => g.id === 'operations')?.items ?? []
 
   if (variant === 'mobile-scroll') {
@@ -28,7 +29,10 @@ export default function TopNavigation({ groups, variant = 'desktop' }: Props) {
   }
 
   return (
-    <nav className="hidden lg:flex items-center justify-center gap-2 flex-1 min-w-0 px-2" aria-label="Navegación principal">
+    <nav
+      className={`hidden lg:flex items-center justify-center gap-2 min-w-0 ${className}`}
+      aria-label="Navegación principal"
+    >
       {operations.map((item) => (
         <NavPill key={item.to} item={item} />
       ))}

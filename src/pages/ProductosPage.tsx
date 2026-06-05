@@ -16,6 +16,7 @@ import {
   FileSpreadsheet,
   Layers,
   ImagePlus,
+  ScanBarcode,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { SearchInput } from '@/components/SearchInput'
@@ -33,10 +34,15 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
+import { isCapacitorNative } from '@/lib/app'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+/** 2 columnas desde sm (tablets / celular grande); 1 columna solo en pantallas muy estrechas. */
+const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-4'
 
 const BTN_ACTION_EDIT =
   'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
@@ -122,7 +128,10 @@ export default function ProductosPage() {
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const categoryModalInputRef = useRef<HTMLInputElement>(null)
+  const codeInputRef = useRef<HTMLInputElement>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
+  const [productBarcodeScannerOpen, setProductBarcodeScannerOpen] = useState(false)
+  const useCameraBarcodeScanner = isCapacitorNative()
 
   const revokeImagePreview = useCallback(() => {
     setImagePreviewUrl((prev) => {
@@ -147,6 +156,7 @@ export default function ProductosPage() {
 
   const closeProductModal = () => {
     setModal(null)
+    setProductBarcodeScannerOpen(false)
     setEditing(null)
     setCategoryModalOpen(false)
     setNewCategoryName('')
@@ -235,10 +245,11 @@ export default function ProductosPage() {
       toast.error('Seleccione una sucursal activa para crear productos')
       return
     }
-    setForm({ ...emptyForm(), code: generateEan13() })
+    setForm({ ...emptyForm(), code: '' })
     setEditing(null)
     setNewCategoryName('')
     setShowMoreOptions(false)
+    setProductBarcodeScannerOpen(false)
     setModal('create')
     loadModifierGroups()
     loadCategories()
@@ -293,6 +304,22 @@ export default function ProductosPage() {
       setTimeout(() => categoryModalInputRef.current?.focus(), 0)
     }
   }, [modal, categoryModalOpen])
+
+  useEffect(() => {
+    if (modal === 'create' && !categoryModalOpen) {
+      const t = window.setTimeout(() => codeInputRef.current?.focus(), 80)
+      return () => window.clearTimeout(t)
+    }
+  }, [modal, categoryModalOpen])
+
+  const handleProductBarcodeScan = useCallback((raw: string) => {
+    const code = String(raw ?? '').trim()
+    if (!code) return
+    setForm((f) => ({ ...f, code }))
+    setProductBarcodeScannerOpen(false)
+    toast.success('Código de barras capturado')
+    window.setTimeout(() => codeInputRef.current?.focus(), 50)
+  }, [])
 
   const createCategory = async () => {
     if (!newCategoryName.trim()) return
@@ -842,7 +869,40 @@ export default function ProductosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className={PRODUCT_FORM_GRID}>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Código (barras)</label>
+                  <div className="flex w-full min-w-0">
+                    <input
+                      ref={codeInputRef}
+                      value={form.code ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                      className="min-w-0 flex-1 border border-stone-200 rounded-l-xl border-r-0 px-3 py-2 text-sm font-mono"
+                      placeholder="Código de barras"
+                      autoComplete="off"
+                    />
+                    {useCameraBarcodeScanner ? (
+                      <button
+                        type="button"
+                        onClick={() => setProductBarcodeScannerOpen(true)}
+                        className="px-2 py-2 border border-stone-200 border-l-0 bg-rest-50 text-rest-700 hover:bg-rest-100 shrink-0 inline-flex items-center justify-center"
+                        title="Escanear con cámara"
+                        aria-label="Escanear"
+                      >
+                        <ScanBarcode size={16} />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, code: generateEan13() }))}
+                      className="px-2.5 py-2 border border-stone-200 border-l-0 bg-stone-100 text-stone-700 rounded-r-xl text-xs font-medium hover:bg-stone-200 shrink-0 inline-flex items-center gap-1"
+                      title="Generar código EAN-13"
+                    >
+                      <RefreshCw size={15} />
+                      Generar
+                    </button>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Nombre *</label>
                   <input
@@ -852,61 +912,38 @@ export default function ProductosPage() {
                     placeholder="Ej. Lomo saltado"
                   />
                 </div>
+              </div>
+
+              <div className={PRODUCT_FORM_GRID}>
                 <div>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">Código (barras)</label>
-                  <div className="flex w-full">
-                    <input
-                      value={form.code}
-                      onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                      className="w-full border border-stone-200 rounded-l-xl rounded-r-none border-r-0 px-3 py-2 text-sm"
-                      placeholder="Autogenerado"
-                    />
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Categoría del producto</label>
+                  <div className="flex w-full min-w-0">
+                    <div className="flex-1 min-w-0">
+                      <SearchableSelect
+                        value={form.category_id == null ? '' : form.category_id}
+                        onChange={(v) => {
+                          const vv = v == null || String(v) === '' ? null : Number(v)
+                          setForm((f) => ({ ...f, category_id: vv }))
+                        }}
+                        options={[
+                          { value: '', label: 'Sin categoría' },
+                          ...categories.map((c) => ({ value: c.id, label: c.name })),
+                        ]}
+                        placeholder="Sin categoría"
+                        searchable
+                        className="w-full border border-stone-200 rounded-l-xl rounded-r-none border-r-0 px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                        menuClassName="rounded-xl"
+                      />
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setForm((f) => ({ ...f, code: generateEan13() }))}
-                      className="px-3 py-2 border border-stone-200 bg-stone-100 text-stone-700 rounded-r-xl rounded-l-none text-sm font-medium hover:bg-stone-200 shrink-0 inline-flex items-center gap-2"
-                      title="Generar otro código"
+                      onClick={() => setCategoryModalOpen(true)}
+                      className="px-3 py-2 border border-stone-200 bg-stone-100 text-stone-700 rounded-r-xl rounded-l-none text-sm font-medium hover:bg-stone-200 shrink-0"
                     >
-                      <RefreshCw size={16} />
-                      Generar
+                      Agregar
                     </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Categoría del producto (ej. Caldos, Bebidas) */}
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Categoría del producto</label>
-                <div className="flex w-full">
-                  <div className="flex-1 min-w-0">
-                    <SearchableSelect
-                      value={form.category_id == null ? '' : form.category_id}
-                      onChange={(v) => {
-                        const vv = v == null || String(v) === '' ? null : Number(v)
-                        setForm((f) => ({ ...f, category_id: vv }))
-                      }}
-                      options={[
-                        { value: '', label: 'Sin categoría' },
-                        ...categories.map((c) => ({ value: c.id, label: c.name })),
-                      ]}
-                      placeholder="Sin categoría"
-                      searchable
-                      className="w-full border border-stone-200 rounded-l-xl rounded-r-none border-r-0 px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-                      menuClassName="rounded-xl"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCategoryModalOpen(true)}
-                    className="px-3 py-2 border border-stone-200 bg-stone-100 text-stone-700 rounded-r-xl rounded-l-none text-sm font-medium hover:bg-stone-200 shrink-0"
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </div>
-
-              {/* Área de preparación (Cocina, Bar, Barra) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Área de preparación</label>
                   <SearchableSelect
@@ -917,6 +954,9 @@ export default function ProductosPage() {
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
                   />
                 </div>
+              </div>
+
+              <div className={PRODUCT_FORM_GRID}>
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Precio venta (S/) *</label>
                   <input
@@ -928,25 +968,23 @@ export default function ProductosPage() {
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
                   />
                 </div>
-              </div>
-
-              {/* Tipo de afectación IGV (SUNAT Cat. N°07) */}
-              <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">Tipo de afectación IGV</label>
-                <SearchableSelect
-                  value={form.igv_affectation_type ?? '10'}
-                  onChange={(v) => {
-                    const vv = String(v ?? '10')
-                    setForm((f) => ({
-                      ...f,
-                      igv_affectation_type: vv,
-                      price_includes_igv: isGravadoIgv(vv) ? (f.price_includes_igv ?? true) : false,
-                    }))
-                  }}
-                  options={IGV_AFFECTATION_OPTIONS.map((o) => ({ value: o.code, label: o.label }))}
-                  searchable={false}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-                />
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Tipo de afectación IGV</label>
+                  <SearchableSelect
+                    value={form.igv_affectation_type ?? '10'}
+                    onChange={(v) => {
+                      const vv = String(v ?? '10')
+                      setForm((f) => ({
+                        ...f,
+                        igv_affectation_type: vv,
+                        price_includes_igv: isGravadoIgv(vv) ? (f.price_includes_igv ?? true) : false,
+                      }))
+                    }}
+                    options={IGV_AFFECTATION_OPTIONS.map((o) => ({ value: o.code, label: o.label }))}
+                    searchable={false}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                  />
+                </div>
               </div>
 
               <div className="border border-stone-200 rounded-xl overflow-hidden">
@@ -963,51 +1001,50 @@ export default function ProductosPage() {
                   )}
                 </button>
                 {showMoreOptions && (
-                  <div className="px-3 pb-3 pt-0 space-y-3 border-t border-stone-100">
-                    <div>
-                      <label className="block text-sm font-medium text-stone-700 mb-1">
-                        Descripción <span className="font-normal text-stone-400">(opcional)</span>
-                      </label>
-                      <textarea
-                        value={form.description ?? ''}
-                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                        rows={3}
-                        placeholder="Ej. Plato típico con arroz y ensalada"
-                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-stone-700 mb-1">
-                        Precio de compra (S/) <span className="font-normal text-stone-400">(opcional)</span>
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min={0}
-                        value={
-                          form.purchase_price != null && form.purchase_price > 0
-                            ? form.purchase_price
-                            : ''
-                        }
-                        onChange={(e) => {
-                          const raw = e.target.value
-                          setForm((f) => ({
-                            ...f,
-                            purchase_price: raw === '' ? undefined : Math.max(0, Number(raw) || 0),
-                          }))
-                        }}
-                        placeholder="0.00"
-                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                      />
-                      <p className="text-xs text-stone-500 mt-1">
-                        Costo de insumos o compra; útil para reportes de margen.
-                      </p>
+                  <div className="px-3 pb-3 pt-0 border-t border-stone-100">
+                    <div className={PRODUCT_FORM_GRID}>
+                      <div className="sm:col-span-2">
+                        <label className="block text-sm font-medium text-stone-700 mb-1">
+                          Descripción <span className="font-normal text-stone-400">(opcional)</span>
+                        </label>
+                        <textarea
+                          value={form.description ?? ''}
+                          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                          rows={3}
+                          placeholder="Ej. Plato típico con arroz y ensalada"
+                          className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-stone-700 mb-1">
+                          Precio de compra (S/) <span className="font-normal text-stone-400">(opcional)</span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={
+                            form.purchase_price != null && form.purchase_price > 0
+                              ? form.purchase_price
+                              : ''
+                          }
+                          onChange={(e) => {
+                            const raw = e.target.value
+                            setForm((f) => ({
+                              ...f,
+                              purchase_price: raw === '' ? undefined : Math.max(0, Number(raw) || 0),
+                            }))
+                          }}
+                          placeholder="0.00"
+                          className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-stone-700">
                   <input
                     type="checkbox"
@@ -1030,7 +1067,7 @@ export default function ProductosPage() {
                 ) : (
                   <div />
                 )}
-                <label className="flex items-center gap-2 text-sm font-medium text-stone-700 md:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-stone-700 sm:col-span-2">
                   <input
                     type="checkbox"
                     checked={form.has_variants ?? false}
@@ -1045,7 +1082,7 @@ export default function ProductosPage() {
                   />
                   Presentaciones propias (tamaños / envases) en mesa/POS
                 </label>
-                <label className="flex items-center gap-2 text-sm font-medium text-stone-700 md:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-stone-700 sm:col-span-2">
                   <input
                     type="checkbox"
                     checked={form.has_modifiers ?? false}
@@ -1248,6 +1285,15 @@ export default function ProductosPage() {
         presentations={form.presentations ?? []}
         onClose={() => setPresentationsModalOpen(false)}
         onSave={(presentations) => setForm((f) => ({ ...f, presentations }))}
+      />
+
+      <PosBarcodeScannerModal
+        open={productBarcodeScannerOpen}
+        onClose={() => setProductBarcodeScannerOpen(false)}
+        onScan={handleProductBarcodeScan}
+        title="Código de barras"
+        subtitle="Apunta al código del producto"
+        footerHint="El código reemplazará el valor del campo al detectarlo"
       />
     </PageShell>
   )

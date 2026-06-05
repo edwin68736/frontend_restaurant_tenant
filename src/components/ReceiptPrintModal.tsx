@@ -18,6 +18,15 @@ import {
 type PanelView = 'details' | 'receipt'
 type PdfFormat = 'ticket' | 'a4'
 
+/** Botón de acción: icono + texto, color sólido (grid 2 columnas; táctil ≥44px en Android). */
+const ACTION_ICON_BTN =
+  'flex w-full min-w-0 min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-white touch-manipulation select-none active:scale-[0.98] transition-transform hover:opacity-95 disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100'
+
+const ACTION_ICON = 'h-4 w-4 sm:h-5 sm:w-5 shrink-0'
+
+const ACTION_LABEL =
+  'min-w-0 truncate text-[10px] font-semibold uppercase tracking-wide sm:text-xs sm:tracking-wider'
+
 interface ReceiptPrintModalProps {
   open: boolean
   onClose: () => void
@@ -214,7 +223,7 @@ export function ReceiptPrintModal({
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-6">
             {/* Panel izquierdo: resumen y acciones */}
-            <div className="space-y-4 lg:col-span-2">
+            <div className="min-w-0 space-y-4 lg:col-span-2">
               <div className="rounded-xl border border-green-200/80 bg-green-50/60 p-3 md:p-4">
                 <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-700">
                   <span className="text-green-600">●</span> Resumen de pago
@@ -243,95 +252,104 @@ export function ReceiptPrintModal({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold text-stone-700">Acciones</h3>
+              <div className="rounded-xl border border-stone-200 bg-stone-50/90 p-3">
+                <h3 className="mb-2.5 text-xs font-semibold text-stone-700">Acciones</h3>
+                <div className="grid min-w-0 grid-cols-2 gap-2">
+                  {showReceiptPanel ? (
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={showDetails}
+                      title="Ver detalles"
+                      aria-label="Ver detalles"
+                      className={clsx(ACTION_ICON_BTN, 'bg-stone-600 hover:opacity-90')}
+                    >
+                      <ArrowLeft className={ACTION_ICON} strokeWidth={2.25} />
+                      <span className={ACTION_LABEL}>Detalles</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!!busy || !printData || pdfLoading}
+                      onClick={() => void showReceipt()}
+                      title="Ver comprobante"
+                      aria-label="Ver comprobante"
+                      className={clsx(ACTION_ICON_BTN, 'bg-blue-800')}
+                    >
+                      {pdfLoading ? (
+                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                      ) : (
+                        <FileText className={ACTION_ICON} strokeWidth={2.25} />
+                      )}
+                      <span className={ACTION_LABEL}>Comprobante</span>
+                    </button>
+                  )}
 
-                {hasDirectPrinter && (
+                  {hasDirectPrinter && (
+                    <button
+                      type="button"
+                      disabled={!!busy || !printData}
+                      onClick={() => void handleDirectPrint()}
+                      title="Volver a imprimir"
+                      aria-label="Volver a imprimir"
+                      className={clsx(ACTION_ICON_BTN, 'bg-stone-700')}
+                    >
+                      {busy === 'print' ? (
+                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                      ) : (
+                        <Printer className={ACTION_ICON} strokeWidth={2.25} />
+                      )}
+                      <span className={ACTION_LABEL}>Imprimir</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     disabled={!!busy || !printData}
-                    onClick={() => void handleDirectPrint()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200 bg-stone-100 py-2.5 text-sm font-medium text-stone-800 hover:bg-stone-200 disabled:opacity-50"
+                    onClick={() => void handleShareWhatsApp()}
+                    title="Enviar por WhatsApp"
+                    aria-label="Enviar por WhatsApp"
+                    className={clsx(ACTION_ICON_BTN, 'bg-[#25D366]')}
                   >
-                    {busy === 'print' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                    {busy === 'share' ? (
+                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
                     ) : (
-                      <Printer className="h-4 w-4" />
+                      <MessageCircle className={ACTION_ICON} strokeWidth={2.25} />
                     )}
-                    Volver a imprimir
+                    <span className={ACTION_LABEL}>Whatsapp</span>
                   </button>
-                )}
 
-                {showReceiptPanel ? (
                   <button
                     type="button"
-                    disabled={!!busy}
-                    onClick={showDetails}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white py-2.5 text-sm font-medium text-stone-800 shadow-sm hover:bg-stone-50 disabled:opacity-50"
+                    disabled={!!busy || !printData}
+                    onClick={() => void handleDownloadPdf('ticket')}
+                    title="Descargar PDF ticket"
+                    aria-label="Descargar PDF ticket"
+                    className={clsx(ACTION_ICON_BTN, 'bg-amber-600 text-white')}
                   >
-                    <ArrowLeft className="h-4 w-4" />
-                    Ver detalles
+                    {busy === 'download-ticket' ? (
+                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                    ) : (
+                      <Download className={ACTION_ICON} strokeWidth={2.25} />
+                    )}
+                    <span className={ACTION_LABEL}>Ticket</span>
                   </button>
-                ) : (
+
                   <button
                     type="button"
-                    disabled={!!busy || !printData || pdfLoading}
-                    onClick={() => void showReceipt()}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-900 py-2.5 text-sm font-medium text-white shadow hover:bg-blue-950 disabled:opacity-50"
+                    disabled={!!busy || !printData}
+                    onClick={() => void handleDownloadPdf('a4')}
+                    title="Descargar PDF A4"
+                    aria-label="Descargar PDF A4"
+                    className={clsx(ACTION_ICON_BTN, 'bg-[#E4002B]')}
                   >
-                    {pdfLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                    {busy === 'download-a4' ? (
+                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
                     ) : (
-                      <FileText className="h-4 w-4" />
+                      <Download className={ACTION_ICON} strokeWidth={2.25} />
                     )}
-                    Ver Comprobante
+                    <span className={ACTION_LABEL}>PDF</span>
                   </button>
-                )}
-
-                <button
-                  type="button"
-                  disabled={!!busy || !printData}
-                  onClick={() => void handleShareWhatsApp()}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-2.5 text-sm font-medium text-white shadow hover:bg-[#1ebe5a] disabled:opacity-50"
-                >
-                  {busy === 'share' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageCircle className="h-4 w-4" />
-                  )}
-                  Enviar por Whatsapp
-                </button>
-
-                <div className="rounded-xl border border-stone-200 bg-white p-2.5">
-                  <p className="mb-2 text-center text-xs font-semibold text-stone-600">Descargar PDF</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={!!busy || !printData}
-                      onClick={() => void handleDownloadPdf('ticket')}
-                      className="flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-                    >
-                      {busy === 'download-ticket' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Download className="h-3.5 w-3.5" />
-                      )}
-                      Ticket
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!!busy || !printData}
-                      onClick={() => void handleDownloadPdf('a4')}
-                      className="flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 py-2 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
-                    >
-                      {busy === 'download-a4' ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Download className="h-3.5 w-3.5" />
-                      )}
-                      A4
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -340,47 +358,39 @@ export function ReceiptPrintModal({
             <div className="lg:col-span-3">
               {showReceiptPanel ? (
                 <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
-                  <div className="flex flex-wrap items-center justify-center gap-2 border-b border-stone-200 bg-white px-3 py-3">
-                    <button
-                      type="button"
-                      disabled={pdfLoading}
-                      onClick={() => switchPdfFormat('ticket')}
-                      className={clsx(
-                        'min-w-[5.5rem] rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60',
-                        pdfFormat === 'ticket'
-                          ? 'border-blue-700 bg-blue-700 text-white shadow-md'
-                          : 'border-blue-200 bg-blue-100 text-blue-700 hover:bg-blue-200/80',
-                      )}
-                    >
-                      Ticket
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pdfLoading}
-                      onClick={() => switchPdfFormat('a4')}
-                      className={clsx(
-                        'min-w-[5.5rem] rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-60',
-                        pdfFormat === 'a4'
-                          ? 'border-red-700 bg-red-600 text-white shadow-md'
-                          : 'border-red-200 bg-red-100 text-red-700 hover:bg-red-200/80',
-                      )}
-                    >
-                      A4
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!!busy || pdfLoading || !printData}
-                      onClick={() => void handleDownloadPdf(pdfFormat)}
-                      title={`Descargar PDF ${pdfFormat === 'ticket' ? 'ticket' : 'A4'}`}
-                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-                    >
-                      {busy === 'download-ticket' || busy === 'download-a4' ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4" />
-                      )}
-                      Descargar
-                    </button>
+                  <div className="border-b border-stone-200 bg-stone-50 px-3 py-2.5">
+                    <div className="mx-auto grid max-w-xs grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={pdfLoading}
+                        onClick={() => switchPdfFormat('ticket')}
+                        title="Vista ticket"
+                        aria-label="Vista ticket"
+                        aria-pressed={pdfFormat === 'ticket'}
+                        className={clsx(
+                          ACTION_ICON_BTN,
+                          'min-h-[2.75rem]',
+                          pdfFormat === 'ticket' ? 'bg-amber-600 ring-2 ring-amber-300 ring-offset-1' : 'bg-amber-500/90',
+                        )}
+                      >
+                        <Receipt className={ACTION_ICON} strokeWidth={2.25} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={pdfLoading}
+                        onClick={() => switchPdfFormat('a4')}
+                        title="Vista A4"
+                        aria-label="Vista A4"
+                        aria-pressed={pdfFormat === 'a4'}
+                        className={clsx(
+                          ACTION_ICON_BTN,
+                          'min-h-[2.75rem]',
+                          pdfFormat === 'a4' ? 'bg-[#E4002B] ring-2 ring-red-300 ring-offset-1' : 'bg-[#E4002B]/85',
+                        )}
+                      >
+                        <FileText className={ACTION_ICON} strokeWidth={2.25} />
+                      </button>
+                    </div>
                   </div>
                   {pdfLoading || !pdfUrl ? (
                     <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
@@ -473,7 +483,7 @@ export function ReceiptPrintModal({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-stone-50/80 px-4 py-3 md:px-6">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-stone-50/80 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6">
           <p className="hidden text-xs text-green-700 sm:block">
             <span className="font-medium">✓</span> Venta registrada · {displayNumber}
           </p>

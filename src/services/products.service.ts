@@ -147,6 +147,21 @@ export const productsService = {
       })
       .then((r) => r.data.data ?? []),
 
+  /** Búsqueda exacta por código de barras (POS / cámara). Variantes EAN-13 / UPC-A en el servidor. */
+  lookupByBarcode: (code: string, branchId?: number | null) =>
+    api
+      .get<{ data: Product }>('/api/products/lookup-by-code', {
+        params: {
+          code: code.trim(),
+          branch_id: branchId && branchId > 0 ? branchId : undefined,
+        },
+      })
+      .then((r) => r.data.data ?? null)
+      .catch((e: { response?: { status?: number } }) => {
+        if (e?.response?.status === 404) return null
+        throw e
+      }),
+
   get: (id: number) =>
     api
       .get<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] }>(

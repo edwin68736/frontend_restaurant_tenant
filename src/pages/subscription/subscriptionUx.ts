@@ -1,4 +1,9 @@
-import type { BillingContextView, BillingHub, TenantSubscriptionView } from '@/services/subscription.service'
+import type {
+  BillingContextView,
+  BillingHub,
+  BillingInvoice,
+  TenantSubscriptionView,
+} from '@/services/subscription.service'
 
 export type UrgencyTier =
   | 'normal'
@@ -154,3 +159,72 @@ export function docProgressColor(percent: number, level: string) {
 }
 
 export type BillingContext = BillingContextView
+
+const CYCLE_LABELS: Record<string, string> = {
+  monthly: 'Mensual',
+  semiannual: 'Semestral',
+  annual: 'Anual',
+  yearly: 'Anual',
+  lifetime: 'Vitalicio',
+}
+
+export function billingCycleLabel(cycle: string) {
+  return CYCLE_LABELS[cycle] ?? cycle
+}
+
+export function formatBillingPeriod(periodEnd: string) {
+  try {
+    const d = new Date(periodEnd)
+    const label = new Intl.DateTimeFormat('es-PE', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Lima',
+    }).format(d)
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  } catch {
+    return formatDate(periodEnd)
+  }
+}
+
+export const INVOICE_STATUS_UI: Record<
+  string,
+  { label: string; badge: string; stripe: string }
+> = {
+  pending: {
+    label: 'Pendiente',
+    badge: 'bg-amber-100 text-amber-800',
+    stripe: 'border-l-amber-500',
+  },
+  overdue: {
+    label: 'Vencido',
+    badge: 'bg-red-100 text-red-800',
+    stripe: 'border-l-red-500',
+  },
+  paid: {
+    label: 'Pagado',
+    badge: 'bg-emerald-100 text-emerald-800',
+    stripe: 'border-l-emerald-500',
+  },
+  pending_review: {
+    label: 'En revisión',
+    badge: 'bg-blue-100 text-blue-800',
+    stripe: 'border-l-blue-500',
+  },
+}
+
+export function sortInvoicesForBillingList(invoices: BillingInvoice[]) {
+  const rank = (s: string) => (s === 'overdue' ? 0 : s === 'pending' ? 1 : 2)
+  return [...invoices].sort((a, b) => {
+    const dr = rank(a.status) - rank(b.status)
+    if (dr !== 0) return dr
+    return new Date(b.period_end).getTime() - new Date(a.period_end).getTime()
+  })
+}
+
+export function portalUrl(hub: BillingHub) {
+  return (
+    hub.payment_config.portal_url_override?.trim() ||
+    hub.subscription.portal_url?.trim() ||
+    ''
+  )
+}

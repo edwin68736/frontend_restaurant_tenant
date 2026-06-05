@@ -61,11 +61,70 @@ function buildChannels(support: SupportConfig): Channel[] {
   return channels
 }
 
-export default function SupportCard({ support }: { support: SupportConfig }) {
+type Props = {
+  support: SupportConfig
+  variant?: 'default' | 'compact' | 'column'
+}
+
+export default function SupportCard({ support, variant = 'default' }: Props) {
   const channels = buildChannels(support)
 
   if (channels.length === 0) {
-    return <p className="text-xs text-gray-500">Contacte a soporte Tukifac.</p>
+    return <p className="text-xs text-stone-500">Contacte a soporte Tukifac.</p>
+  }
+
+  if (variant === 'compact') {
+    return (
+      <div className="flex flex-wrap justify-center sm:justify-start gap-2">
+        {channels.map(ch => (
+          <a
+            key={ch.key}
+            href={ch.href}
+            target={ch.external ? '_blank' : undefined}
+            rel={ch.external ? 'noreferrer' : undefined}
+            onClick={e => {
+              if (!ch.external) return
+              e.preventDefault()
+              void openExternalUrl(ch.href)
+            }}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors touch-manipulation ${ch.cardClass}`}
+            title={ch.text}
+          >
+            <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${ch.iconWrapClass}`}>
+              {ch.icon}
+            </span>
+            <span className="text-stone-800">{ch.label}</span>
+          </a>
+        ))}
+      </div>
+    )
+  }
+
+  if (variant === 'column') {
+    return (
+      <div className="flex flex-col gap-1.5 w-full flex-1 justify-center">
+        {channels.map(ch => (
+          <a
+            key={ch.key}
+            href={ch.href}
+            target={ch.external ? '_blank' : undefined}
+            rel={ch.external ? 'noreferrer' : undefined}
+            onClick={e => {
+              if (!ch.external) return
+              e.preventDefault()
+              void openExternalUrl(ch.href)
+            }}
+            className={`flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl border text-center transition-colors touch-manipulation ${ch.cardClass}`}
+            title={ch.text}
+          >
+            <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ch.iconWrapClass}`}>
+              {ch.icon}
+            </span>
+            <span className="text-[10px] font-bold leading-tight text-stone-800">{ch.label}</span>
+          </a>
+        ))}
+      </div>
+    )
   }
 
   return (
@@ -76,7 +135,7 @@ export default function SupportCard({ support }: { support: SupportConfig }) {
             href={ch.href}
             target={ch.external ? '_blank' : undefined}
             rel={ch.external ? 'noreferrer' : undefined}
-            onClick={(e) => {
+            onClick={e => {
               if (!ch.external) return
               e.preventDefault()
               void openExternalUrl(ch.href)

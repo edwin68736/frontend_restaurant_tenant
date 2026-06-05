@@ -29,8 +29,22 @@ export interface CreateContactInput {
 export type ApiRequestOptions = { signal?: AbortSignal }
 
 export const contactsService = {
-  list: (q = '', type = 'customer', options?: ApiRequestOptions) =>
-    api.get<{ data?: Contact[] }>('/api/contacts', { params: { q, type: type || undefined }, signal: options?.signal }).then((r) => {
+  list: (
+    q = '',
+    type = 'customer',
+    status: 'active' | 'inactive' | 'all' = 'active',
+    options?: ApiRequestOptions,
+  ) =>
+    api
+      .get<{ data?: Contact[] }>('/api/contacts', {
+        params: {
+          q,
+          type: type || undefined,
+          status: status === 'active' ? undefined : status,
+        },
+        signal: options?.signal,
+      })
+      .then((r) => {
       const raw = r.data
       return Array.isArray(raw) ? raw : (raw?.data ?? [])
     }),

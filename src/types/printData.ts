@@ -48,6 +48,8 @@ export interface PrintCompany {
   email?: string
   website?: string
   logo_url?: string
+  /** Información adicional (config empresa); solo ticket si tiene texto. */
+  additional_notes?: string
 }
 
 export interface PrintBranch {

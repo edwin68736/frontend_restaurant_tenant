@@ -24,9 +24,21 @@ type Props = {
   onClose: () => void
   onScan: (code: string) => void | Promise<void>
   busy?: boolean
+  /** Textos personalizados (p. ej. formulario de productos). */
+  title?: string
+  subtitle?: string
+  footerHint?: string
 }
 
-export function PosBarcodeScannerModal({ open, onClose, onScan, busy = false }: Props) {
+export function PosBarcodeScannerModal({
+  open,
+  onClose,
+  onScan,
+  busy = false,
+  title = 'Escanear producto',
+  subtitle = 'Apunta al código de barras',
+  footerHint = 'El producto se agregará al carrito al detectar el código',
+}: Props) {
   const regionId = useId().replace(/:/g, '')
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const lastCodeRef = useRef('')
@@ -143,8 +155,8 @@ export function PosBarcodeScannerModal({ open, onClose, onScan, busy = false }: 
         <div className="flex items-center gap-2 text-white min-w-0">
           <ScanBarcode size={22} className="shrink-0 text-rest-300" aria-hidden />
           <div className="min-w-0">
-            <p className="font-semibold text-sm sm:text-base truncate">Escanear producto</p>
-            <p className="text-xs text-stone-300 truncate">Apunta al código de barras</p>
+            <p className="font-semibold text-sm sm:text-base truncate">{title}</p>
+            <p className="text-xs text-stone-300 truncate">{subtitle}</p>
           </div>
         </div>
         <button
@@ -186,9 +198,7 @@ export function PosBarcodeScannerModal({ open, onClose, onScan, busy = false }: 
         {error ? (
           <p className="mt-4 text-center text-sm text-red-300 max-w-md px-2">{error}</p>
         ) : (
-          <p className="mt-4 text-center text-xs text-stone-400 max-w-md">
-            El producto se agregará al carrito al detectar el código
-          </p>
+          <p className="mt-4 text-center text-xs text-stone-400 max-w-md">{footerHint}</p>
         )}
       </div>
 

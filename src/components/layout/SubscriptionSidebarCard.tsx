@@ -6,17 +6,21 @@ import { useSubscriptionPlan } from './subscription/useSubscriptionPlan'
 
 type Props = {
   onNavigate?: () => void
+  /** Visible también en desktop dentro del sidebar lateral. */
+  inSidebar?: boolean
 }
 
-/** Plan en menú hamburguesa — versión compacta (móvil / tablet). */
-export default function SubscriptionSidebarCard({ onNavigate }: Props) {
+/** Plan en sidebar lateral (móvil drawer y desktop colapsable). */
+export default function SubscriptionSidebarCard({ onNavigate, inSidebar }: Props) {
   const plan = useSubscriptionPlan()
 
   if (plan.state === 'empty') return null
 
   if (plan.state === 'loading') {
     return (
-      <div className="mb-3 flex h-11 items-center justify-center rounded-lg border border-stone-200 bg-stone-50 lg:hidden">
+      <div
+        className={`mb-3 flex h-11 items-center justify-center rounded-lg border border-stone-200 bg-stone-50 ${inSidebar ? '' : 'lg:hidden'}`}
+      >
         <Loader2 size={16} className="animate-spin text-stone-400" />
       </div>
     )
@@ -29,7 +33,7 @@ export default function SubscriptionSidebarCard({ onNavigate }: Props) {
       to="/suscripcion"
       title={tooltip}
       onClick={onNavigate}
-      className={`mb-3 flex lg:hidden items-center gap-2 rounded-lg border px-2.5 py-2 transition-all hover:shadow-sm ${accent}`}
+      className={`mb-3 flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-all hover:shadow-sm ${inSidebar ? '' : 'lg:hidden'} ${accent}`}
     >
       <CreditCard size={16} className={`shrink-0 ${isDark ? 'text-white' : 'text-rest-600'}`} />
       <div className="min-w-0 flex-1 leading-tight">

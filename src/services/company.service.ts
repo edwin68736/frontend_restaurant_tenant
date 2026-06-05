@@ -18,6 +18,8 @@ export interface CompanyConfig {
   wallet_qr_url?: string
   wallet_show_on_a4?: boolean
   wallet_show_on_ticket?: boolean
+  /** JSON en BD: array de IDs de cuentas bancarias visibles en comprobantes. */
+  receipt_bank_account_ids?: string | number[]
 }
 
 export interface SunatConfig {
@@ -66,6 +68,7 @@ export const companyService = {
     wallet_qr_url: string
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
+    receipt_bank_account_ids: number[]
   }) => api.put<{ success: boolean; data: CompanyConfig }>('/api/company/receipt-wallet', data).then((r) => r.data),
 
   /** Sube QR a disco del tenant (VPS: volumen /app/uploads). Devuelve URL /uploads/... */

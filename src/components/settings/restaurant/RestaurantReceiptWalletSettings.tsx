@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { ImagePlus, QrCode, Save, X } from 'lucide-react'
+import { Building2, ImagePlus, QrCode, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { resolvePublicAssetUrl } from '@/services/api'
+import { cashbankService, type BankAccount } from '@/services/cashbank.service'
 import { companyService, type CompanyConfig } from '@/services/company.service'
+import { parseReceiptBankAccountIds } from '@/utils/receiptBankAccounts'
 
 const PROVIDERS = [
   { value: '', label: 'Sin QR de pago' },
@@ -10,23 +12,57 @@ const PROVIDERS = [
   { value: 'plin', label: 'Plin' },
 ]
 
-export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded?: boolean }) {
+export function RestaurantReceiptWalletSettings() {
   const [form, setForm] = useState<Partial<CompanyConfig>>({})
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [selectedBankIds, setSelectedBankIds] = useState<Set<number>>(new Set())
+  const [banksFilterConfigured, setBanksFilterConfigured] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingQr, setUploadingQr] = useState(false)
   const qrInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    companyService
-      .getConfig()
-      .then(setForm)
+    Promise.all([companyService.getConfig(), cashbankService.listBankAccounts(true)])
+      .then(([cfg, accounts]) => {
+        setForm(cfg)
+        const active = (accounts ?? []).filter((a) => a.active !== false)
+        setBankAccounts(active)
+        const parsed = parseReceiptBankAccountIds(cfg.receipt_bank_account_ids)
+        if (parsed === null) {
+          setBanksFilterConfigured(false)
+          setSelectedBankIds(new Set(active.map((a) => a.id)))
+        } else {
+          setBanksFilterConfigured(true)
+          setSelectedBankIds(new Set(parsed))
+        }
+      })
       .catch(() => toast.error('Error cargando configuración de comprobantes'))
       .finally(() => setLoading(false))
   }, [])
 
   const set = <K extends keyof CompanyConfig>(k: K, v: CompanyConfig[K]) =>
     setForm((f) => ({ ...f, [k]: v }))
+
+  const toggleBank = (id: number) => {
+    setBanksFilterConfigured(true)
+    setSelectedBankIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllBanks = () => {
+    setBanksFilterConfigured(true)
+    setSelectedBankIds(new Set(bankAccounts.map((a) => a.id)))
+  }
+
+  const clearAllBanks = () => {
+    setBanksFilterConfigured(true)
+    setSelectedBankIds(new Set())
+  }
 
   const handleQrFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -65,6 +101,10 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
       toast.error('Indique número y QR si elige Yape o Plin')
       return
     }
+    const receiptBankIds = banksFilterConfigured
+      ? Array.from(selectedBankIds).sort((a, b) => a - b)
+      : bankAccounts.map((a) => a.id).sort((a, b) => a - b)
+
     setSaving(true)
     try {
       await companyService.updateReceiptWallet({
@@ -73,7 +113,9 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
         wallet_qr_url: form.wallet_qr_url ?? '',
         wallet_show_on_a4: Boolean(form.wallet_show_on_a4),
         wallet_show_on_ticket: Boolean(form.wallet_show_on_ticket),
+        receipt_bank_account_ids: receiptBankIds,
       })
+      setBanksFilterConfigured(true)
       toast.success('Comprobantes actualizados')
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al guardar')
@@ -84,7 +126,7 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
 
   if (loading) {
     return (
-      <div className={embedded ? 'py-6 flex justify-center' : 'py-12 flex justify-center'}>
+      <div className="py-12 flex justify-center">
         <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -92,17 +134,16 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
 
   const provider = String(form.wallet_provider ?? '')
 
-  const section = (
-    <section className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4">
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <section className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-violet-50 text-violet-700 flex items-center justify-center">
             <QrCode size={18} />
           </div>
           <div>
             <h2 className="font-bold text-stone-900">QR de pago (Yape / Plin)</h2>
-            <p className="text-sm text-stone-500">
-              Opcional en PDF locales. Por defecto no se muestra hasta activarlo por formato.
-            </p>
+            <p className="text-sm text-stone-500">Opcional en ticket y PDF. No se muestra hasta activarlo por formato.</p>
           </div>
         </div>
 
@@ -199,22 +240,89 @@ export function RestaurantReceiptWalletSettings({ embedded = false }: { embedded
             <span className="text-sm text-stone-700">PDF formato ticket (rollo)</span>
           </label>
         </div>
-
-        <div className="flex justify-end pt-2">
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700 disabled:opacity-50"
-          >
-            <Save size={15} />
-            {saving ? 'Guardando…' : 'Guardar comprobantes'}
-          </button>
-        </div>
       </section>
+
+      <section className="bg-white border border-stone-200 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+            <Building2 size={18} />
+          </div>
+          <div>
+            <h2 className="font-bold text-stone-900">Cuentas bancarias en comprobantes</h2>
+            <p className="text-sm text-stone-500">
+              Elija qué cuentas del restaurante aparecen en ticket y PDF. Las demás no se imprimen.
+            </p>
+          </div>
+        </div>
+
+        {bankAccounts.length === 0 ? (
+          <p className="text-sm text-stone-500 rounded-xl border border-dashed border-stone-200 px-4 py-6 text-center">
+            No hay cuentas bancarias activas. Créelas en Caja → Cuentas bancarias.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={selectAllBanks}
+                className="text-xs px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50"
+              >
+                Marcar todas
+              </button>
+              <button
+                type="button"
+                onClick={clearAllBanks}
+                className="text-xs px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50"
+              >
+                Quitar todas
+              </button>
+            </div>
+            <ul className="space-y-2 max-h-64 overflow-y-auto">
+              {bankAccounts.map((acc) => {
+                const label = [acc.bank_name, acc.name].filter(Boolean).join(' — ') || acc.name || 'Cuenta'
+                const checked = selectedBankIds.has(acc.id)
+                return (
+                  <li key={acc.id}>
+                    <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-stone-200 px-3 py-3 hover:bg-stone-50/80">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleBank(acc.id)}
+                        className="mt-0.5 rounded border-stone-300 text-rest-600"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-stone-800">{label}</span>
+                        {acc.account_number ? (
+                          <span className="block text-xs text-stone-500 font-mono mt-0.5">
+                            Cta: {acc.account_number} ({acc.currency || 'PEN'})
+                          </span>
+                        ) : null}
+                      </span>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="text-xs text-stone-500">
+              {selectedBankIds.size === 0
+                ? 'Sin cuentas seleccionadas: no se mostrará información bancaria en los comprobantes.'
+                : `${selectedBankIds.size} cuenta(s) seleccionada(s) para ticket y PDF.`}
+            </p>
+          </>
+        )}
+      </section>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700 disabled:opacity-50"
+        >
+          <Save size={16} />
+          {saving ? 'Guardando…' : 'Guardar comprobantes'}
+        </button>
+      </div>
+    </div>
   )
-
-  if (embedded) return section
-
-  return <div className="space-y-5 max-w-3xl">{section}</div>
 }

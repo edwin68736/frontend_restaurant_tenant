@@ -1,3 +1,5 @@
+import QRCode from 'qrcode'
+
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
 export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
   return paperWidthMm === 58 ? 384 : 576
@@ -226,4 +228,137 @@ export async function buildEscPosWalletQrRaster(
 ): Promise<Uint8Array | null> {
   const side = paperWidthMm === 58 ? 220 : 280
   return buildEscPosImageRaster(qrUrl, paperWidthMm, side, side)
+}
+
+/** Umbral fijo (sin dither): el texto pequeño no se convierte en manchas negras. */
+function canvasToEscPosRasterPlain(canvas: HTMLCanvasElement): Uint8Array | null {
+  const w = canvas.width
+  const h = canvas.height
+  if (w % 8 !== 0 || h < 1) return null
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  const { data } = ctx.getImageData(0, 0, w, h)
+  const gray = new Uint8Array(w * h)
+  for (let i = 0; i < w * h; i++) {
+    const o = i * 4
+    const a = data[o + 3]!
+    if (a < 48) {
+      gray[i] = 255
+      continue
+    }
+    const lum = data[o]! * 0.299 + data[o + 1]! * 0.587 + data[o + 2]! * 0.114
+    gray[i] = lum < 190 ? 0 : 255
+  }
+  return grayscaleToEscPosRaster(gray, w, h)
+}
+
+function ticketBodyFontPx(paperWidthMm: 58 | 80): { fontSize: number; lineH: number } {
+  return paperWidthMm === 58
+    ? { fontSize: 24, lineH: 24 }
+    : { fontSize: 26, lineH: 26 }
+}
+
+/** Reparto ancho: texto ~50%, QR SUNAT lo más grande posible en la derecha. */
+export function ticketPaySunatLayout(paperWidthMm: 58 | 80): {
+  printW: number
+  qrSide: number
+  maxTextW: number
+  pad: number
+  fontSize: number
+  lineH: number
+} {
+  const printW = escposPrintWidthPx(paperWidthMm)
+  const pad = 4
+  const { fontSize, lineH } = ticketBodyFontPx(paperWidthMm)
+  const qrSide = paperWidthMm === 58 ? 172 : 216
+  const maxTextW = printW - qrSide - pad * 3
+  return { printW, qrSide, maxTextW, pad, fontSize, lineH }
+}
+
+function wrapCanvasLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const t = String(text ?? '').trim()
+  if (!t) return ['']
+  if (ctx.measureText(t).width <= maxWidth) return [t]
+  const words = t.split(/\s+/)
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word
+    if (ctx.measureText(next).width > maxWidth && current) {
+      lines.push(current)
+      current = word
+    } else {
+      current = next
+    }
+  }
+  if (current) lines.push(current)
+  return lines.length ? lines : [t]
+}
+
+function expandWrappedCanvasLines(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  maxWidth: number,
+): string[] {
+  const out: string[] = []
+  for (const line of lines) {
+    wrapCanvasLine(ctx, line, maxWidth).forEach((l) => out.push(l))
+  }
+  return out
+}
+
+/**
+ * Ticket: condición de pago (izq) + QR SUNAT (der) en un raster.
+ * Funciona igual en cualquier impresora térmica (sin retroceso de papel).
+ */
+export async function buildEscPosPayConditionSunatRowRaster(
+  leftTextLines: string[],
+  sunatQrPayload: string,
+  paperWidthMm: 58 | 80,
+): Promise<Uint8Array | null> {
+  if (typeof document === 'undefined') return null
+  const payload = String(sunatQrPayload ?? '').trim()
+  if (!payload) return null
+
+  const { printW, qrSide, maxTextW, pad, fontSize, lineH } = ticketPaySunatLayout(paperWidthMm)
+
+  try {
+    const gen = Math.round(qrSide * 2)
+    const qrDataUrl = await QRCode.toDataURL(payload, {
+      width: gen,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+    })
+    const qrImg = await loadImageElement(qrDataUrl)
+
+    const measureCanvas = document.createElement('canvas')
+    const measureCtx = measureCanvas.getContext('2d')
+    if (!measureCtx) return null
+    measureCtx.font = `normal ${fontSize}px Arial, Helvetica, sans-serif`
+    const wrappedLeft = expandWrappedCanvasLines(measureCtx, leftTextLines, maxTextW)
+
+    const textH = Math.max(lineH, wrappedLeft.length * lineH + pad + 2)
+    const totalH = Math.max(textH, qrSide + pad * 2)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = printW
+    canvas.height = totalH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, printW, totalH)
+    ctx.fillStyle = '#000000'
+    ctx.textBaseline = 'top'
+    ctx.font = `normal ${fontSize}px Arial, Helvetica, sans-serif`
+    wrappedLeft.forEach((line, i) => {
+      ctx.fillText(line, pad, pad + i * lineH)
+    })
+    const qrX = printW - qrSide - pad
+    const qrY = Math.max(pad, Math.floor((totalH - qrSide) / 2))
+    ctx.drawImage(qrImg, qrX, qrY, qrSide, qrSide)
+
+    return canvasToEscPosRasterPlain(canvas)
+  } catch {
+    return null
+  }
 }

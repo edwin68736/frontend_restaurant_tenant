@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, SearchCheck } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, RefreshCw, SearchCheck } from 'lucide-react'
+import { clsx } from 'clsx'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { companyService } from '@/services/company.service'
 import { consultaService } from '@/services/consulta.service'
@@ -14,6 +15,11 @@ import {
   contactDocSupportsConsulta,
   toContactDocCode,
 } from '@/utils/contactDocTypes'
+
+const BTN_ACTION_EDIT =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
+const BTN_ACTION_DELETE =
+  'inline-flex items-center justify-center p-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 shrink-0'
 
 const emptyForm = (): CreateContactInput => ({
   type: 'customer',
@@ -34,11 +40,15 @@ export default function ClientesPage() {
   const [saving, setSaving] = useState(false)
   const [consultando, setConsultando] = useState(false)
   const [tenantRuc, setTenantRuc] = useState('')
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false)
+  const [togglingActiveId, setTogglingActiveId] = useState<number | null>(null)
 
   const { inputValue: searchInput, setInputValue: setSearchInput, loading, isSearching, refresh } =
     useDebouncedApiSearch<Contact[]>({
       cacheScope: 'restaurant-clientes',
-      fetcher: (query, signal) => contactsService.list(query, 'customer', { signal }),
+      deps: [showInactiveOnly],
+      fetcher: (query, signal) =>
+        contactsService.list(query, 'customer', showInactiveOnly ? 'inactive' : 'active', { signal }),
       onSuccess: (d) => setContacts(d ?? []),
       onError: () => toast.error('Error al cargar clientes'),
     })
@@ -111,11 +121,15 @@ export default function ClientesPage() {
   }
 
   const handleToggle = async (c: Contact) => {
+    setTogglingActiveId(c.id)
     try {
       await contactsService.toggle(c.id)
+      toast.success(c.active ? 'Cliente desactivado' : 'Cliente activado')
       refresh()
     } catch {
       toast.error('Error al cambiar estado')
+    } finally {
+      setTogglingActiveId(null)
     }
   }
 
@@ -202,6 +216,27 @@ export default function ClientesPage() {
           className="flex-1 min-w-[180px] max-w-xs"
           inputClassName="text-sm"
         />
+        <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none rounded-xl border border-stone-200 bg-white px-3 py-2">
+          <span className="text-xs font-medium text-stone-700 whitespace-nowrap">Solo inactivos</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showInactiveOnly}
+            aria-label="Mostrar solo clientes inactivos"
+            onClick={() => setShowInactiveOnly((v) => !v)}
+            className={clsx(
+              'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50',
+              showInactiveOnly ? 'bg-amber-500' : 'bg-stone-300',
+            )}
+          >
+            <span
+              className={clsx(
+                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                showInactiveOnly ? 'translate-x-5' : 'translate-x-1',
+              )}
+            />
+          </button>
+        </label>
       </div>
 
       <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -214,18 +249,31 @@ export default function ClientesPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Teléfono</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Email</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Estado</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {contacts.map((c) => (
-                <tr key={c.id} className="border-b border-stone-100 hover:bg-stone-50/50">
+                <tr
+                  key={c.id}
+                  className={clsx(
+                    'border-b border-stone-100 hover:bg-stone-50/50',
+                    !c.active && 'bg-stone-50/80 opacity-75',
+                  )}
+                >
                   <td className="px-4 py-3 text-stone-600 text-xs font-mono whitespace-nowrap">
                     {CONTACT_DOC_TYPES.find((d) => d.code === toContactDocCode(c.doc_type))?.label ?? c.doc_type}{' '}
                     {c.doc_number}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-stone-800">{c.business_name}</p>
+                    <p className="font-medium text-stone-800 inline-flex items-center gap-1.5 flex-wrap">
+                      {c.business_name}
+                      {!c.active && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                          Inactivo
+                        </span>
+                      )}
+                    </p>
                     {c.trade_name && <p className="text-xs text-stone-400">{c.trade_name}</p>}
                   </td>
                   <td className="px-4 py-3 text-stone-500">{c.phone || '—'}</td>
@@ -239,31 +287,43 @@ export default function ClientesPage() {
                       {c.active ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => handleToggle(c)}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-rest-600 hover:bg-rest-50"
-                        title={c.active ? 'Desactivar' : 'Activar'}
+                        onClick={() => void handleToggle(c)}
+                        disabled={togglingActiveId === c.id}
+                        title={c.active ? 'Desactivar cliente' : 'Activar cliente'}
+                        className={clsx(
+                          'inline-flex items-center justify-center p-1.5 rounded-lg disabled:opacity-50 shrink-0',
+                          c.active
+                            ? 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                            : 'bg-amber-100 text-amber-800 hover:bg-amber-200',
+                        )}
                       >
-                        {c.active ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+                        {togglingActiveId === c.id ? (
+                          <RefreshCw size={16} className="animate-spin" />
+                        ) : c.active ? (
+                          <Eye size={16} />
+                        ) : (
+                          <EyeOff size={16} />
+                        )}
                       </button>
                       <button
                         type="button"
                         onClick={() => openEdit(c)}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-rest-600 hover:bg-rest-50"
+                        className={BTN_ACTION_EDIT}
                         title="Editar"
                       >
-                        <Pencil size={14} />
+                        <Pencil size={16} />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDelete(c.id)}
-                        className="p-1.5 rounded-lg text-stone-400 hover:text-red-500 hover:bg-red-50"
+                        className={BTN_ACTION_DELETE}
                         title="Eliminar"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -273,7 +333,11 @@ export default function ClientesPage() {
           </table>
         </div>
         {contacts.length === 0 && (
-          <div className="text-center py-12 text-stone-500 text-sm">No hay clientes. Agregue uno para usarlos en ventas y facturación.</div>
+          <div className="text-center py-12 text-stone-500 text-sm">
+            {showInactiveOnly
+              ? 'No hay clientes inactivos.'
+              : 'No hay clientes activos. Agregue uno o active el switch «Solo inactivos» para ver desactivados.'}
+          </div>
         )}
       </div>
 

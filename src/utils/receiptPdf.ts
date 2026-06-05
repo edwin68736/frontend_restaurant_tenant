@@ -1,14 +1,14 @@
 import { jsPDF } from 'jspdf'
-import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { formatMoney } from '@/utils/format'
-import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { ticketDetailLayout4Col } from '@/utils/receiptTicketLayout'
 import { renderA4ReceiptPdf } from '@/utils/receiptPdfA4'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
+import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
+import { renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
 import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
@@ -26,10 +26,6 @@ const A4_WIDTH = 210
 export type ReceiptPdfOptions = {
   /** Ancho de rollo (58 o 80 mm). Por defecto 80. */
   paperWidthMm?: TicketPaperWidthMm
-}
-
-function paymentLabel(method: string): string {
-  return salePaymentMethodLabelEs(method)
 }
 
 function docClientLabel(docType: string): string {
@@ -116,6 +112,19 @@ export async function generateReceiptPdf(
     const align = isTicket ? 'center' : 'left'
     if (data.company.phone) addWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM, align)
     if (data.company.email) addWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM, align)
+    if (isTicket) {
+      const extra = trimCompanyAdditionalNotes(data.company.additional_notes)
+      if (extra) {
+        doc.setTextColor(0, 0, 0)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(FONT_SIZE_SM)
+        const lines = doc.splitTextToSize(ticketText(extra), innerW) as string[]
+        for (const line of lines) {
+          doc.text(line, margin, y)
+          y += 4.2
+        }
+      }
+    }
     if (data.company.website) addWrapped(`Web: ${data.company.website}`, FONT_SIZE_SM, align)
   }
 
@@ -127,19 +136,6 @@ export async function generateReceiptPdf(
       const label = [b.bank_name, b.name].filter(Boolean).join(' - ')
       if (label) addWrapped(label)
       if (b.account_number) addWrapped(`Cta: ${b.account_number} (${b.currency || data.currency})`)
-    }
-  }
-
-  const addPaymentsBlock = () => {
-    if (data.payment_condition) {
-      addWrapped(`Condición de pago: ${data.payment_condition}`)
-    }
-    if (data.payments.length > 0) {
-      addWrapped('Pagos detallados:', FONT_SIZE_SM)
-      for (const p of data.payments) {
-        const ref = p.reference?.trim() ? ` Ref: ${p.reference}` : ''
-        addWrapped(`${paymentLabel(p.method)}: ${formatMoney(p.amount, data.currency)}${ref}`)
-      }
     }
   }
 
@@ -256,32 +252,24 @@ export async function generateReceiptPdf(
       y += 2
     }
 
+    y = await renderTicketPaymentAndSunatQrRow(doc, data, {
+      showSunatQr: showQr,
+      y,
+      pageW,
+      margin,
+      innerW,
+      lineH: ticketLineH,
+      normalize: ticketText,
+    })
+
     addBankAccounts()
-    addPaymentsBlock()
-    if (data.seller_name) {
-      addWrapped(`Vendedor: ${data.seller_name}`, FONT_SIZE_SM, 'left')
-    }
 
     if (paymentWalletVisible(data, 'ticket')) {
       y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
     }
 
-    if (showQr) {
-      try {
-        const qrDataUrl = await QRCode.toDataURL(data.qr_data, { width: 40, margin: 1 })
-        const qrSize = 25
-        doc.addImage(qrDataUrl, 'PNG', (pageW - qrSize) / 2, y, qrSize, qrSize)
-        y += qrSize + 4
-      } catch {
-        /* ignore */
-      }
-    }
-    if (data.sunat_hash && showQr) {
-      addWrapped(`Hash: ${data.sunat_hash}`, FONT_SIZE_SM, 'center')
-    }
-    if (showQr) {
-      addWrapped('Representación impresa del comprobante electrónico', FONT_SIZE_SM, 'center')
-      addWrapped('Consulte en sunat.gob.pe', FONT_SIZE_SM, 'center')
+    if (data.seller_name) {
+      addWrapped(`Vendedor: ${data.seller_name}`, FONT_SIZE_SM, 'left')
     }
 
     addFooter()

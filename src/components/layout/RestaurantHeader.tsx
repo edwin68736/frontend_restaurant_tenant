@@ -1,20 +1,29 @@
-import { useMemo, useState } from 'react'
-import { Menu } from 'lucide-react'
+import { useMemo } from 'react'
+import { clsx } from 'clsx'
+import { Menu, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
-import { getStoredTenant } from '@/services/public.service'
 import { NAV_GROUPS } from '@/config/restaurantNav'
-import BrandWordmark from './BrandWordmark'
+import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import TopNavigation from './TopNavigation'
-import ManagementNavDropdown from './ManagementNavDropdown'
-import ResponsiveMenu from './ResponsiveMenu'
 import UserDropdown from './UserDropdown'
 import CashSessionBadge from './CashSessionBadge'
 import SubscriptionHeaderBadge from './SubscriptionHeaderBadge'
+import { useTenantDisplay } from '@/hooks/useTenantDisplay'
 
-export default function RestaurantHeader() {
-  const { canAccess } = useAuth()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const tenant = getStoredTenant()
+type Props = {
+  onMenuClick: () => void
+  sidebarCollapsed: boolean
+  onToggleSidebar: () => void
+}
+
+const SIDEBAR_TOGGLE_CLASS =
+  'inline-flex items-center justify-center text-rest-600 hover:bg-rest-50 hover:text-rest-700 transition-colors shrink-0 touch-manipulation'
+
+export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
+  const { canAccess, restaurantPermissions, employeeType } = useAuth()
+  const { title: tenantTitle, ruc: tenantRuc } = useTenantDisplay()
+  /** Móvil/tablet (<lg): sin sidebar fijo. Desktop: solo con sidebar mini. */
+  const showTenantOnDesktop = sidebarCollapsed
 
   const visibleGroups = useMemo(
     () =>
@@ -25,60 +34,73 @@ export default function RestaurantHeader() {
     [canAccess],
   )
 
-  const managementItems = useMemo(
-    () => visibleGroups.find((g) => g.id === 'management')?.items ?? [],
-    [visibleGroups],
-  )
+  const hasSidebarNav =
+    visibleGroups.some((g) => g.id !== 'operations' && g.items.length > 0) ||
+    canAccessAppSettings(restaurantPermissions, employeeType)
+
+  const operations = visibleGroups.find((g) => g.id === 'operations')?.items ?? []
 
   return (
-    <>
-      <header className="sticky top-0 z-[100] shrink-0 bg-white/95 backdrop-blur-md border-b border-stone-200/80 shadow-sm shadow-stone-900/5">
-        <div className="flex items-center gap-1.5 sm:gap-3 min-h-14 py-1.5 sm:py-0 sm:h-14 px-2 sm:px-4 lg:px-5 w-full">
-          {managementItems.length > 0 ? (
-            <div className="hidden lg:block shrink-0">
-              <ManagementNavDropdown items={managementItems} />
-            </div>
+    <header className="relative flex shrink-0 items-center min-h-[3.25rem] w-full rounded-2xl bg-white pl-0 pr-2 sm:pr-3">
+      <div className="flex shrink-0 items-stretch self-stretch">
+        {hasSidebarNav ? (
+          <button
+            type="button"
+            onClick={onMenuClick}
+            className={`lg:hidden min-h-[3.25rem] min-w-[44px] px-2.5 rounded-l-2xl ${SIDEBAR_TOGGLE_CLASS}`}
+            aria-label="Abrir menú lateral"
+          >
+            <Menu size={20} strokeWidth={2} />
+          </button>
+        ) : null}
+
+        {hasSidebarNav ? (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className={`hidden lg:inline-flex min-h-[3.25rem] px-2.5 rounded-l-2xl ${SIDEBAR_TOGGLE_CLASS}`}
+            title={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
+            aria-label={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
+          >
+            {sidebarCollapsed ? <PanelLeft size={20} strokeWidth={2} /> : <PanelLeftClose size={20} strokeWidth={2} />}
+          </button>
+        ) : null}
+      </div>
+
+      <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 lg:flex-none py-1.5 pl-1 pr-2 overflow-hidden">
+        <div
+          className={clsx(
+            'min-w-0 flex-col justify-center shrink-0 max-w-[min(100%,9rem)] sm:max-w-[11rem] lg:max-w-[min(100%,11rem)] xl:max-w-[14rem]',
+            showTenantOnDesktop ? 'flex' : 'flex lg:hidden',
+          )}
+        >
+          <p className="text-xs sm:text-sm font-bold text-stone-900 leading-tight truncate">{tenantTitle}</p>
+          {tenantRuc ? (
+            <p className="text-[10px] sm:text-xs text-stone-500 leading-tight truncate font-mono tabular-nums">
+              RUC {tenantRuc}
+            </p>
           ) : null}
-          {/* Marca + empresa (+ plan en lg+) */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 overflow-hidden">
-            <BrandWordmark size="sm" className="sm:hidden" />
-            <BrandWordmark size="md" className="hidden sm:inline" />
-            <div className="flex items-center gap-2 min-w-0 flex-1 lg:flex-none">
-              <div className="min-w-0 flex-1 lg:max-w-[min(100%,12rem)] xl:max-w-[14rem]">
-                <p className="text-[11px] min-[360px]:text-xs sm:text-sm md:text-base font-bold text-stone-900 leading-tight truncate">
-                  {tenant?.name || 'Restaurante'}
-                </p>
-                {tenant?.ruc ? (
-                  <p className="text-[9px] min-[360px]:text-[10px] sm:text-xs text-stone-500 truncate leading-tight">
-                    RUC: {tenant.ruc}
-                  </p>
-                ) : null}
-              </div>
-              <span className="hidden lg:block w-px h-8 bg-stone-200 shrink-0" aria-hidden />
-              <SubscriptionHeaderBadge />
-            </div>
-          </div>
-
-          {/* Navegación desktop */}
-          <TopNavigation groups={visibleGroups} variant="desktop" />
-
-          {/* Derecha */}
-          <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
-            <CashSessionBadge />
-            <UserDropdown />
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              className="lg:hidden p-2 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 transition-colors touch-manipulation"
-              aria-label="Abrir menú"
-            >
-              <Menu size={20} />
-            </button>
-          </div>
         </div>
-      </header>
+        <span
+          className={clsx(
+            'w-px h-7 sm:h-8 bg-stone-200 shrink-0',
+            showTenantOnDesktop ? 'block' : 'block lg:hidden',
+          )}
+          aria-hidden
+        />
+        <SubscriptionHeaderBadge />
+      </div>
 
-      <ResponsiveMenu open={menuOpen} onClose={() => setMenuOpen(false)} groups={visibleGroups} />
-    </>
+      {operations.length > 0 ? (
+        <div className="pointer-events-none absolute inset-0 hidden lg:flex items-center justify-center">
+          <TopNavigation groups={visibleGroups} variant="desktop" className="pointer-events-auto" />
+        </div>
+      ) : null}
+
+      <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0 py-1.5 pl-2">
+        <CashSessionBadge />
+        <UserDropdown />
+      </div>
+    </header>
   )
 }

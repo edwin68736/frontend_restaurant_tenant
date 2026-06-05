@@ -2,11 +2,16 @@ import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
-import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
-import { buildEscPosLogoRaster, buildEscPosWalletQrRaster } from '@/utils/escposRasterImage'
+import {
+  buildEscPosLogoRaster,
+  buildEscPosPayConditionSunatRowRaster,
+  buildEscPosWalletQrRaster,
+} from '@/utils/escposRasterImage'
+import { bankAccountTextLines, paymentConditionLeftLines } from '@/utils/receiptTicketFooter'
 import { paymentWalletVisible, walletProviderLabel } from '@/utils/receiptPaymentWallet'
 import { resolvePublicAssetUrl } from '@/services/api'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
+import { trimCompanyAdditionalNotes, wrapCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
   getConfiguredComandaDefaultPrinter,
@@ -485,7 +490,12 @@ export async function buildSaleDocumentEscPos(
   if (addr) wrapText(addr, cols).forEach((x) => companyLines.push(x))
   if (printData.company?.phone) companyLines.push(`Telf: ${printData.company.phone}`)
   if (printData.company?.email) companyLines.push(`Email: ${printData.company.email}`)
-  if (printData.company?.website) companyLines.push(`Web: ${printData.company.website}`)
+  const additionalNotes = trimCompanyAdditionalNotes(printData.company?.additional_notes)
+  const companyAdditionalLines = additionalNotes
+    ? wrapCompanyAdditionalNotes(additionalNotes, cols, wrapText)
+    : []
+  const companyTailLines: string[] = []
+  if (printData.company?.website) companyTailLines.push(`Web: ${printData.company.website}`)
 
   const docHeaderLines: string[] = []
   wrapText(getTipoComprobanteLabel(printData.sunat_code, printData.doc_type), cols).forEach((x) =>
@@ -532,30 +542,6 @@ export async function buildSaleDocumentEscPos(
   }
 
   const tailLines: string[] = []
-
-  const banks = printData.bank_accounts ?? []
-  if (banks.length > 0) {
-    tailLines.push('-'.repeat(cols))
-    tailLines.push('INFORMACION BANCARIA')
-    for (const b of banks) {
-      if (b.bank_name) wrapText(b.bank_name, cols).forEach((x) => tailLines.push(x))
-      if (b.account_number) tailLines.push(`Cta: ${b.account_number}`)
-    }
-  }
-
-  if (printData.payment_condition) {
-    tailLines.push('-'.repeat(cols))
-    tailLines.push(`Condicion de pago: ${printData.payment_condition}`)
-  }
-  if (printData.payments?.length) {
-    tailLines.push('Pagos detallados:')
-    for (const p of printData.payments) {
-      const lbl = salePaymentMethodLabelEs(p.method)
-      const ref = p.reference?.trim() ? ` Ref:${p.reference}` : ''
-      tailLines.push(`${lbl}: ${money(p.amount ?? 0)}${ref}`)
-    }
-  }
-
   if (printData.seller_name) {
     tailLines.push(`Vendedor: ${printData.seller_name}`)
   }
@@ -576,6 +562,8 @@ export async function buildSaleDocumentEscPos(
   }
 
   escposPushLines(out, companyLines, 'center')
+  if (companyAdditionalLines.length) escposPushLines(out, companyAdditionalLines, 'left')
+  if (companyTailLines.length) escposPushLines(out, companyTailLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'center')
   escposPushLines(out, docHeaderLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'left')
@@ -586,7 +574,56 @@ export async function buildSaleDocumentEscPos(
     out.push(...Array.from(textBytes('\n')))
     escposPushLines(out, legendLines, 'left')
   }
-  if (tailLines.length) escposPushLines(out, tailLines, 'left')
+  const hasPayBlock =
+    showQr ||
+    Boolean(printData.payment_condition) ||
+    (printData.payments?.length ?? 0) > 0
+
+  if (hasPayBlock) {
+    out.push(...Array.from(textBytes('\n')))
+    const leftCol = Math.max(14, Math.floor(cols * 0.5))
+    const leftLines: string[] = []
+    for (const raw of paymentConditionLeftLines(printData)) {
+      wrapText(raw, leftCol).forEach((l) => leftLines.push(l))
+    }
+
+    if (showQr && printData.qr_data) {
+      // Una sola imagen (texto + QR): compatible con cualquier marca térmica.
+      const rowRaster = await buildEscPosPayConditionSunatRowRaster(
+        leftLines,
+        printData.qr_data,
+        paperWidthMm,
+      )
+      if (rowRaster?.length) {
+        out.push(...escposAlign('center'))
+        out.push(...Array.from(rowRaster))
+      } else {
+        escposPushLines(out, leftLines, 'left')
+        out.push(...escposAlign('center'))
+        out.push(
+          ...escposQr(printData.qr_data, {
+            moduleSize: paperWidthMm === 58 ? 7 : 9,
+            ecc: 'M',
+          }),
+        )
+      }
+    } else {
+      escposPushLines(out, leftLines, 'left')
+    }
+    if (showQr && printData.sunat_hash) {
+      escposPushLines(out, wrapText(`Hash: ${printData.sunat_hash}`, cols), 'center')
+    }
+    if (showQr) {
+      escposPushLines(out, wrapText('Representacion impresa CPE', cols), 'center')
+      escposPushLines(out, wrapText('Consulte en sunat.gob.pe', cols), 'center')
+    }
+  }
+
+  const bankLines = bankAccountTextLines(printData)
+  if (bankLines.length > 0) {
+    out.push(...Array.from(textBytes('\n')))
+    escposPushLines(out, ['-'.repeat(cols), ...bankLines], 'left')
+  }
 
   if (paymentWalletVisible(printData, 'ticket')) {
     const w = printData.payment_wallet!
@@ -606,21 +643,9 @@ export async function buildSaleDocumentEscPos(
     }
   }
 
-  if (showQr && printData.qr_data) {
-    out.push(...escposAlign('center'))
+  if (tailLines.length) {
     out.push(...Array.from(textBytes('\n')))
-    out.push(
-      ...escposQr(printData.qr_data, {
-        moduleSize: paperWidthMm === 58 ? 6 : 8,
-        ecc: 'M',
-      }),
-    )
-    out.push(...Array.from(textBytes('\n')))
-    if (printData.sunat_hash) {
-      escposPushLines(out, wrapText(`Hash: ${printData.sunat_hash}`, cols), 'center')
-    }
-    escposPushLines(out, wrapText('Representacion impresa CPE', cols), 'center')
-    escposPushLines(out, wrapText('Consulte en sunat.gob.pe', cols), 'center')
+    escposPushLines(out, tailLines, 'left')
   }
 
   out.push(...escposAlign('center'))

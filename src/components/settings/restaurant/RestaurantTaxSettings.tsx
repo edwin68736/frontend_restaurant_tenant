@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { Save, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type SunatConfig } from '@/services/company.service'
-import { DEFAULT_TAX_RATE_PERCENT, resolveTaxRatePercent } from '@/constants/tax'
+import {
+  DEFAULT_TAX_RATE_PERCENT,
+  IGV_RATE_OPTIONS,
+  normalizeIgvRateForSelect,
+  type IgvRateOption,
+} from '@/constants/tax'
 
 export function RestaurantTaxSettings() {
   const [sunatEnabled, setSunatEnabled] = useState(false)
@@ -20,7 +25,7 @@ export function RestaurantTaxSettings() {
       .then((data) => {
         setSunatEnabled(data.sunat_enabled ?? false)
         setForm({
-          tax_rate: resolveTaxRatePercent(data.tax_rate),
+          tax_rate: normalizeIgvRateForSelect(data.tax_rate),
           igv_regime: data.igv_regime || 'standard',
           tax_benefit_zone: data.tax_benefit_zone ?? false,
         })
@@ -72,15 +77,22 @@ export function RestaurantTaxSettings() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-stone-600 mb-1">Tasa IGV (%)</label>
-            <input
-              type="number"
-              min={0}
-              max={30}
-              step={0.01}
+            <select
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
               value={form.tax_rate ?? DEFAULT_TAX_RATE_PERCENT}
-              onChange={(e) => setForm((f) => ({ ...f, tax_rate: Number(e.target.value) || 0 }))}
-            />
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  tax_rate: Number(e.target.value) as IgvRateOption,
+                }))
+              }
+            >
+              {IGV_RATE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-stone-600 mb-1">Régimen IGV</label>

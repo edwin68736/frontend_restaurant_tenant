@@ -24,6 +24,7 @@ import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
+import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
 import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
@@ -898,10 +899,9 @@ export default function POSPage() {
       if (!code || scanProcessing) return
       setScanProcessing(true)
       try {
-        const { data } = await productsService.list(code, true, 1, 50, undefined, undefined, activeBranchId ?? undefined)
-        const norm = (s: string) => s.trim().toLowerCase()
-        const exact = data.find((p) => norm(p.code) === norm(code))
-        const product = exact ?? (data.length === 1 ? data[0] : undefined)
+        let product =
+          findProductByBarcodeInList(products, code) ??
+          (await productsService.lookupByBarcode(code, activeBranchId ?? undefined))
         if (product) {
           addProduct(product)
           setSearch('')
@@ -916,7 +916,7 @@ export default function POSPage() {
         setScanProcessing(false)
       }
     },
-    [addProduct, scanProcessing, setSearch, activeBranchId],
+    [addProduct, scanProcessing, setSearch, activeBranchId, products],
   )
   const setQty = (index: number, qty: number) => {
     if (qty <= 0) setCart((c) => c.filter((_, i) => i !== index))
