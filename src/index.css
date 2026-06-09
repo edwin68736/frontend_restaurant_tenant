@@ -8,7 +8,8 @@
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --app-header-offset: 0px;
-  --app-bottom-nav-offset: 0px;
+  --mobile-bottom-nav-height: 3.5rem;
+  --app-bottom-nav-offset: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom));
 }
 
 html {
@@ -59,6 +60,19 @@ html.platform-capacitor body {
   }
   .min-h-screen-safe {
     min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  }
+
+  /** Espacio bajo el contenido para no quedar detrás del menú inferior móvil (h-14 + safe area). */
+  .pb-mobile-nav {
+    padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom) + 0.5rem);
+    scroll-padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom) + 0.5rem);
+  }
+
+  @media (min-width: 1024px) {
+    .pb-mobile-nav {
+      padding-bottom: 0;
+      scroll-padding-bottom: 0;
+    }
   }
 }
 
@@ -114,5 +128,52 @@ html.platform-capacitor body {
 
 .fly-cart-particle {
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
+}
+
+/* Sidebar: icono YouTube con pulso y triángulo play en loop */
+@keyframes youtube-bg-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes youtube-play-loop {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  38% {
+    transform: translateX(2px) scale(1.04);
+    opacity: 1;
+  }
+  52% {
+    transform: translateX(5px);
+    opacity: 0;
+  }
+  53% {
+    transform: translateX(-5px);
+    opacity: 0;
+  }
+  68% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.youtube-icon-bg {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: youtube-bg-pulse 2.4s ease-in-out infinite;
+}
+
+.youtube-icon-play-wrap {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: youtube-play-loop 2.4s ease-in-out infinite;
 }
 

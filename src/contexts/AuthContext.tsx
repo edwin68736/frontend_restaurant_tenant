@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import { authService, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
+import { resetReloginGuard, SESSION_EXPIRED_EVENT } from '@/services/api'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { featureAllowed, type RestaurantFeature } from '@/utils/restaurantPermissions'
 import { toast } from 'sonner'
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   const applySession = useCallback((data: SessionPayload) => {
+    resetReloginGuard()
     const user = data.user
     const perms = data.restaurant_permissions ?? []
     const { employeeType, staffId } = readUserMeta(user)
@@ -79,6 +81,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       restaurantPermissions: perms,
     })
     window.dispatchEvent(new CustomEvent('tukichef-session-applied'))
+  }, [])
+
+  useEffect(() => {
+    const onSessionExpired = () => {
+      authService.logout()
+      localStorage.removeItem(PERMS_KEY)
+      localStorage.removeItem('active_branch')
+      localStorage.removeItem('allowed_branches')
+      localStorage.removeItem('can_switch_branch')
+      setState({
+        user: null,
+        token: null,
+        isAuthenticated: false,
+        isLoading: false,
+        employeeType: '',
+        staffId: null,
+        restaurantPermissions: [],
+      })
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
   }, [])
 
   useEffect(() => {

@@ -12,7 +12,7 @@ export default function SubscriptionHeaderBadge() {
 
   if (plan.state === 'loading') {
     return (
-      <div className="hidden lg:flex h-9 w-28 items-center justify-center rounded-xl border border-stone-200 bg-stone-50 shrink-0">
+      <div className="hidden lg:flex h-8 w-24 xl:h-9 xl:w-28 items-center justify-center rounded-lg xl:rounded-xl border border-stone-200 bg-stone-50 shrink-0">
         <Loader2 size={14} className="animate-spin text-stone-400" />
       </div>
     )
@@ -24,23 +24,23 @@ export default function SubscriptionHeaderBadge() {
     <Link
       to="/suscripcion"
       title={tooltip}
-      className={`hidden lg:flex items-center gap-2 rounded-xl border px-2.5 py-1.5 transition-all hover:shadow-md shrink-0 ${accent}`}
+      className={`hidden lg:flex items-center gap-1.5 xl:gap-2 rounded-lg xl:rounded-xl border px-2 py-1 xl:px-2.5 xl:py-1.5 transition-all hover:shadow-md shrink-0 max-w-[9.5rem] xl:max-w-none ${accent}`}
     >
       <div className="flex flex-col items-end leading-none min-w-0">
-        <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-white/90' : 'text-stone-500'}`}>
+        <span className={`text-[9px] xl:text-[10px] font-bold uppercase tracking-wide xl:tracking-wider truncate max-w-full ${isDark ? 'text-white/90' : 'text-stone-500'}`}>
           {planName}
         </span>
         <span
-          className={`inline-flex items-center gap-0.5 mt-0.5 text-[9px] font-bold uppercase ${paymentToneClass(
+          className={`inline-flex items-center gap-0.5 mt-0.5 text-[8px] xl:text-[9px] font-bold uppercase ${paymentToneClass(
             hub.billing_context?.current_payment_tone ?? 'success',
           )}`}
         >
-          <PayDot kind={pay.icon} />
-          {pay.label}
+          <PayDot kind={pay.icon} size={10} />
+          <span className="truncate">{pay.label}</span>
         </span>
       </div>
-      <span className={`w-px h-7 shrink-0 ${isDark ? 'bg-white/20' : 'bg-stone-200'}`} aria-hidden />
-      <div className={`text-[10px] leading-tight text-right shrink-0 ${isDark ? 'text-stone-200' : 'text-stone-600'}`}>
+      <span className={`hidden xl:block w-px h-7 shrink-0 ${isDark ? 'bg-white/20' : 'bg-stone-200'}`} aria-hidden />
+      <div className={`hidden xl:block text-[10px] leading-tight text-right shrink-0 ${isDark ? 'text-stone-200' : 'text-stone-600'}`}>
         <span className={`block font-medium ${isDark ? 'text-white/60' : 'text-stone-400'}`}>Próximo</span>
         <span className={`font-semibold whitespace-nowrap ${isDark ? 'text-white' : 'text-stone-800'}`}>{dateLabel}</span>
       </div>

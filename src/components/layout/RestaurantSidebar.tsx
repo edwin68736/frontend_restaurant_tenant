@@ -10,6 +10,7 @@ import { BRAND_LOGO } from '@/config/branding'
 import BrandWordmark from './BrandWordmark'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import SubscriptionSidebarCard from './SubscriptionSidebarCard'
+import SidebarTutorialsLink from './SidebarTutorialsLink'
 
 const STORAGE_KEY = 'restaurant_sidebar_collapsed'
 
@@ -185,6 +186,12 @@ export default function RestaurantSidebar({
 
       <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain px-2 py-3 space-y-4">
         {showPlanInSidebar ? <SubscriptionSidebarCard onNavigate={onClose} /> : null}
+
+        <SidebarTutorialsLink
+          collapsed={isCollapsed}
+          mini={isMini}
+          onNavigate={onClose}
+        />
 
         {sidebarGroups.map((group) => (
           <NavGroupSection

@@ -56,16 +56,34 @@ export function RestaurantOperationSettings() {
 
   const staffWithAccess = rows.filter((r) => r.employee_type)
 
+  const renderStaffRole = (row: RestaurantStaffManagementRow) => {
+    if (row.employee_type) {
+      return (
+        <span className="inline-flex px-2 py-0.5 rounded-lg bg-rest-50 text-rest-800 text-xs font-medium">
+          {EMPLOYEE_TYPE_LABELS[row.employee_type] ?? row.employee_type}
+        </span>
+      )
+    }
+    if (row.profile_complete === false && row.active) {
+      return (
+        <span className="inline-flex px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 text-xs font-medium">
+          Registro incompleto
+        </span>
+      )
+    }
+    return <span className="text-stone-400 text-xs">Sin acceso restaurante</span>
+  }
+
   return (
-    <div className="space-y-5">
-      <section className="bg-white border border-stone-200 rounded-2xl p-5">
+    <div className="space-y-4 sm:space-y-5">
+      <section className="bg-white border border-stone-200 rounded-xl sm:rounded-2xl p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
-            <Shield size={18} />
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <Shield size={17} className="sm:w-[18px] sm:h-[18px]" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-stone-900">PIN de operaciones</h2>
-            <p className="text-sm text-stone-600 mt-1">
+            <h2 className="font-bold text-stone-900 text-base sm:text-lg">PIN de operaciones</h2>
+            <p className="text-xs sm:text-sm text-stone-600 mt-1">
               Para anular pedidos, comandas y otras acciones sensibles.
             </p>
             <p className="text-xs mt-2 text-stone-500">
@@ -97,36 +115,39 @@ export function RestaurantOperationSettings() {
         </div>
       </section>
 
-      <section className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
-        <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-rest-50 text-rest-700 flex items-center justify-center shrink-0">
-              <Users size={18} />
+      <section className="bg-white border border-stone-200 rounded-xl sm:rounded-2xl overflow-hidden">
+        <div className="p-3 sm:p-4 border-b border-stone-200 flex flex-col gap-3">
+          <div className="flex items-start gap-3 min-w-0 w-full">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rest-50 text-rest-700 flex items-center justify-center shrink-0">
+              <Users size={17} className="sm:w-[18px] sm:h-[18px]" />
             </div>
-            <div className="min-w-0">
-              <h2 className="font-bold text-stone-900">Usuarios del restaurante</h2>
-              <p className="text-sm text-stone-600">
-                {rows.length} en total · {staffWithAccess.length} con acceso al restaurante
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-stone-900 text-base sm:text-lg leading-tight">Usuarios del restaurante</h2>
+              <p className="text-xs sm:text-sm text-stone-600 mt-0.5">
+                {rows.length} en total · {staffWithAccess.length} con acceso
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2 sm:shrink-0">
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rest-600 text-white text-sm font-medium hover:bg-rest-700"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl bg-rest-600 text-white text-xs sm:text-sm font-medium hover:bg-rest-700 min-w-0"
             >
-              <Plus size={16} />
-              Nuevo usuario
+              <Plus size={15} className="shrink-0 sm:w-4 sm:h-4" />
+              <span className="truncate sm:hidden">Nuevo</span>
+              <span className="truncate hidden sm:inline">Nuevo usuario</span>
             </button>
             <button
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+              title="Actualizar"
+              aria-label="Actualizar lista"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl border border-stone-200 text-xs sm:text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50 min-w-0"
             >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              Actualizar
+              <RefreshCw size={15} className={`shrink-0 sm:w-4 sm:h-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Actualizar</span>
             </button>
           </div>
         </div>
@@ -136,7 +157,40 @@ export function RestaurantOperationSettings() {
             <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="md:hidden divide-y divide-stone-100">
+            {rows.map((row) => (
+              <div key={row.user_id} className={`p-3 space-y-2 ${!row.active ? 'opacity-50' : ''}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-stone-800 text-sm leading-tight">{row.name}</p>
+                    <p className="text-xs text-stone-500 truncate">{row.email}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(row)}
+                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50 shrink-0"
+                  >
+                    <Pencil size={14} />
+                    Editar
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {renderStaffRole(row)}
+                  {row.employee_type ? (
+                    <span className="text-[11px] text-stone-500">
+                      PIN: {row.has_pin ? 'Configurado' : 'Sin PIN'}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-stone-600">
+                  <span className="text-stone-400">Sucursales: </span>
+                  {row.branch_names?.length ? row.branch_names.join(', ') : row.employee_type ? 'Sin asignar' : '—'}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-stone-50/80 text-left text-xs text-stone-500 uppercase tracking-wide">
@@ -165,19 +219,7 @@ export function RestaurantOperationSettings() {
                         '—'
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      {row.employee_type ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-lg bg-rest-50 text-rest-800 text-xs font-medium">
-                          {EMPLOYEE_TYPE_LABELS[row.employee_type] ?? row.employee_type}
-                        </span>
-                      ) : row.profile_complete === false && row.active ? (
-                        <span className="inline-flex px-2 py-0.5 rounded-lg bg-amber-50 text-amber-900 text-xs font-medium">
-                          Registro incompleto
-                        </span>
-                      ) : (
-                        <span className="text-stone-400 text-xs">Sin acceso restaurante</span>
-                      )}
-                    </td>
+                    <td className="px-4 py-3">{renderStaffRole(row)}</td>
                     <td className="px-4 py-3 text-xs text-stone-600">
                       {!row.employee_type ? '—' : row.has_pin ? 'Configurado' : 'Sin PIN'}
                     </td>
@@ -196,6 +238,7 @@ export function RestaurantOperationSettings() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 

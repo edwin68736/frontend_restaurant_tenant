@@ -41,7 +41,7 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
   const operations = visibleGroups.find((g) => g.id === 'operations')?.items ?? []
 
   return (
-    <header className="relative flex shrink-0 items-center min-h-[3.25rem] w-full rounded-2xl bg-white pl-0 pr-2 sm:pr-3">
+    <header className="relative flex shrink-0 items-center min-h-[3.25rem] lg:min-h-[3rem] xl:min-h-[3.25rem] w-full rounded-2xl bg-white pl-0 pr-2 sm:pr-3 lg:pr-2 xl:pr-3">
       <div className="flex shrink-0 items-stretch self-stretch">
         {hasSidebarNav ? (
           <button
@@ -58,7 +58,7 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
           <button
             type="button"
             onClick={onToggleSidebar}
-            className={`hidden lg:inline-flex min-h-[3.25rem] px-2.5 rounded-l-2xl ${SIDEBAR_TOGGLE_CLASS}`}
+            className={`hidden lg:inline-flex min-h-[3rem] xl:min-h-[3.25rem] px-2 lg:px-2 xl:px-2.5 rounded-l-2xl ${SIDEBAR_TOGGLE_CLASS}`}
             title={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
             aria-label={sidebarCollapsed ? 'Expandir menú lateral' : 'Colapsar menú lateral'}
           >
@@ -67,24 +67,27 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
         ) : null}
       </div>
 
-      <div className="relative z-10 flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1 lg:flex-none py-1.5 pl-1 pr-2 overflow-hidden">
+      <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 lg:gap-1.5 xl:gap-2.5 min-w-0 flex-1 lg:flex-none py-1.5 lg:py-1 xl:py-1.5 pl-1 pr-1 sm:pr-2 lg:pr-1 xl:pr-2 overflow-hidden">
         <div
           className={clsx(
-            'min-w-0 flex-col justify-center shrink-0 max-w-[min(100%,9rem)] sm:max-w-[11rem] lg:max-w-[min(100%,11rem)] xl:max-w-[14rem]',
+            'min-w-0 flex-col justify-center shrink-0 max-w-[38%] sm:max-w-[9rem] lg:max-w-[7.5rem] xl:max-w-[14rem]',
             showTenantOnDesktop ? 'flex' : 'flex lg:hidden',
           )}
         >
-          <p className="text-xs sm:text-sm font-bold text-stone-900 leading-tight truncate">{tenantTitle}</p>
+          <p className="text-xs sm:text-sm lg:text-xs xl:text-sm font-bold text-stone-900 leading-tight truncate">{tenantTitle}</p>
           {tenantRuc ? (
-            <p className="text-[10px] sm:text-xs text-stone-500 leading-tight truncate font-mono tabular-nums">
+            <p className="hidden xl:block text-[10px] sm:text-xs text-stone-500 leading-tight truncate font-mono tabular-nums">
               RUC {tenantRuc}
             </p>
           ) : null}
         </div>
+        <div className="flex flex-1 justify-center min-w-0 px-0.5 lg:hidden">
+          <CashSessionBadge compact />
+        </div>
         <span
           className={clsx(
-            'w-px h-7 sm:h-8 bg-stone-200 shrink-0',
-            showTenantOnDesktop ? 'block' : 'block lg:hidden',
+            'w-px h-7 sm:h-8 lg:h-6 xl:h-8 bg-stone-200 shrink-0',
+            showTenantOnDesktop ? 'block' : 'hidden lg:block',
           )}
           aria-hidden
         />
@@ -97,7 +100,7 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
         </div>
       ) : null}
 
-      <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 ml-auto shrink-0 py-1.5 pl-2">
+      <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 lg:gap-1 xl:gap-2 ml-auto shrink-0 py-1.5 lg:py-1 xl:py-1.5 pl-2 lg:pl-1 xl:pl-2">
         <CashSessionBadge />
         <UserDropdown />
       </div>

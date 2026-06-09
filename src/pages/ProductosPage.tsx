@@ -487,35 +487,42 @@ export default function ProductosPage() {
           ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
           : 'Seleccione una sucursal activa para administrar el catálogo.'
       }
+      subtitleClassName="hidden sm:block"
       actions={
-        <>
+        <div className="grid grid-cols-2 gap-1.5 w-full sm:flex sm:flex-wrap sm:gap-2 lg:w-auto">
           <button
             type="button"
             onClick={() => setImportModalOpen(true)}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
           >
-            <FileSpreadsheet size={16} /> Importar Excel
+            <FileSpreadsheet size={15} className="shrink-0" />
+            <span className="truncate">Importar</span>
           </button>
           {canAccess('modificadores') && (
             <button
               type="button"
               onClick={() => navigate('/modificadores')}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
             >
-              <SlidersHorizontal size={16} /> Modificadores
+              <SlidersHorizontal size={15} className="shrink-0" />
+              <span className="truncate">Modificadores</span>
             </button>
           )}
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700 shadow-sm"
+            className={clsx(
+              'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-rest-600 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium hover:bg-rest-700 shadow-sm min-w-0',
+              canAccess('modificadores') ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1',
+            )}
           >
-            <Plus size={16} /> Agregar producto
+            <Plus size={15} className="shrink-0" />
+            <span className="truncate">Agregar producto</span>
           </button>
-        </>
+        </div>
       }
     >
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 mb-4 sm:mb-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 shrink-0 mb-2 sm:mb-4 lg:mb-5">
           <SearchInput
             value={searchInput}
             onChange={(v) => {
@@ -524,65 +531,70 @@ export default function ProductosPage() {
             }}
             isSearching={isSearching}
             placeholder="Buscar por nombre o código..."
-            className="w-full sm:flex-1 sm:min-w-[260px] order-first"
-            inputClassName="bg-white"
+            className="w-full sm:flex-1 sm:min-w-[200px]"
+            inputClassName="bg-white py-1.5 sm:py-2 text-sm"
           />
-          <div className="w-full sm:max-w-xs">
-            <SearchableSelect
-              value={categoryFilter === '' ? '' : categoryFilter}
-              onChange={(v) => {
-                setCategoryFilter(v == null || String(v) === '' ? '' : Number(v))
-                setPage(1)
-              }}
-              options={[
-                { value: '', label: 'Todas las categorías' },
-                ...categories.map((c) => ({ value: c.id, label: c.name })),
-              ]}
-              placeholder="Todas las categorías"
-              searchable={categories.length > 8}
-              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-            />
-          </div>
-          <div className="w-full sm:max-w-xs">
-            <SearchableSelect
-              value={areaFilter}
-              onChange={(v) => {
-                setAreaFilter(String(v ?? ''))
-                setPage(1)
-              }}
-              options={[
-                { value: '', label: 'Todas las áreas' },
-                ...PREPARATION_AREAS.filter((a) => a.value).map((a) => ({ value: a.value, label: a.label })),
-              ]}
-              placeholder="Todas las áreas"
-              searchable={PREPARATION_AREAS.length > 8}
-              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-            />
-          </div>
-          <label className="flex items-center gap-2 shrink-0 cursor-pointer select-none rounded-xl border border-stone-200 bg-white px-3 py-2">
-            <span className="text-xs font-medium text-stone-700 whitespace-nowrap">Solo inactivos</span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={showInactiveOnly}
-              aria-label="Mostrar solo productos inactivos"
-              onClick={() => {
-                setShowInactiveOnly((v) => !v)
-                setPage(1)
-              }}
-              className={clsx(
-                'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50',
-                showInactiveOnly ? 'bg-amber-500' : 'bg-stone-300',
-              )}
-            >
-              <span
-                className={clsx(
-                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                  showInactiveOnly ? 'translate-x-5' : 'translate-x-1',
-                )}
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1.5 sm:flex sm:items-center sm:gap-2 sm:shrink-0 min-w-0 w-full sm:w-auto">
+            <div className="min-w-0 sm:max-w-xs sm:w-full">
+              <SearchableSelect
+                value={categoryFilter === '' ? '' : categoryFilter}
+                onChange={(v) => {
+                  setCategoryFilter(v == null || String(v) === '' ? '' : Number(v))
+                  setPage(1)
+                }}
+                options={[
+                  { value: '', label: 'Todas las categorías' },
+                  ...categories.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+                placeholder="Categorías"
+                searchable={categories.length > 8}
+                className="w-full min-w-0 border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white text-left flex items-center justify-between gap-1"
               />
-            </button>
-          </label>
+            </div>
+            <div className="min-w-0 sm:max-w-xs sm:w-full">
+              <SearchableSelect
+                value={areaFilter}
+                onChange={(v) => {
+                  setAreaFilter(String(v ?? ''))
+                  setPage(1)
+                }}
+                options={[
+                  { value: '', label: 'Todas las áreas' },
+                  ...PREPARATION_AREAS.filter((a) => a.value).map((a) => ({ value: a.value, label: a.label })),
+                ]}
+                placeholder="Áreas"
+                searchable={PREPARATION_AREAS.length > 8}
+                className="w-full min-w-0 border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white text-left flex items-center justify-between gap-1"
+              />
+            </div>
+            <label className="flex flex-col items-center justify-center gap-0.5 cursor-pointer select-none rounded-lg sm:rounded-xl border border-stone-200 bg-white px-1.5 py-1 sm:flex-row sm:gap-2 sm:px-3 sm:py-2 shrink-0 self-stretch sm:self-auto">
+              <span className="text-[9px] sm:text-xs font-medium text-stone-700 leading-tight text-center sm:whitespace-nowrap">
+                <span className="sm:hidden">Inactivos</span>
+                <span className="hidden sm:inline">Solo inactivos</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showInactiveOnly}
+                aria-label="Mostrar solo productos inactivos"
+                onClick={() => {
+                  setShowInactiveOnly((v) => !v)
+                  setPage(1)
+                }}
+                className={clsx(
+                  'relative inline-flex h-5 w-9 sm:h-6 sm:w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50',
+                  showInactiveOnly ? 'bg-amber-500' : 'bg-stone-300',
+                )}
+              >
+                <span
+                  className={clsx(
+                    'inline-block h-3.5 w-3.5 sm:h-4 sm:w-4 transform rounded-full bg-white shadow transition-transform',
+                    showInactiveOnly ? 'translate-x-[1.125rem] sm:translate-x-5' : 'translate-x-0.5 sm:translate-x-1',
+                  )}
+                />
+              </button>
+            </label>
+          </div>
         </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
@@ -596,15 +608,15 @@ export default function ProductosPage() {
               <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-stone-50 border-b border-stone-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
                 <tr>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700 w-14">Imagen</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Código</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Nombre</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700 min-w-[8rem]">Descripción</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Categoría</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Área</th>
+                  <th className="text-left px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-stone-700 w-11 sm:w-14">Imagen</th>
+                  <th className="hidden sm:table-cell text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Código</th>
+                  <th className="text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Nombre</th>
+                  <th className="hidden md:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700 min-w-[8rem]">Descripción</th>
+                  <th className="hidden md:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Categoría</th>
+                  <th className="hidden lg:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Área</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Precio</th>
-                  <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Stock</th>
-                  <th className="text-left px-3 py-2 text-xs font-semibold text-stone-700">Modificadores</th>
+                  <th className="hidden lg:table-cell text-right px-3 py-2 text-xs font-semibold text-stone-700">Stock</th>
+                  <th className="hidden lg:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Modificadores</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Acciones</th>
                 </tr>
               </thead>
@@ -617,8 +629,8 @@ export default function ProductosPage() {
                       !p.active && 'bg-stone-50/80 opacity-75',
                     )}
                   >
-                    <td className="px-3 py-2">
-                      <div className="w-10 h-10 rounded-lg bg-stone-100 overflow-hidden flex-shrink-0">
+                    <td className="px-2 sm:px-3 py-1.5 sm:py-2">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-stone-100 overflow-hidden flex-shrink-0">
                         {p.image_url ? (
                           <img
                             src={getProductImageSrc(p)}
@@ -633,8 +645,8 @@ export default function ProductosPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-3 py-2 font-mono text-stone-600">{p.code || '—'}</td>
-                    <td className="px-3 py-2 font-medium text-stone-800">
+                    <td className="hidden sm:table-cell px-2 sm:px-3 py-2 font-mono text-xs text-stone-600">{p.code || '—'}</td>
+                    <td className="px-2 sm:px-3 py-2 font-medium text-stone-800">
                       <span className="inline-flex items-center gap-1.5 flex-wrap">
                         {p.name}
                         {!p.active && (
@@ -644,7 +656,7 @@ export default function ProductosPage() {
                         )}
                       </span>
                     </td>
-                    <td className="px-3 py-2 text-stone-600 max-w-[14rem]">
+                    <td className="hidden md:table-cell px-3 py-2 text-stone-600 max-w-[14rem]">
                       {p.description?.trim() ? (
                         <span
                           className="text-xs line-clamp-2 leading-snug"
@@ -656,14 +668,14 @@ export default function ProductosPage() {
                         <span className="text-stone-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-stone-600">{p.category_id ? (categoryMap[p.category_id] ?? '—') : '—'}</td>
-                    <td className="px-3 py-2 text-stone-600">
+                    <td className="hidden md:table-cell px-3 py-2 text-stone-600">{p.category_id ? (categoryMap[p.category_id] ?? '—') : '—'}</td>
+                    <td className="hidden lg:table-cell px-3 py-2 text-stone-600">
                       {p.preparation_area
                         ? PREPARATION_AREAS.find((a) => a.value === p.preparation_area)?.label ?? p.preparation_area
                         : '—'}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold text-rest-700">S/ {Number(p.sale_price).toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="px-3 py-2 text-right font-semibold text-rest-700 whitespace-nowrap">S/ {Number(p.sale_price).toFixed(2)}</td>
+                    <td className="hidden lg:table-cell px-3 py-2 text-right">
                       {p.manage_stock ? (
                         <span className="font-mono text-sm text-stone-800">
                           {typeof stockByProductId[p.id] === 'number' ? stockByProductId[p.id] : '—'}
@@ -672,7 +684,7 @@ export default function ProductosPage() {
                         <span className="text-stone-400 text-xs">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="hidden lg:table-cell px-3 py-2">
                       {p.has_modifiers ? (
                         <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-rest-100 text-rest-800">Sí</span>
                       ) : (
@@ -734,65 +746,73 @@ export default function ProductosPage() {
               )}
             </div>
 
-            <div className="shrink-0 border-t border-stone-200 bg-stone-50/90 px-3 py-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-stone-600">
-                  <label className="flex items-center gap-1.5">
-                    <span className="text-stone-500">Mostrar</span>
-                    <select
-                      value={perPage}
-                      onChange={(e) => {
-                        setPerPage(Number(e.target.value))
-                        setPage(1)
-                      }}
-                      aria-label="Registros por página"
-                      className="border border-stone-200 rounded-lg px-2 py-1 text-xs bg-white text-stone-800 min-w-[4.5rem] cursor-pointer focus:outline-none focus:ring-2 focus:ring-rest-500/40"
-                    >
-                      {PER_PAGE_OPTIONS.map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="text-stone-500">por página</span>
-                  </label>
+            <div className="shrink-0 border-t border-stone-200 bg-stone-50/90 px-2 sm:px-3 py-1 sm:py-1.5">
+              <div className="flex items-center justify-between gap-2 min-h-[2rem]">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 text-[11px] sm:text-sm text-stone-600">
+                  <select
+                    value={perPage}
+                    onChange={(e) => {
+                      setPerPage(Number(e.target.value))
+                      setPage(1)
+                    }}
+                    aria-label="Registros por página"
+                    title="Registros por página"
+                    className="border border-stone-200 rounded-md sm:rounded-lg px-1.5 sm:px-2 py-0.5 sm:py-1 text-[11px] sm:text-xs bg-white text-stone-800 w-11 sm:min-w-[4.5rem] cursor-pointer focus:outline-none focus:ring-2 focus:ring-rest-500/40 shrink-0"
+                  >
+                    {PER_PAGE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
                   {total > 0 ? (
-                    <span className="text-stone-500">
-                      Mostrando <span className="font-medium text-stone-700">{from}-{to}</span> de{' '}
-                      <span className="font-medium text-stone-700">{total}</span> registros
+                    <span className="text-stone-500 tabular-nums truncate">
+                      <span className="sm:hidden font-medium text-stone-700">
+                        {from}-{to}/{total}
+                      </span>
+                      <span className="hidden sm:inline">
+                        <span className="text-stone-500">por página · </span>
+                        <span className="font-medium text-stone-700">
+                          {from}-{to}
+                        </span>{' '}
+                        de <span className="font-medium text-stone-700">{total}</span>
+                      </span>
                     </span>
                   ) : (
-                    <span className="text-stone-400">Sin registros</span>
+                    <span className="text-stone-400 text-[10px] sm:text-sm">0</span>
                   )}
                 </div>
 
-                {totalPages > 1 && (
-                  <div className="flex items-center gap-1">
+                {totalPages > 1 ? (
+                  <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page <= 1}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+                      className="inline-flex items-center justify-center p-1 sm:px-2 sm:py-1 rounded-md sm:rounded-lg border border-stone-200 text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
                       title="Anterior"
+                      aria-label="Página anterior"
                     >
-                      <ChevronLeft size={15} />
-                      <span className="hidden sm:inline">Ant.</span>
+                      <ChevronLeft size={16} className="sm:w-[15px] sm:h-[15px]" />
                     </button>
-                    <span className="text-xs text-stone-600 tabular-nums px-1 min-w-[4.5rem] text-center">
-                      {page} / {totalPages}
+                    <span
+                      className="text-[11px] sm:text-xs text-stone-600 tabular-nums px-0.5 sm:px-1 min-w-[2.5rem] sm:min-w-[4.5rem] text-center"
+                      aria-live="polite"
+                    >
+                      {page}/{totalPages}
                     </span>
                     <button
                       type="button"
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page >= totalPages}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
+                      className="inline-flex items-center justify-center p-1 sm:px-2 sm:py-1 rounded-md sm:rounded-lg border border-stone-200 text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
                       title="Siguiente"
+                      aria-label="Página siguiente"
                     >
-                      <span className="hidden sm:inline">Sig.</span>
-                      <ChevronRight size={15} />
+                      <ChevronRight size={16} className="sm:w-[15px] sm:h-[15px]" />
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>

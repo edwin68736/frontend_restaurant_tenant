@@ -56,18 +56,21 @@ export default function UserDropdown() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-xl border border-stone-200/80 bg-white hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm"
+        className="flex items-center gap-1.5 xl:gap-2 pl-0.5 pr-1.5 py-0.5 xl:pl-1 xl:pr-2 xl:py-1 rounded-lg xl:rounded-xl border border-stone-200/80 bg-white hover:bg-stone-50 hover:border-stone-300 transition-all shadow-sm"
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rest-600 to-rest-800 text-white text-xs font-bold flex items-center justify-center shadow-sm">
+        <div className="w-7 h-7 xl:w-8 xl:h-8 rounded-lg bg-gradient-to-br from-rest-600 to-rest-800 text-white text-[10px] xl:text-xs font-bold flex items-center justify-center shadow-sm">
           {initials}
         </div>
-        <div className="hidden md:block text-left max-w-[120px]">
+        <div className="hidden md:block lg:hidden xl:block text-left max-w-[120px]">
           <p className="text-xs font-semibold text-stone-800 truncate leading-tight">{user?.name}</p>
           <p className="text-[10px] text-stone-500 truncate leading-tight">{roleLabel}</p>
         </div>
-        <ChevronDown size={14} className={`text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          size={14}
+          className={`hidden md:block lg:hidden xl:block text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {open && (

@@ -695,8 +695,8 @@ export default function CajaPage() {
   ]
 
   return (
-    <div className="w-full flex flex-col flex-1 min-h-0">
-      <div className="sticky top-0 z-20 -mx-3 px-3 pt-0 pb-2 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5 bg-stone-50/95 backdrop-blur-sm border-b border-stone-200/80 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
+    <div className="w-full flex flex-col">
+      <div className="sticky top-0 z-20 -mx-3 px-3 pt-0 pb-2 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5 bg-white/95 backdrop-blur-sm border-b border-stone-200/80 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
         <div className="mb-2 pt-0.5">
           <h2 className="text-lg font-bold text-stone-800">Caja</h2>
           <p className="text-sm text-stone-500">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
@@ -724,7 +724,7 @@ export default function CajaPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 pt-3">
+      <div className="pt-3 pb-1">
       {tab === 'sesion' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-stone-200 p-6">

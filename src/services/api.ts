@@ -23,7 +23,7 @@ export function getCentralApiBaseUrl(): string {
 }
 
 /**
- * API del tenant desde vinculaci√≥n persistida.
+ * API del tenant desde vinculaci?n persistida.
  * En DEV las peticiones van por proxy Vite (baseURL '') y X-Tenant-Api-Origin.
  */
 export function getTenantApiBaseUrl(): string {
@@ -34,7 +34,7 @@ export function getTenantApiBaseUrl(): string {
   return url ? normalizeApiOrigin(url) : ''
 }
 
-/** URL mostrada al usuario / overlay de conexi√≥n. */
+/** URL mostrada al usuario / overlay de conexi?n. */
 export function getDisplayedTenantApiUrl(): string {
   const url = getResolvedTenantApiUrl()
   if (url) return normalizeApiOrigin(url)
@@ -42,7 +42,7 @@ export function getDisplayedTenantApiUrl(): string {
     const central = getCentralApiBaseUrl()
     return central ? `${central} (proxy dev)` : 'Proxy local (Vite)'
   }
-  return '‚ˇˇ'
+  return 'ˇˇˇ'
 }
 
 /** En DEV todas las peticiones van por proxy local (sin CORS). */
@@ -117,15 +117,53 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-function forceRelogin(message: string) {
+export const SESSION_EXPIRED_EVENT = 'tukichef-session-expired'
+
+const TOAST_SESSION_EXPIRED = 'session-expired'
+const TOAST_TENANT_ISOLATION = 'tenant-isolation'
+
+type ReloginReason = 'session_expired' | 'tenant_isolation'
+
+let reloginHandled = false
+
+export function resetReloginGuard() {
+  reloginHandled = false
+}
+
+function getReloginMessage(reason: ReloginReason): string {
+  if (reason === 'tenant_isolation') {
+    return 'Sesi?n inv?lida para esta empresa. Vuelva a vincular el RUC e iniciar sesi?n.'
+  }
+  return 'Su sesi?n ha vencido. Inicie sesi?n nuevamente.'
+}
+
+function isPublicRouteHash(): boolean {
+  const hash = window.location.hash.replace(/^#/, '') || '/'
+  const path = hash.split('?')[0]
+  return path === '/home' || path === '/login' || path === '/ruc' || path.startsWith('/pin/')
+}
+
+function forceRelogin(reason: ReloginReason) {
+  if (reloginHandled) return
+  reloginHandled = true
+
   localStorage.removeItem('token')
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
   localStorage.removeItem('allowed_branches')
   localStorage.removeItem('can_switch_branch')
   localStorage.removeItem('restaurant_permissions')
-  import('sonner').then(({ toast }) => toast.error(message))
-  window.location.hash = '#/home'
+
+  window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
+
+  const toastId = reason === 'tenant_isolation' ? TOAST_TENANT_ISOLATION : TOAST_SESSION_EXPIRED
+  import('sonner').then(({ toast }) => {
+    toast.error(getReloginMessage(reason), { id: toastId })
+  })
+
+  if (!isPublicRouteHash()) {
+    window.location.hash = '#/home'
+  }
 }
 
 api.interceptors.response.use(
@@ -133,19 +171,19 @@ api.interceptors.response.use(
   (err) => {
     const code = err.response?.data?.code as string | undefined
     if (err.response?.status === 403 && code === 'TENANT_ISOLATION_VIOLATION') {
-      forceRelogin('Sesi√≥n inv√°lida para esta empresa. Vuelva a vincular el RUC e iniciar sesi√≥n.')
+      forceRelogin('tenant_isolation')
       return Promise.reject(err)
     }
     if (err.response?.status === 401 && code === 'TOKEN_TENANT_INVALID') {
-      forceRelogin('Su sesi√≥n expir√≥ o es obsoleta. Inicie sesi√≥n nuevamente.')
+      forceRelogin('session_expired')
       return Promise.reject(err)
     }
-    if (err.response?.status === 409 && err.response?.data?.code === 'SESSION_UPDATED') {
-      forceRelogin('Tu acceso fue actualizado. Vuelve a iniciar sesi√≥n.')
+    if (err.response?.status === 409 && code === 'SESSION_UPDATED') {
+      forceRelogin('session_expired')
       return Promise.reject(err)
     }
     if (err.response?.status === 401) {
-      forceRelogin('Sesi√≥n expirada. Inicie sesi√≥n nuevamente.')
+      forceRelogin('session_expired')
       return Promise.reject(err)
     }
     return Promise.reject(err)

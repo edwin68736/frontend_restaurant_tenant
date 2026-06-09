@@ -939,7 +939,7 @@ export default function MesaPage() {
                 />
               </div>
               <div ref={productsScrollRef} className="flex-1 min-h-0 overflow-y-auto p-1.5 sm:p-3">
-              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 justify-items-stretch">
+              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
               {products.map((p) => {
                 const imgUrl = getProductImageUrl(p.image_url)
                 return (
@@ -1001,7 +1001,7 @@ export default function MesaPage() {
             </div>
           </div>
 
-          <div className="hidden lg:flex shrink-0 flex-col min-h-0 w-[min(100%,24rem)] xl:w-[28rem] 2xl:w-[32rem]">
+          <div className="hidden lg:flex shrink-0 flex-col min-h-0 w-[18.5rem] xl:w-[24rem] 2xl:w-[30rem]">
             <div className="flex-1 min-h-0 flex flex-col bg-white rounded-l-xl xl:rounded-l-2xl border border-stone-200/80 border-r-0 shadow-sm overflow-hidden">
               <div className="px-2 py-2 border-b border-stone-100 shrink-0">
                 <div className="flex items-center justify-between gap-2">

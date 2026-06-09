@@ -29,13 +29,13 @@ export function RestaurantSettingsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
-            className={`shrink-0 px-3 py-2 rounded-xl text-sm font-semibold whitespace-nowrap ${
+            className={`shrink-0 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap ${
               tab === t.id
                 ? 'bg-rest-600 text-white'
                 : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'

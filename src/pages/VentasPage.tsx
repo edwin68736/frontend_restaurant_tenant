@@ -25,6 +25,15 @@ import {
   Printer,
 } from 'lucide-react'
 import { salesService, formatSaleDocumentNumber, emptySaleListSummary, type Sale, type SaleDetail, type SaleItem, type SaleListSummary } from '@/services/sales.service'
+import { contactsService, type Contact } from '@/services/contacts.service'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import {
+  checkoutContactIsValid,
+  contactOptionLabel,
+  filterRucContacts,
+  isRucContact,
+  rucContactLabel,
+} from '@/utils/checkoutContacts'
 import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { billingService } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
@@ -55,6 +64,7 @@ import {
   normalizeBillingStatus,
   resolveManualBillingStatus,
 } from '@/utils/manualBilling'
+import { clsx } from 'clsx'
 import {
   BILLING_FILTER_GROUPS,
   BILLING_STATUS,
@@ -88,16 +98,6 @@ const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
 type Tab = 'notas' | 'facturacion' | 'credit_notes'
 
-function rucDigits(docNumber: string) {
-  return (docNumber || '').replace(/\D/g, '')
-}
-
-function contactHasValidRuc(c?: SaleDetail['contact']) {
-  if (!c) return false
-  if (String(c.doc_type || '').trim() !== '6') return false
-  return rucDigits(c.doc_number || '').length === 11
-}
-
 export default function VentasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
@@ -118,6 +118,10 @@ export default function VentasPage() {
   const [emitSeriesId, setEmitSeriesId] = useState<string>('')
   const [emitIssueDate, setEmitIssueDate] = useState(() => getTodayPeru())
   const [emitSeriesList, setEmitSeriesList] = useState<SeriesRow[]>([])
+  const [emitContacts, setEmitContacts] = useState<Contact[]>([])
+  const [emitContactId, setEmitContactId] = useState<number | null>(null)
+  const [emitNotaContactId, setEmitNotaContactId] = useState<number | null>(null)
+  const [emitClientQuickAddOpen, setEmitClientQuickAddOpen] = useState(false)
   const [voidNotaOpen, setVoidNotaOpen] = useState(false)
   const [voidNotaRow, setVoidNotaRow] = useState<Sale | null>(null)
   const [voidNotaReason, setVoidNotaReason] = useState('')
@@ -304,13 +308,21 @@ export default function VentasPage() {
     setEmitSeriesId('')
     setEmitIssueDate(getTodayPeru())
     setEmitDetail(null)
+    setEmitContactId(null)
+    setEmitNotaContactId(null)
+    setEmitContacts([])
     setEmitLoading(true)
     try {
-      const [det, rawSeries] = await Promise.all([
+      const [det, rawSeries, contactList] = await Promise.all([
         salesService.get(row.id),
         companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
+        contactsService.list('', 'customer'),
       ])
       setEmitDetail(det)
+      const notaContactId = det.contact?.id ?? row.contact_id ?? null
+      setEmitNotaContactId(notaContactId)
+      setEmitContactId(notaContactId)
+      setEmitContacts(contactList ?? [])
       setEmitSeriesList(
         (rawSeries ?? []).filter((s) => {
           const code = String(s.sunat_code || '').trim()
@@ -326,10 +338,59 @@ export default function VentasPage() {
     }
   }
 
+  const emitSelectedContact = useMemo(
+    () => emitContacts.find((c) => c.id === emitContactId) ?? null,
+    [emitContacts, emitContactId],
+  )
+
+  const emitRequiresRuc = emitDocKind === '01'
+
+  const emitClientOptions = useMemo(() => {
+    const list = emitRequiresRuc ? filterRucContacts(emitContacts) : emitContacts
+    return list.map((c) => ({
+      value: c.id,
+      label: emitRequiresRuc ? rucContactLabel(c) : contactOptionLabel(c),
+    }))
+  }, [emitContacts, emitRequiresRuc])
+
+  const emitContactOk = checkoutContactIsValid(
+    emitSelectedContact,
+    emitDocKind === '01' ? 'FACTURA' : 'BOLETA',
+    emitDocKind,
+  )
+
+  const lastEmitDocKindRef = useRef<'01' | '03' | null>(null)
+
+  useEffect(() => {
+    if (!emitOpen) {
+      lastEmitDocKindRef.current = null
+      return
+    }
+    if (lastEmitDocKindRef.current === emitDocKind) return
+    lastEmitDocKindRef.current = emitDocKind
+
+    if (emitDocKind === '03' && emitNotaContactId != null) {
+      setEmitContactId(emitNotaContactId)
+      return
+    }
+    if (emitDocKind === '01') {
+      setEmitContactId((current) => {
+        if (current == null) return null
+        const c = emitContacts.find((x) => x.id === current)
+        if (c && !isRucContact(c)) return null
+        return current
+      })
+    }
+  }, [emitOpen, emitDocKind, emitNotaContactId, emitContacts])
+
   const submitEmit = async () => {
     if (!emitRow || !emitDetail) return
-    if (emitDocKind === '01' && !contactHasValidRuc(emitDetail.contact)) {
-      toast.error('Para factura el cliente debe tener RUC (11 dígitos)')
+    if (!emitContactId || !emitContactOk) {
+      toast.error(
+        emitDocKind === '01'
+          ? 'La factura requiere un cliente con RUC (11 dígitos)'
+          : 'Seleccione el cliente para la boleta',
+      )
       return
     }
     const sid = Number(emitSeriesId)
@@ -342,6 +403,7 @@ export default function VentasPage() {
       const res = await salesService.issueElectronicFromNota(emitRow.id, {
         series_id: sid,
         issue_date: emitIssueDate.trim() || undefined,
+        contact_id: emitContactId,
       })
       toast.success(
         `Comprobante generado: ${res.sale?.doc_type ?? ''} ${formatSaleDocumentNumber(res.sale ?? {})}. Envíelo a SUNAT desde Facturación.`,
@@ -414,6 +476,18 @@ export default function VentasPage() {
     () => emitSeriesList.filter((s) => String(s.sunat_code || '').trim() === emitDocKind),
     [emitSeriesList, emitDocKind],
   )
+
+  useEffect(() => {
+    if (!emitOpen || emitLoading) return
+    const first = filteredSeriesForEmit[0]
+    if (!first) {
+      setEmitSeriesId('')
+      return
+    }
+    const current = Number(emitSeriesId)
+    const stillValid = filteredSeriesForEmit.some((s) => s.id === current)
+    if (!stillValid) setEmitSeriesId(String(first.id))
+  }, [emitOpen, emitLoading, filteredSeriesForEmit, emitSeriesId])
 
   const handleSend = async (saleId: number) => {
     setSending(saleId)
@@ -943,138 +1017,152 @@ export default function VentasPage() {
       className="flex-1 min-h-0"
       title="Ventas"
       subtitle="Notas de venta y facturación electrónica"
+      subtitleClassName="hidden sm:block"
       actions={
-        <>
+        <div
+          className={clsx(
+            'grid gap-1.5 w-full sm:flex sm:flex-wrap sm:gap-2 lg:w-auto',
+            sunatEnabled ? 'grid-cols-2' : 'grid-cols-2',
+          )}
+        >
           <button
             type="button"
             onClick={() => setTabAndUrl('notas')}
-            className={`inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+            className={clsx(
+              'inline-flex items-center justify-center px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border-2 transition-colors min-w-0',
               tab === 'notas'
                 ? 'bg-rest-600 text-white border-rest-600'
-                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
-            }`}
+                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300',
+            )}
           >
-            Notas de venta
+            <span className="truncate sm:hidden">Notas</span>
+            <span className="truncate hidden sm:inline">Notas de venta</span>
           </button>
           <button
             type="button"
             onClick={() => setTabAndUrl('facturacion')}
-            className={`inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+            className={clsx(
+              'inline-flex items-center justify-center px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border-2 transition-colors min-w-0',
               tab === 'facturacion'
                 ? 'bg-rest-600 text-white border-rest-600'
-                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
-            }`}
+                : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300',
+            )}
           >
-            Facturación
+            <span className="truncate sm:hidden">Facturación</span>
+            <span className="truncate hidden sm:inline">Facturación</span>
           </button>
           {sunatEnabled && (
             <button
               type="button"
               onClick={() => setTabAndUrl('credit_notes')}
-              className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border-2 transition-colors ${
+              className={clsx(
+                'inline-flex items-center justify-center gap-1 sm:gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border-2 transition-colors min-w-0 col-span-2 sm:col-span-1',
                 tab === 'credit_notes'
                   ? 'bg-rest-600 text-white border-rest-600'
-                  : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300'
-              }`}
+                  : 'bg-white text-stone-600 border-stone-200 hover:border-rest-300',
+              )}
             >
-              <FileSignature size={16} /> Notas de crédito
+              <FileSignature size={14} className="shrink-0 sm:w-4 sm:h-4" />
+              <span className="truncate sm:hidden">N. crédito</span>
+              <span className="truncate hidden sm:inline">Notas de crédito</span>
             </button>
           )}
-          {tab === 'facturacion' && sunatEnabled && (
-            <div className="w-full sm:w-auto sm:min-w-[11rem]">
-              <SearchableSelect
-                value={searchParams.get('status') ?? ''}
-                onChange={(v) => setBillingStatusFilter(String(v ?? ''))}
-                options={[
-                  { value: '', label: 'Todos los estados' },
-                  ...BILLING_FILTER_GROUPS.map((group) => ({
-                    value: group,
-                    label: BILLING_DISPLAY_GROUP_LABELS[group],
-                  })),
-                ]}
-                placeholder="Estado SUNAT"
-                searchable={false}
-                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-              />
-            </div>
-          )}
-        </>
+        </div>
       }
     >
       {tab === 'facturacion' && !sunatEnabled && <SunatRequiredMessage />}
 
       {(tab === 'notas' || tab === 'credit_notes' || sunatEnabled) && (
         <>
-          <div className="flex flex-col gap-3 shrink-0 mb-4 sm:mb-5">
-            <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <SearchInput
-                value={searchInput}
-                onChange={(v) => {
-                  setSearchInput(v)
-                  setPage(1)
-                }}
-                isSearching={isSearching}
-                placeholder="Buscar por número..."
-                className="w-full lg:flex-1 lg:min-w-[220px] order-first"
-                inputClassName="bg-white text-sm"
-              />
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                <label className="flex flex-col gap-1 text-xs text-stone-600">
-                  <span className="font-medium">Desde</span>
-                  <input
-                    type="date"
-                    value={dateRange.from}
-                    onChange={(e) => {
-                      setDateRange((d) => ({ ...d, from: e.target.value }))
-                      setPage(1)
-                    }}
-                    className="border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-stone-600">
-                  <span className="font-medium">Hasta</span>
-                  <input
-                    type="date"
-                    value={dateRange.to}
-                    onChange={(e) => {
-                      setDateRange((d) => ({ ...d, to: e.target.value }))
-                      setPage(1)
-                    }}
-                    className="border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
-                  />
-                </label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:gap-y-2 shrink-0 mb-2 sm:mb-4 lg:mb-5">
+            <SearchInput
+              value={searchInput}
+              onChange={(v) => {
+                setSearchInput(v)
+                setPage(1)
+              }}
+              isSearching={isSearching}
+              placeholder="Buscar por número..."
+              className="w-full sm:flex-1 sm:min-w-[200px] lg:min-w-[220px] lg:max-w-md"
+              inputClassName="bg-white py-1.5 sm:py-2 text-sm"
+            />
+            <div className="grid grid-cols-2 gap-1.5 sm:contents min-w-0">
+              <label className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5 text-[10px] sm:text-xs text-stone-600 min-w-0 shrink-0">
+                <span className="font-medium sm:whitespace-nowrap">Desde</span>
+                <input
+                  type="date"
+                  value={dateRange.from}
+                  onChange={(e) => {
+                    setDateRange((d) => ({ ...d, from: e.target.value }))
+                    setPage(1)
+                  }}
+                  className="w-full min-w-0 sm:w-[9.5rem] border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white"
+                />
+              </label>
+              <label className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-1.5 text-[10px] sm:text-xs text-stone-600 min-w-0 shrink-0">
+                <span className="font-medium sm:whitespace-nowrap">Hasta</span>
+                <input
+                  type="date"
+                  value={dateRange.to}
+                  onChange={(e) => {
+                    setDateRange((d) => ({ ...d, to: e.target.value }))
+                    setPage(1)
+                  }}
+                  className="w-full min-w-0 sm:w-[9.5rem] border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white"
+                />
+              </label>
+            </div>
+            {tab === 'facturacion' && sunatEnabled && (
+              <div className="w-full sm:w-auto sm:min-w-[10.5rem] sm:max-w-xs min-w-0 shrink-0">
+                <SearchableSelect
+                  value={searchParams.get('status') ?? ''}
+                  onChange={(v) => setBillingStatusFilter(String(v ?? ''))}
+                  options={[
+                    { value: '', label: 'Todos los estados' },
+                    ...BILLING_FILTER_GROUPS.map((group) => ({
+                      value: group,
+                      label: BILLING_DISPLAY_GROUP_LABELS[group],
+                    })),
+                  ]}
+                  placeholder="Estado SUNAT"
+                  searchable={false}
+                  className="w-full min-w-0 border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white text-left flex items-center justify-between gap-1"
+                />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleExportPdf()}
-                  disabled={exportBusy !== null}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  {exportBusy === 'pdf' ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleExportExcel()}
-                  disabled={exportBusy !== null}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {exportBusy === 'excel' ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <FileSpreadsheet size={14} />
-                  )}
-                  Excel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => refresh()}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:bg-stone-50 bg-white shrink-0"
-                >
-                  <RefreshCw size={14} /> Actualizar
-                </button>
-              </div>
+            )}
+            <div className="grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:gap-2 sm:ml-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => void handleExportPdf()}
+                disabled={exportBusy !== null}
+                className="inline-flex items-center justify-center gap-1 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 min-w-0"
+              >
+                {exportBusy === 'pdf' ? <RefreshCw size={14} className="animate-spin shrink-0" /> : <FileDown size={14} className="shrink-0" />}
+                PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExportExcel()}
+                disabled={exportBusy !== null}
+                className="inline-flex items-center justify-center gap-1 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 min-w-0"
+              >
+                {exportBusy === 'excel' ? (
+                  <RefreshCw size={14} className="animate-spin shrink-0" />
+                ) : (
+                  <FileSpreadsheet size={14} className="shrink-0" />
+                )}
+                Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => refresh()}
+                title="Actualizar"
+                aria-label="Actualizar lista"
+                className="inline-flex items-center justify-center gap-1 sm:gap-2 px-2 py-1.5 sm:px-4 sm:py-2 border border-stone-200 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium text-stone-600 hover:bg-stone-50 bg-white shrink-0 min-w-0"
+              >
+                <RefreshCw size={14} className="shrink-0" />
+                <span className="hidden sm:inline">Actualizar</span>
+              </button>
             </div>
           </div>
 
@@ -1086,62 +1174,89 @@ export default function VentasPage() {
           ) : (
             <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-stone-200 overflow-hidden">
               <div className="flex-1 min-h-0 overflow-auto">
-                <table className="w-full text-sm min-w-[720px]">
+                <table className="w-full text-sm min-w-[32rem] sm:min-w-[720px]">
                   <thead className="sticky top-0 z-10 bg-stone-50 border-b border-stone-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
                     <tr>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Fecha</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Comprobante</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Cliente</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Total</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Imprimir</th>
+                      <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Fecha</th>
+                      <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Comprobante</th>
+                      <th className="hidden md:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Cliente</th>
+                      <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Total</th>
+                      <th className="hidden sm:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Imprimir</th>
                       {tab === 'facturacion' && (
                         <>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">PDF local</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">SUNAT / PSE</th>
+                          <th className="hidden lg:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
+                          <th className="hidden xl:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">PDF local</th>
+                          <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">
+                            <span className="sm:hidden">SUNAT</span>
+                            <span className="hidden sm:inline">SUNAT / PSE</span>
+                          </th>
                         </>
                       )}
                       {tab === 'credit_notes' && (
                         <>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
-                          <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
+                          <th className="hidden lg:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
+                          <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Acciones</th>
                         </>
                       )}
                       {tab === 'notas' && (
-                        <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Acciones</th>
+                        <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Acciones</th>
                       )}
                     </tr>
                   </thead>
                   <tbody>
                     {sales.map((s) => (
                       <tr key={s.id} className="border-b border-stone-100 hover:bg-stone-50/50">
-                        <td className="px-4 py-3 text-stone-500 text-xs">
+                        <td className="px-2 sm:px-4 py-1.5 sm:py-3 text-stone-500 text-[11px] sm:text-xs whitespace-nowrap">
                           {s.issue_date ? new Date(s.issue_date).toLocaleDateString() : '—'}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="font-mono text-xs text-stone-700">{s.doc_type}</span>
-                          <span className="font-bold text-stone-800 ml-1">{formatSaleDocumentNumber(s)}</span>
-                        </td>
-                        <td className="px-4 py-3 text-stone-600">{s.contact_name ?? '—'}</td>
-                        <td className="px-4 py-3 font-semibold text-stone-800">
-                          S/ {Number(s.total).toFixed(2)}
-                          {s.status === 'cancelled' && (
-                            <span className="ml-2 text-[10px] font-semibold uppercase text-red-600">Anulada</span>
+                        <td className="px-2 sm:px-4 py-1.5 sm:py-3 min-w-0">
+                          <span className="font-mono text-[10px] sm:text-xs text-stone-700">{s.doc_type}</span>
+                          <span className="font-bold text-stone-800 text-xs sm:text-sm ml-0.5 sm:ml-1 break-all sm:break-normal">
+                            {formatSaleDocumentNumber(s)}
+                          </span>
+                          {tab === 'facturacion' && (
+                            <span
+                              className={clsx(
+                                'lg:hidden mt-0.5 block text-[9px] px-1.5 py-0.5 rounded-full font-medium w-fit',
+                                billingStatusDisplayColor(s.billing_status),
+                              )}
+                            >
+                              {billingStatusDisplayLabel(s.billing_status)}
+                            </span>
+                          )}
+                          {tab === 'credit_notes' && (
+                            <span
+                              className={clsx(
+                                'lg:hidden mt-0.5 block text-[9px] px-1.5 py-0.5 rounded-full font-medium w-fit',
+                                billingStatusDisplayColor(s.billing_status),
+                              )}
+                            >
+                              {billingStatusDisplayLabel(s.billing_status)}
+                            </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">{renderThermalPrintButton(s.id)}</td>
+                        <td className="hidden md:table-cell px-2 sm:px-4 py-1.5 sm:py-3 text-stone-600">{s.contact_name ?? '—'}</td>
+                        <td className="px-2 sm:px-4 py-1.5 sm:py-3 font-semibold text-stone-800 text-xs sm:text-sm whitespace-nowrap">
+                          S/ {Number(s.total).toFixed(2)}
+                          {s.status === 'cancelled' && (
+                            <span className="ml-1 sm:ml-2 text-[9px] sm:text-[10px] font-semibold uppercase text-red-600">Anulada</span>
+                          )}
+                        </td>
+                        <td className="hidden sm:table-cell px-2 sm:px-4 py-1.5 sm:py-3">{renderThermalPrintButton(s.id)}</td>
                         {tab === 'facturacion' && (
                           <>
-                            <td className="px-4 py-3">
+                            <td className="hidden lg:table-cell px-2 sm:px-4 py-1.5 sm:py-3">
                               <span
                                 className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusDisplayColor(s.billing_status)}`}
                               >
                                 {billingStatusDisplayLabel(s.billing_status)}
                               </span>
                             </td>
-                            <td className="px-4 py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
-                            <td className="px-4 py-3">
+                            <td className="hidden xl:table-cell px-2 sm:px-4 py-1.5 sm:py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
+                            <td className="px-2 sm:px-4 py-1.5 sm:py-3">
                               <div className="flex items-center gap-1 flex-wrap">
+                                <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
+                                <span className="xl:hidden">{renderLocalPdfActions(s.id, 'fact')}</span>
                                 {renderSunatPseActions(s, 'fact')}
                                 {s.billing_status === 'accepted' && s.status !== 'cancelled' && (
                                   <button
@@ -1159,15 +1274,16 @@ export default function VentasPage() {
                         )}
                         {tab === 'credit_notes' && (
                           <>
-                            <td className="px-4 py-3">
+                            <td className="hidden lg:table-cell px-2 sm:px-4 py-1.5 sm:py-3">
                               <span
                                 className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusDisplayColor(s.billing_status)}`}
                               >
                                 {billingStatusDisplayLabel(s.billing_status)}
                               </span>
                             </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
+                            <td className="px-2 sm:px-4 py-1.5 sm:py-3">
+                              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                                <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
                                 <button type="button" onClick={() => openDetail(s.id)} className={DETAIL_BTN} title="Ver detalle">
                                   <Eye size={14} />
                                 </button>
@@ -1178,8 +1294,9 @@ export default function VentasPage() {
                           </>
                         )}
                         {tab === 'notas' && (
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 flex-wrap">
+                          <td className="px-2 sm:px-4 py-1.5 sm:py-3">
+                            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                              <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
                               <button
                                 type="button"
                                 onClick={() => openDetail(s.id)}
@@ -1218,18 +1335,29 @@ export default function VentasPage() {
                   {summaryDocCount > 0 && (
                     <tfoot className="sticky bottom-0 z-[5] bg-stone-100 border-t-2 border-stone-300 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)]">
                       <tr>
-                        <td colSpan={3} className="px-4 py-2.5 text-right text-xs font-semibold text-stone-600">
-                          Total del período ({summaryDocCount} comprobante{summaryDocCount === 1 ? '' : 's'})
+                        <td colSpan={3} className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[10px] sm:text-xs font-semibold text-stone-600">
+                          <span className="sm:hidden">
+                            Total ({summaryDocCount})
+                          </span>
+                          <span className="hidden sm:inline">
+                            Total del período ({summaryDocCount} comprobante{summaryDocCount === 1 ? '' : 's'})
+                          </span>
                           {listSummary.count_cancelled > 0 && (
                             <span className="block font-normal text-stone-500 mt-0.5">
-                              Activas: {formatSoles(listSummary.sum_active)}
-                              {listSummary.sum_cancelled > 0 && (
-                                <> · Anuladas: {formatSoles(listSummary.sum_cancelled)}</>
-                              )}
+                              <span className="sm:hidden">
+                                {formatSoles(listSummary.sum_active)}
+                                {listSummary.sum_cancelled > 0 && <> · {formatSoles(listSummary.sum_cancelled)} anul.</>}
+                              </span>
+                              <span className="hidden sm:inline">
+                                Activas: {formatSoles(listSummary.sum_active)}
+                                {listSummary.sum_cancelled > 0 && (
+                                  <> · Anuladas: {formatSoles(listSummary.sum_cancelled)}</>
+                                )}
+                              </span>
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 font-bold text-rest-700 text-base tabular-nums whitespace-nowrap">
+                        <td className="px-2 sm:px-4 py-1.5 sm:py-2.5 font-bold text-rest-700 text-sm sm:text-base tabular-nums whitespace-nowrap">
                           {formatSoles(listSummary.sum_active)}
                         </td>
                         <td colSpan={tableTrailingColSpan} />
@@ -1244,64 +1372,73 @@ export default function VentasPage() {
                 )}
               </div>
 
-              <div className="shrink-0 border-t border-stone-200 bg-stone-50/90 px-3 py-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-stone-600">
-                  <label className="flex items-center gap-1.5">
-                    <span className="text-stone-500">Mostrar</span>
-                    <div className="w-[4.5rem]">
-                      <SearchableSelect
-                        value={perPage}
-                        onChange={(v) => {
-                          setPerPage(Number(v))
-                          setPage(1)
-                        }}
-                        options={PER_PAGE_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
-                        searchable={false}
-                        className="border border-stone-200 rounded-lg px-2 py-1 text-xs bg-white text-left flex items-center justify-between gap-1 min-h-0"
-                      />
-                    </div>
-                    <span className="text-stone-500">por página</span>
-                  </label>
-                  {total > 0 ? (
-                    <span className="text-stone-500">
-                      Mostrando <span className="font-medium text-stone-700">{from}-{to}</span> de{' '}
-                      <span className="font-medium text-stone-700">{total}</span> registros
-                    </span>
-                  ) : (
-                    <span className="text-stone-400">Sin registros</span>
-                  )}
-                </div>
-
-                {totalPages > 1 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page <= 1}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
-                      title="Anterior"
+              <div className="shrink-0 border-t border-stone-200 bg-stone-50/90 px-2 sm:px-3 py-1 sm:py-1.5">
+                <div className="flex items-center justify-between gap-2 min-h-[2rem]">
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 text-[11px] sm:text-sm text-stone-600">
+                    <select
+                      value={perPage}
+                      onChange={(e) => {
+                        setPerPage(Number(e.target.value))
+                        setPage(1)
+                      }}
+                      aria-label="Registros por página"
+                      title="Registros por página"
+                      className="border border-stone-200 rounded-md sm:rounded-lg px-1.5 sm:px-2 py-0.5 sm:py-1 text-[11px] sm:text-xs bg-white text-stone-800 w-11 sm:min-w-[4.5rem] cursor-pointer focus:outline-none focus:ring-2 focus:ring-rest-500/40 shrink-0"
                     >
-                      <ChevronLeft size={15} />
-                      <span className="hidden sm:inline">Ant.</span>
-                    </button>
-                    <span className="text-xs text-stone-600 tabular-nums px-1 min-w-[4.5rem] text-center">
-                      {page} / {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={page >= totalPages}
-                      className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg border border-stone-200 text-xs text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none"
-                      title="Siguiente"
-                    >
-                      <span className="hidden sm:inline">Sig.</span>
-                      <ChevronRight size={15} />
-                    </button>
+                      {PER_PAGE_OPTIONS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    {total > 0 ? (
+                      <span className="text-stone-500 tabular-nums truncate">
+                        <span className="sm:hidden font-medium text-stone-700">
+                          {from}-{to}/{total}
+                        </span>
+                        <span className="hidden sm:inline">
+                          <span className="text-stone-500">por página · </span>
+                          <span className="font-medium text-stone-700">{from}-{to}</span> de{' '}
+                          <span className="font-medium text-stone-700">{total}</span>
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-stone-400 text-[10px] sm:text-sm">0</span>
+                    )}
                   </div>
-                )}
+
+                  {totalPages > 1 ? (
+                    <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                        className="inline-flex items-center justify-center p-1 sm:px-2 sm:py-1 rounded-md sm:rounded-lg border border-stone-200 text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+                        title="Anterior"
+                        aria-label="Página anterior"
+                      >
+                        <ChevronLeft size={16} className="sm:w-[15px] sm:h-[15px]" />
+                      </button>
+                      <span
+                        className="text-[11px] sm:text-xs text-stone-600 tabular-nums px-0.5 sm:px-1 min-w-[2.5rem] sm:min-w-[4.5rem] text-center"
+                        aria-live="polite"
+                      >
+                        {page}/{totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages}
+                        className="inline-flex items-center justify-center p-1 sm:px-2 sm:py-1 rounded-md sm:rounded-lg border border-stone-200 text-stone-600 hover:bg-white disabled:opacity-40 disabled:pointer-events-none touch-manipulation"
+                        title="Siguiente"
+                        aria-label="Página siguiente"
+                      >
+                        <ChevronRight size={16} className="sm:w-[15px] sm:h-[15px]" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>
             </div>
           )}
           </div>
@@ -1569,7 +1706,7 @@ export default function VentasPage() {
             ) : (
               <>
                 <p className="text-sm text-stone-600">
-                  Se reutilizarán cliente, ítems, impuestos y totales de la nota{' '}
+                  Se reutilizarán ítems, impuestos y totales de la nota{' '}
                   <span className="font-semibold">{emitRow ? formatSaleDocumentNumber(emitRow) : ''}</span>.
                 </p>
                 <div className="flex gap-2">
@@ -1591,6 +1728,48 @@ export default function VentasPage() {
                   >
                     Factura
                   </button>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">
+                    {emitRequiresRuc ? 'Cliente (RUC obligatorio)' : 'Cliente'}
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                      <SearchableSelect
+                        value={emitContactId}
+                        onChange={(v) =>
+                          setEmitContactId(v == null || String(v) === '' ? null : Number(v))
+                        }
+                        options={emitClientOptions}
+                        placeholder={
+                          emitRequiresRuc
+                            ? emitClientOptions.length
+                              ? 'Selecciona cliente con RUC'
+                              : 'Registre un cliente con RUC'
+                            : 'Mantener o cambiar cliente'
+                        }
+                        searchable
+                        className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[44px]"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEmitClientQuickAddOpen(true)}
+                      className="shrink-0 rounded-xl border border-rest-500 px-3 py-2 text-xs font-medium text-rest-600 hover:bg-rest-50 min-h-[44px]"
+                    >
+                      Nuevo
+                    </button>
+                  </div>
+                  {emitRequiresRuc && emitClientOptions.length === 0 && (
+                    <p className="text-[11px] text-amber-700 mt-1">
+                      La factura solo puede emitirse a un cliente con RUC registrado.
+                    </p>
+                  )}
+                  {!emitRequiresRuc && (
+                    <p className="text-[11px] text-stone-500 mt-1">
+                      Puede mantener el cliente de la nota o asignar otro para esta boleta.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Serie</label>
@@ -1617,7 +1796,7 @@ export default function VentasPage() {
                 </div>
                 <button
                   type="button"
-                  disabled={emitSubmitting}
+                  disabled={emitSubmitting || !emitContactOk || !emitSeriesId}
                   onClick={() => void submitEmit()}
                   className="w-full py-2.5 bg-rest-600 text-white rounded-xl text-sm font-semibold hover:bg-rest-700 disabled:opacity-50"
                 >
@@ -1628,6 +1807,16 @@ export default function VentasPage() {
           </div>
         </div>
       </PortalModal>
+
+      <QuickContactCreateModal
+        open={emitClientQuickAddOpen}
+        onClose={() => setEmitClientQuickAddOpen(false)}
+        defaultDocType={emitDocKind === '01' ? '6' : '1'}
+        onCreated={(created) => {
+          setEmitContacts((prev) => [...prev, created])
+          setEmitContactId(created.id)
+        }}
+      />
 
       <PortalModal open={voidNotaOpen} onClose={() => setVoidNotaOpen(false)} className="max-w-md">
         <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">

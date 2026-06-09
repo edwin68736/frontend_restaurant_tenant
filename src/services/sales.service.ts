@@ -173,7 +173,7 @@ export const salesService = {
         summary: parseSaleListSummary(r.data.summary),
       })),
 
-  issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string }) =>
+  issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string; contact_id?: number }) =>
     api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),
 
   cancelNota: (saleId: number, reason: string) =>

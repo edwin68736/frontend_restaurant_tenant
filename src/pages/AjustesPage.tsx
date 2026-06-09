@@ -31,29 +31,29 @@ export default function AjustesPage() {
   }
 
   return (
-    <div className="w-full flex flex-col flex-1 min-h-0 overflow-y-auto">
-      <div className="w-full max-w-6xl mx-auto pb-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-bold text-stone-900">
+    <div className="w-full flex flex-col">
+      <div className="w-full max-w-6xl mx-auto pb-4 sm:pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-xl font-bold text-stone-900">
               {printersOnly ? 'Impresoras del equipo' : 'Ajustes'}
             </h1>
-            <p className="mt-1 text-sm text-stone-600">
+            <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-stone-600 hidden sm:block">
               {printersOnly
                 ? 'Configure comandas, precuenta y documentos en este dispositivo (Android / Windows).'
                 : 'Configuración del restaurante y del equipo local.'}
             </p>
           </div>
-          <AppVersionBadge className="shrink-0 pt-1" />
+          <AppVersionBadge className="shrink-0" />
         </div>
 
         {(canManageRestaurant && canPrinters) && (
-          <div className="mt-5 flex flex-wrap items-center gap-2">
+          <div className="mt-3 sm:mt-5 grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
             {canManageRestaurant && (
               <button
                 type="button"
                 onClick={() => setTab('restaurante')}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold ${
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold ${
                   tab === 'restaurante'
                     ? 'bg-rest-600 text-white'
                     : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
@@ -66,7 +66,7 @@ export default function AjustesPage() {
               <button
                 type="button"
                 onClick={() => setTab('impresoras')}
-                className={`px-3 py-2 rounded-xl text-sm font-semibold ${
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold ${
                   tab === 'impresoras'
                     ? 'bg-rest-600 text-white'
                     : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
@@ -79,12 +79,12 @@ export default function AjustesPage() {
         )}
 
         {isDevelopmentMode() && (
-          <div className="mt-5">
+          <div className="mt-3 sm:mt-5">
             <DevServerSettings />
           </div>
         )}
 
-        <div className="mt-5">
+        <div className="mt-3 sm:mt-5">
           {activeTab === 'restaurante' && <RestaurantSettingsTab />}
           {activeTab === 'impresoras' && <PrintersSettingsTab />}
         </div>

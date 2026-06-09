@@ -24,8 +24,10 @@ const NAV_DEFAULT = {
 export function navPillClasses(path: string, isActive: boolean, compact?: boolean): string {
   const accent = NAV_BY_PATH[path] ?? NAV_DEFAULT
   return clsx(
-    'inline-flex items-center gap-1.5 font-medium transition-all whitespace-nowrap shrink-0',
-    compact ? 'rounded-lg px-2.5 py-1.5 text-xs' : 'rounded-full px-3.5 py-2 text-sm',
+    'inline-flex items-center font-medium transition-all whitespace-nowrap shrink-0',
+    compact
+      ? 'gap-1 rounded-lg px-2.5 py-1.5 text-xs'
+      : 'gap-1 lg:gap-1 lg:rounded-lg lg:px-2 lg:py-1.5 lg:text-xs xl:gap-1.5 xl:rounded-full xl:px-3.5 xl:py-2 xl:text-sm',
     isActive ? accent.active : accent.idle,
   )
 }

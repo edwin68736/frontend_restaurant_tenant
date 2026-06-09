@@ -90,7 +90,7 @@ export default function RestaurantLayout() {
             <CashSessionOpenModal />
             <BackendOfflineOverlay />
             <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-md">
-              <div className="flex min-h-0 flex-1 flex-col overflow-auto px-3 py-2.5 pb-[calc(3.5rem+var(--safe-bottom))] sm:px-4 sm:py-3 lg:px-5 lg:pb-3">
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-2.5 pb-mobile-nav sm:px-4 sm:py-3 lg:px-5 lg:pb-3">
                 <Outlet />
               </div>
             </main>

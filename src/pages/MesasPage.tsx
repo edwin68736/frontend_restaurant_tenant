@@ -232,7 +232,13 @@ export default function MesasPage() {
   )
 
   return (
-    <PageShell title="Mesas" subtitle="Configura las mesas por piso del restaurante" actions={toolbar}>
+    <PageShell
+      fill={false}
+      title="Mesas"
+      subtitle="Configura las mesas por piso del restaurante"
+      subtitleClassName="hidden sm:block"
+      actions={toolbar}
+    >
       {loading ? (
         <div className="flex justify-center py-20">
           <div className="w-9 h-9 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />

@@ -106,7 +106,7 @@ export default function SalasPage() {
   )
 
   return (
-    <div className="w-full flex flex-col flex-1 min-h-0">
+    <div className="w-full flex flex-col">
       {/*<div className="mb-3 shrink-0">
         <h2 className="text-lg font-bold text-stone-800">Mesas</h2>
         <p className="text-sm text-stone-500">Elige un piso y abre una mesa. El mozo se asigna automáticamente a quien inicia sesión.</p>
@@ -176,7 +176,7 @@ export default function SalasPage() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 pb-1">
             {filteredTables.map((t) => {
               const st = tableStatusStyles(t.status)
               const clickable =
