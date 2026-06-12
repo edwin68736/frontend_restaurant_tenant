@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileText, Loader2, MessageCircle, Printer, Receipt, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, X } from 'lucide-react'
+import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
@@ -31,22 +32,27 @@ interface ReceiptPrintModalProps {
   open: boolean
   onClose: () => void
   printData: PrintData | null
+  saleId?: number
   saleNumber?: string
   total?: number
+  defaultEmail?: string
 }
 
 export function ReceiptPrintModal({
   open,
   onClose,
   printData,
+  saleId,
   saleNumber,
   total,
+  defaultEmail = '',
 }: ReceiptPrintModalProps) {
   const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
   const pdfUrlRef = useRef<string | null>(null)
   const loadedFormatRef = useRef<PdfFormat | null>(null)
 
@@ -129,6 +135,7 @@ export function ReceiptPrintModal({
       setPanelView('details')
       setPdfFormat('ticket')
       setBusy(null)
+      setEmailModalOpen(false)
       return
     }
     setPanelView('details')
@@ -321,6 +328,18 @@ export function ReceiptPrintModal({
 
                   <button
                     type="button"
+                    disabled={!!busy || !printData || !saleId}
+                    onClick={() => setEmailModalOpen(true)}
+                    title="Enviar por correo"
+                    aria-label="Enviar por correo"
+                    className={clsx(ACTION_ICON_BTN, 'bg-orange-500 hover:bg-orange-600')}
+                  >
+                    <Mail className={ACTION_ICON} strokeWidth={2.25} />
+                    <span className={ACTION_LABEL}>Correo</span>
+                  </button>
+
+                  <button
+                    type="button"
                     disabled={!!busy || !printData}
                     onClick={() => void handleDownloadPdf('ticket')}
                     title="Descargar PDF ticket"
@@ -496,6 +515,17 @@ export function ReceiptPrintModal({
           </button>
         </div>
       </div>
+
+      {printData && saleId ? (
+        <ReceiptEmailModal
+          open={emailModalOpen}
+          onClose={() => setEmailModalOpen(false)}
+          saleId={saleId}
+          printData={printData}
+          defaultEmail={defaultEmail}
+          ticketPdfOptions={ticketPdfOptions()}
+        />
+      ) : null}
     </PortalModal>
   )
 }

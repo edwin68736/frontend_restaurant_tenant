@@ -6,6 +6,8 @@ import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/suna
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
+import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
 
 const A4_WIDTH = 210
 const A4_HEIGHT = 297
@@ -20,30 +22,13 @@ const GREEN_WEB: [number, number, number] = [34, 130, 70]
 /** Máximo del logo en columna izquierda (mm); se respeta proporción. */
 const LOGO_MAX_MM = 30
 
-function loadImageNaturalSize(url: string): Promise<{ w: number; h: number } | null> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-    img.onerror = () => resolve(null)
-    img.src = url
-  })
-}
-
 function fitLogoMm(
   naturalW: number,
   naturalH: number,
   maxW: number,
   maxH: number,
 ): { w: number; h: number } {
-  if (naturalW <= 0 || naturalH <= 0) return { w: maxW, h: maxH }
-  const ratio = naturalW / naturalH
-  let w = Math.min(maxW, LOGO_MAX_MM)
-  let h = w / ratio
-  if (h > maxH) {
-    h = maxH
-    w = h * ratio
-  }
-  return { w, h }
+  return fitReceiptLogoMm(naturalW, naturalH, Math.min(maxW, LOGO_MAX_MM), maxH)
 }
 
 type A4Col = { header: string; w: number; align: 'left' | 'center' | 'right' }
@@ -171,18 +156,13 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const headerBottom = Math.max(cy, boxY + boxH)
 
   if (data.company.logo_url) {
-    try {
-      const fmt = /image\/jpe?g/i.test(data.company.logo_url) ? 'JPEG' : 'PNG'
-      const natural = await loadImageNaturalSize(data.company.logo_url)
+    const logoAsset = await resolveReceiptLogoForPdf(data.company.logo_url)
+    if (logoAsset) {
       const maxLogoH = Math.max(20, headerBottom - headerTopY - 4)
-      const size = natural
-        ? fitLogoMm(natural.w, natural.h, col1W - 6, maxLogoH)
-        : { w: Math.min(col1W - 6, LOGO_MAX_MM), h: Math.min(maxLogoH, LOGO_MAX_MM) }
+      const size = fitLogoMm(logoAsset.naturalW, logoAsset.naturalH, col1W - 6, maxLogoH)
       const logoX = col1X + (col1W - size.w) / 2
       const logoY = headerTopY + (headerBottom - headerTopY - size.h) / 2
-      doc.addImage(data.company.logo_url, fmt, logoX, logoY, size.w, size.h)
-    } catch {
-      /* sin logo */
+      doc.addImage(logoAsset.dataUrl, logoAsset.format, logoX, logoY, size.w, size.h)
     }
   }
 
@@ -313,6 +293,13 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     doc.text('OP. INAFECTAS:', totalsX - 42, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
     doc.text(formatMoney(aff['30'].subtotal, data.currency), totalsX, y, { align: 'right' })
+    y += LINE_H + 1
+  }
+  if (hasReceiptDiscount(data)) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('DESCUENTO:', totalsX - 42, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(`- ${formatMoney(receiptTotalDiscount(data), data.currency)}`, totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
   if (data.tax_amount > 0.000001) {

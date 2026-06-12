@@ -12,6 +12,7 @@ import { paymentWalletVisible, walletProviderLabel } from '@/utils/receiptPaymen
 import { resolvePublicAssetUrl } from '@/services/api'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { trimCompanyAdditionalNotes, wrapCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
   getConfiguredComandaDefaultPrinter,
@@ -533,6 +534,9 @@ export async function buildSaleDocumentEscPos(
   if (totals['20']?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(totals['20'].subtotal), cols))
   if (totals['30']?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(totals['30'].subtotal), cols))
   if (totals['40']?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(totals['40'].subtotal), cols))
+  if (hasReceiptDiscount(printData)) {
+    totalLines.push(amountLine('Descuento:', `- ${money(receiptTotalDiscount(printData))}`, cols))
+  }
   if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
   totalLines.push(amountLine('TOTAL A PAGAR:', money(printData.total), cols))
 

@@ -10,6 +10,11 @@ import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
 import {
+  fitReceiptLogoMm,
+  resolveReceiptLogoForPdf,
+} from '@/utils/receiptLogoPdf'
+import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
+import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
   ticketPageWidthMm,
@@ -22,6 +27,8 @@ const FONT_SIZE_TITLE = 12
 const MARGIN = 15
 const TICKET_PAGE_HEIGHT = 520
 const A4_WIDTH = 210
+/** Espacio extra arriba del ticket PDF (correo / descarga / vista previa). */
+const TICKET_TOP_PADDING_MM = 5
 
 export type ReceiptPdfOptions = {
   /** Ancho de rollo (58 o 80 mm). Por defecto 80. */
@@ -62,6 +69,9 @@ function emitAffectTotals(
   if (exportacion && exportacion.subtotal > 0.000001) {
     emitRow('Op. Exportación:', formatMoney(exportacion.subtotal, data.currency))
   }
+  if (hasReceiptDiscount(data)) {
+    emitRow('Descuento:', `- ${formatMoney(receiptTotalDiscount(data), data.currency)}`)
+  }
   if (data.tax_amount > 0.000001) {
     emitRow('IGV:', formatMoney(data.tax_amount, data.currency))
   }
@@ -88,7 +98,7 @@ export async function generateReceiptPdf(
     format: isTicket ? [pageW, TICKET_PAGE_HEIGHT] : 'a4',
   })
 
-  let y = margin
+  let y = margin + (isTicket ? TICKET_TOP_PADDING_MM : 0)
   const lineH = 5
   const innerW = pageW - 2 * margin
   const showQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
@@ -166,14 +176,20 @@ export async function generateReceiptPdf(
     }
 
     if (data.company.logo_url) {
-      try {
-        const logoW = Math.min(32, innerW)
-        const logoH = 11
-        const fmt = /image\/jpe?g/i.test(data.company.logo_url) ? 'JPEG' : 'PNG'
-        doc.addImage(data.company.logo_url, fmt, (pageW - logoW) / 2, y, logoW, logoH)
-        y += logoH + 3
-      } catch {
-        /* sin logo */
+      const logoAsset = await resolveReceiptLogoForPdf(data.company.logo_url)
+      if (logoAsset) {
+        const maxLogoW = Math.min(32, innerW)
+        const maxLogoH = 14
+        const size = fitReceiptLogoMm(logoAsset.naturalW, logoAsset.naturalH, maxLogoW, maxLogoH)
+        doc.addImage(
+          logoAsset.dataUrl,
+          logoAsset.format,
+          (pageW - size.w) / 2,
+          y,
+          size.w,
+          size.h,
+        )
+        y += size.h + 3
       }
     }
 

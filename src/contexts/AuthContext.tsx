@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     restaurantAuthService
       .getSessionPermissions()
       .then((r) => {
-        if (r.permissions?.length) {
+        if (Array.isArray(r.permissions)) {
           localStorage.setItem(PERMS_KEY, JSON.stringify(r.permissions))
           setState((s) => ({
             ...s,

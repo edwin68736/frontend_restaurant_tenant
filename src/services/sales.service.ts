@@ -119,6 +119,28 @@ function parseSaleListSummary(raw: unknown): SaleListSummary {
   }
 }
 
+export interface SalesByProductRow {
+  product_id: number
+  product_code: string
+  product_name: string
+  category_id?: number | null
+  category_name: string
+  unit: string
+  quantity_sold: number
+  total_amount: number
+  lines_count: number
+  sales_count: number
+  avg_line_amount: number
+}
+
+export interface SalesByProductSummary {
+  total_amount: number
+  total_quantity: number
+  line_items: number
+  distinct_sales: number
+  products_count: number
+}
+
 export const salesService = {
   list: (
     params?: {
@@ -129,8 +151,12 @@ export const salesService = {
       status?: string
       billing_status?: string
       sunat_code?: string
+      payment_method?: string
+      sale_status?: string
+      branch_id?: number
       page?: number
       per_page?: number
+      export_all?: string
     },
     options?: ApiRequestOptions,
   ) => {
@@ -178,4 +204,23 @@ export const salesService = {
 
   cancelNota: (saleId: number, reason: string) =>
     api.post<{ success: boolean; message?: string }>(`/api/sales/${saleId}/cancel`, { reason }).then((r) => r.data),
+
+  sendReceiptEmail: (saleId: number, email: string, pdfBase64: string) =>
+    api
+      .post<{ success: boolean }>(`/api/sales/${saleId}/email-receipt`, {
+        email,
+        pdf_base64: pdfBase64,
+      })
+      .then((r) => r.data),
+
+  /** Reporte: ventas agregadas por producto/plato. */
+  listByProduct: (params?: { from?: string; to?: string; branch_id?: number; category_id?: number }) =>
+    api
+      .get<{ data: SalesByProductRow[]; summary?: SalesByProductSummary }>('/api/sales/by-product', {
+        params: params ?? {},
+      })
+      .then((r) => ({
+        data: r.data.data ?? [],
+        summary: r.data.summary ?? null,
+      })),
 }

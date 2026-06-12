@@ -16,6 +16,8 @@ import {
   orderTypeChipClasses,
   orderTypeTabClasses,
 } from '@/utils/restaurantUiColors'
+import { useAuth } from '@/contexts/AuthContext'
+import { canCancelOrder } from '@/utils/restaurantPermissions'
 
 type OrderTab = 'all' | 'dine_in' | 'delivery' | 'takeaway'
 
@@ -37,6 +39,8 @@ function elapsedLabel(iso: string): string {
 export function ComandasOrdersView() {
   const navigate = useNavigate()
   const { resetEpoch } = useBranch()
+  const { employeeType, restaurantPermissions } = useAuth()
+  const allowCancelOrder = canCancelOrder(restaurantPermissions, employeeType)
   const [tab, setTab] = useState<OrderTab>('all')
   const [orders, setOrders] = useState<RestaurantOrderSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -198,14 +202,16 @@ export function ComandasOrdersView() {
                     Entregado
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => void requestVoidOrder(o)}
-                  className="inline-flex items-center justify-center gap-1 px-2.5 py-2 sm:py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-medium hover:bg-red-50 touch-manipulation"
-                  title="Anular pedido (requiere PIN)"
-                >
-                  <Trash2 size={14} /> Anular
-                </button>
+                {allowCancelOrder && (
+                  <button
+                    type="button"
+                    onClick={() => void requestVoidOrder(o)}
+                    className="inline-flex items-center justify-center gap-1 px-2.5 py-2 sm:py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-medium hover:bg-red-50 touch-manipulation"
+                    title="Anular pedido (requiere PIN)"
+                  >
+                    <Trash2 size={14} /> Anular
+                  </button>
+                )}
               </div>
             </div>
           ))}

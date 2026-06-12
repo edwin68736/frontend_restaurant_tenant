@@ -74,6 +74,14 @@ export function cartLineTotal(
   taxRate: number,
   taxConfig: Partial<TaxConfig> | undefined,
 ): number {
+  return cartLineTaxTotals(line, taxRate, taxConfig).total
+}
+
+export function cartLineTaxTotals(
+  line: PosCartLine,
+  taxRate: number,
+  taxConfig: Partial<TaxConfig> | undefined,
+): { subtotal: number; taxAmount: number; total: number } {
   const unit = cartLineUnitPrice(line)
   if (line.kind === 'catalog') {
     return calcItem(
@@ -84,7 +92,7 @@ export function cartLineTotal(
       line.product.price_includes_igv ?? true,
       taxRate,
       taxConfig,
-    ).total
+    )
   }
   return calcItem(
     line.unit_price,
@@ -94,7 +102,7 @@ export function cartLineTotal(
     line.price_includes_igv,
     taxRate,
     taxConfig,
-  ).total
+  )
 }
 
 /** Clave de fusión en carrito: modificadores, nota y precio unitario acordado. */

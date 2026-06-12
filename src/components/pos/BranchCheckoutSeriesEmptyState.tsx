@@ -5,14 +5,39 @@ import { goToRestaurantSeriesSettings } from '@/utils/restaurantSeriesNavigation
 
 const REQUIRED_DOCS = ['Nota de venta', 'Boleta', 'Factura'] as const
 
+export type BranchSeriesEmptyReason = 'missing' | 'other_branch' | 'load_error'
+
 type Props = {
   /** Variante compacta para modales. */
   compact?: boolean
   className?: string
+  branchName?: string
+  reason?: BranchSeriesEmptyReason
 }
 
-export function BranchCheckoutSeriesEmptyState({ compact = false, className }: Props) {
+export function BranchCheckoutSeriesEmptyState({
+  compact = false,
+  className,
+  branchName,
+  reason = 'missing',
+}: Props) {
   const navigate = useNavigate()
+
+  const title =
+    reason === 'load_error'
+      ? 'No se pudieron verificar las series de esta sucursal'
+      : reason === 'other_branch'
+        ? 'Las series están configuradas en otra sucursal'
+        : branchName
+          ? `La sucursal «${branchName}» no tiene series de venta listas`
+          : 'Esta sucursal aún no tiene series configuradas'
+
+  const description =
+    reason === 'load_error'
+      ? 'Hubo un error al consultar las series. Revisa tu conexión e intenta actualizar. Si el problema continúa, contacta soporte.'
+      : reason === 'other_branch'
+        ? `Tu sesión opera en «${branchName ?? 'esta sucursal'}», pero las series de venta están registradas en otra sucursal. Cambia de local o crea las series aquí.`
+        : 'Antes de emitir comprobantes debes configurar al menos una serie de venta (nota de venta, boleta o factura) para la sucursal activa.'
 
   return (
     <div
@@ -34,19 +59,19 @@ export function BranchCheckoutSeriesEmptyState({ compact = false, className }: P
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <h3 className={clsx('font-bold text-stone-900', compact ? 'text-sm' : 'text-base')}>
-            Esta sucursal aún no tiene series configuradas
+            {title}
           </h3>
-          <p className={clsx('text-stone-600', compact ? 'text-xs' : 'text-sm')}>
-            Antes de emitir comprobantes debes configurar las series de esta sucursal.
-          </p>
-          <div className={clsx('text-stone-700', compact ? 'text-xs' : 'text-sm')}>
-            <p className="font-medium text-stone-800 mb-1">Requisitos mínimos:</p>
-            <ul className="list-disc list-inside space-y-0.5">
-              {REQUIRED_DOCS.map((label) => (
-                <li key={label}>{label}</li>
-              ))}
-            </ul>
-          </div>
+          <p className={clsx('text-stone-600', compact ? 'text-xs' : 'text-sm')}>{description}</p>
+          {reason === 'missing' && (
+            <div className={clsx('text-stone-700', compact ? 'text-xs' : 'text-sm')}>
+              <p className="font-medium text-stone-800 mb-1">Requisitos mínimos:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {REQUIRED_DOCS.map((label) => (
+                  <li key={label}>{label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => goToRestaurantSeriesSettings(navigate)}

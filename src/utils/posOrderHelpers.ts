@@ -4,6 +4,7 @@ import type { PrecuentaPrintItem } from '@/services/printers.service'
 import {
   buildCatalogConfigureKey,
   cartLineLabel,
+  cartLineTaxTotals,
   cartLineTotal,
   cartLineUnitPrice,
   cartToOrderItems as cartLinesToOrderItems,
@@ -13,12 +14,22 @@ import {
 import { formatModifierLines, parseStoredModifiers, storedToCartModifiers } from '@/utils/productModifiers'
 import { calcItem } from '@/utils/taxCalc'
 import type { TaxConfig } from '@/utils/taxCalc'
+import type { LineTaxTotals } from '@/utils/checkoutDiscount'
+
 /** Total de línea de comanda (misma lógica tributaria que el backend al facturar). */
 export function comandaLineTotal(
   c: Pick<Comanda, 'unit_price' | 'quantity' | 'igv_affectation_type' | 'price_includes_igv'>,
   taxRate: number,
   taxConfig?: Partial<TaxConfig>,
 ): number {
+  return comandaLineTaxTotals(c, taxRate, taxConfig).total
+}
+
+export function comandaLineTaxTotals(
+  c: Pick<Comanda, 'unit_price' | 'quantity' | 'igv_affectation_type' | 'price_includes_igv'>,
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): LineTaxTotals {
   return calcItem(
     Number(c.unit_price) || 0,
     c.quantity,
@@ -27,7 +38,24 @@ export function comandaLineTotal(
     c.price_includes_igv ?? true,
     taxRate,
     taxConfig,
-  ).total
+  )
+}
+
+/** Líneas tributarias del cobro: carrito pendiente + comandas ya en sesión. */
+export function collectCheckoutLineTaxTotals(
+  cart: PosCartLine[],
+  session: SessionDetail | null | undefined,
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): LineTaxTotals[] {
+  const lines: LineTaxTotals[] = cart.map((line) => cartLineTaxTotals(line, taxRate, taxConfig))
+  for (const ord of session?.orders ?? []) {
+    for (const c of ord.comandas ?? []) {
+      if (c.cancelled_at) continue
+      lines.push(comandaLineTaxTotals(c, taxRate, taxConfig))
+    }
+  }
+  return lines
 }
 
 /** @deprecated Use PosCartLine from @/utils/posCart */

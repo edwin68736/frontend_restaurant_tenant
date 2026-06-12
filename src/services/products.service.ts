@@ -53,6 +53,14 @@ export interface Category {
   active?: boolean
 }
 
+/** Fila enriquecida cuando GET /api/products se llama con report=1 */
+export interface ProductReportRow extends Product {
+  stock_total?: number
+  stock_by_branch?: { branch_id: number; branch_name: string; quantity: number }[]
+  serials?: string[]
+  serial_count?: number
+}
+
 export interface BulkImportItemPayload {
   row_number: number
   name: string
@@ -218,6 +226,37 @@ export const productsService = {
       .then((r) => r.data.active),
 
   delete: (id: number) => api.delete(`/api/products/${id}`).then((r) => r.data),
+
+  /** Listado para reportes: stock, categoría, series (cartá restaurante con restaurant_only). */
+  listReport: (params: {
+    q?: string
+    category_id?: number
+    branch_id?: number
+    active_only?: boolean
+    page?: number
+    per_page?: number
+    stock_less_than?: number
+    preparation_area?: string
+  }) =>
+    api
+      .get<{ data: ProductReportRow[]; total?: number }>('/api/products', {
+        params: {
+          q: params.q,
+          category_id: params.category_id,
+          branch_id: params.branch_id,
+          active_only: params.active_only ?? true,
+          page: params.page,
+          per_page: params.per_page,
+          stock_less_than: params.stock_less_than,
+          preparation_area: params.preparation_area,
+          restaurant_only: true,
+          report: true,
+        },
+      })
+      .then((r) => ({
+        data: r.data.data ?? [],
+        total: r.data.total ?? 0,
+      })),
 
   listCategories: () =>
     api.get<{ data: Category[] }>('/api/categories').then((r) => r.data.data ?? []),

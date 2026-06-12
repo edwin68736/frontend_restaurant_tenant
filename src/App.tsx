@@ -24,7 +24,11 @@ import RepartidoresPage from '@/pages/RepartidoresPage'
 import ComandasCocinaPage from '@/pages/ComandasCocinaPage'
 import AjustesPage from '@/pages/AjustesPage'
 import SubscriptionPage from '@/pages/subscription/SubscriptionPage'
+import ReportsLayout from '@/pages/reportes/ReportsLayout'
+import ReportRunnerPage from '@/pages/reportes/ReportRunnerPage'
+import DashboardPage from '@/pages/DashboardPage'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
+import { DEFAULT_REPORT_PATH } from '@/reports/registry'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isBound } = useTenantBinding()
@@ -45,8 +49,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function DefaultRedirect() {
-  const { restaurantPermissions } = useAuth()
-  const route = defaultRouteForPermissions(restaurantPermissions)
+  const { restaurantPermissions, employeeType } = useAuth()
+  const route = defaultRouteForPermissions(restaurantPermissions, employeeType)
   return <Navigate to={route} replace />
 }
 
@@ -55,7 +59,7 @@ function DefaultEntryRedirect() {
   return <Navigate to={isBound ? '/home' : '/ruc'} replace />
 }
 
-function RequireFeature({ feature, children }: { feature: 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
+function RequireFeature({ feature, children }: { feature: 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'reportes' | 'dashboard' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
   const { canAccess } = useAuth()
   if (!canAccess(feature)) return <Navigate to="/" replace />
   return <>{children}</>
@@ -111,8 +115,20 @@ export default function App() {
           <Route path="comandas" element={<RequireFeature feature="comandas"><ComandasPage /></RequireFeature>} />
           <Route path="comandas/cocina" element={<RequireFeature feature="comandas"><ComandasCocinaPage /></RequireFeature>} />
           <Route path="repartidores" element={<RequireFeature feature="repartidores"><RepartidoresPage /></RequireFeature>} />
+          <Route path="dashboard" element={<RequireFeature feature="dashboard"><DashboardPage /></RequireFeature>} />
           <Route path="ventas" element={<RequireFeature feature="ventas"><VentasPage /></RequireFeature>} />
           <Route path="caja" element={<RequireFeature feature="caja"><CajaPage /></RequireFeature>} />
+          <Route
+            path="reportes"
+            element={
+              <RequireFeature feature="reportes">
+                <ReportsLayout />
+              </RequireFeature>
+            }
+          >
+            <Route index element={<Navigate to={`/reportes/${DEFAULT_REPORT_PATH}`} replace />} />
+            <Route path=":reportId" element={<ReportRunnerPage />} />
+          </Route>
           <Route path="clientes" element={<RequireFeature feature="clientes"><ClientesPage /></RequireFeature>} />
           <Route
             path="ajustes"

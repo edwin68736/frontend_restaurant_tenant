@@ -29,14 +29,14 @@ import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.s
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
-import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
+import { calcItem } from '@/utils/taxCalc'
 import { resolveTaxRatePercent } from '@/constants/tax'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
-import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
+import { canApplyCheckoutDiscount, canCancelOrder } from '@/utils/restaurantPermissions'
 import {
   getConfiguredPrinter,
   isAutoPrintEnabled,
@@ -52,7 +52,7 @@ import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { isCapacitorNative } from '@/lib/app'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
-import { cartToOrderItems, comandaLineTotal, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
+import { cartToOrderItems, collectCheckoutLineTaxTotals, comandaLineTotal, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printKitchenRound } from '@/utils/kitchenPrint'
 import {
   appendCatalogLine,
@@ -95,8 +95,8 @@ import {
 } from '@/utils/contactDocTypes'
 import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import {
-  calcCheckoutDiscountAmount,
-  calcPayableTotal,
+  applyCheckoutDiscountToLines,
+  buildRestaurantBillDiscount,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
 import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
@@ -126,10 +126,18 @@ function readScannerModePreference(): boolean {
 export default function POSPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { employeeType, restaurantPermissions } = useAuth()
-  const { activeBranchId, resetEpoch } = useBranch()
-  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunatEnabled } = useBranchCheckoutSeries()
+  const { activeBranchId, activeBranch, resetEpoch } = useBranch()
+  const {
+    checkoutSeries,
+    seriesMetaReady,
+    hasCheckoutSeries,
+    sunatEnabled,
+    seriesLoadError,
+    seriesOnOtherBranches,
+  } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
+  const allowCancelOrder = canCancelOrder(restaurantPermissions, employeeType)
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null)
   const [preparationAreaFilter, setPreparationAreaFilter] = useState<string | null>(null)
@@ -155,7 +163,12 @@ export default function POSPage() {
   const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
-  const [lastSale, setLastSale] = useState<{ number: string; total: number } | null>(null)
+  const [lastSale, setLastSale] = useState<{
+    id: number
+    number: string
+    total: number
+    clientEmail?: string
+  } | null>(null)
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
   const [clientQuickAdd, setClientQuickAdd] = useState({ doc_type: '6', doc_number: '', business_name: '', address: '' })
   const [consultaLoading, setConsultaLoading] = useState(false)
@@ -340,6 +353,11 @@ export default function POSPage() {
   }, [hasMore, loadMoreProducts, products.length])
 
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
+  const seriesEmptyReason = seriesLoadError
+    ? 'load_error'
+    : seriesOnOtherBranches
+      ? 'other_branch'
+      : 'missing'
 
   useOnBranchChange(() => {
     setCart([])
@@ -421,36 +439,21 @@ export default function POSPage() {
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
   )
   const total = sumMoney(cartTotal, sessionTotal)
-  const checkoutDiscountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(total, checkoutDiscountMode, checkoutDiscountValue),
-    [total, checkoutDiscountMode, checkoutDiscountValue],
-  )
-  const payableTotal = useMemo(
-    () => calcPayableTotal(total, checkoutDiscountMode, checkoutDiscountValue),
-    [total, checkoutDiscountMode, checkoutDiscountValue],
-  )
 
-  const totalsByAfectacion = useMemo(
-    () =>
-      cart.reduce(
-        (acc, i) => {
-          const { subtotal, taxAmount, total: t } = getCartItemTotals(i)
-          const aff = isManualCartLine(i) ? i.igv_affectation_type : (i.product.igv_affectation_type ?? '10')
-          const group = getAfectacionGroup(aff)
-          acc[group].subtotal = roundSunat(acc[group].subtotal + subtotal)
-          acc[group].taxAmount = roundSunat(acc[group].taxAmount + taxAmount)
-          acc[group].total = roundSunat(acc[group].total + t)
-          return acc
-        },
-        {
-          gravado: { subtotal: 0, taxAmount: 0, total: 0 },
-          exonerado: { subtotal: 0, taxAmount: 0, total: 0 },
-          inafecto: { subtotal: 0, taxAmount: 0, total: 0 },
-          exportacion: { subtotal: 0, taxAmount: 0, total: 0 },
-        } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>
-      ),
-    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone]
+  const checkoutLineTax = useMemo(
+    () => collectCheckoutLineTaxTotals(cart, sessionDetail, taxRate, taxConfig),
+    [cart, sessionDetail, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
+  const checkoutBilling = useMemo(
+    () => applyCheckoutDiscountToLines(checkoutLineTax, checkoutDiscountMode, checkoutDiscountValue),
+    [checkoutLineTax, checkoutDiscountMode, checkoutDiscountValue],
+  )
+  const billingSubtotal = useMemo(
+    () => roundSunat(checkoutLineTax.reduce((acc, line) => acc + line.subtotal, 0)),
+    [checkoutLineTax],
+  )
+  const payableTotal = allowCheckoutDiscount ? checkoutBilling.payableTotal : total
+  const checkoutTaxAmount = checkoutBilling.taxAmount
 
   const cartQty = sumCartQty(cart)
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(sessionDetail), [sessionDetail])
@@ -1211,6 +1214,18 @@ export default function POSPage() {
         if (!items) return
         await restaurantService.addOrder(sid!, { items })
       }
+      const sessionForBill = await restaurantService.getSession(sid!)
+      const billLines = collectCheckoutLineTaxTotals([], sessionForBill, taxRate, taxConfig)
+      const billDiscount = buildRestaurantBillDiscount(
+        billLines,
+        checkoutDiscountMode,
+        checkoutDiscountValue,
+        allowCheckoutDiscount,
+      )
+      if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
+        toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+        return
+      }
       if (needsCashSession) {
         if (!canChargeCash) {
           toast.error('No tiene permiso para cobrar en efectivo')
@@ -1226,12 +1241,11 @@ export default function POSPage() {
         doc_type: docType,
         currency: 'PEN',
         contact_id: selectedContactId,
-        cash_session_id: needsCashSession ? myCashSession?.id ?? null : null,
+        cash_session_id: myCashSession?.id ?? null,
         close_session: true,
-        discount_amount:
-          allowCheckoutDiscount && checkoutDiscountAmount > 0
-            ? roundSunat(checkoutDiscountAmount)
-            : undefined,
+        discount_mode: billDiscount.discount_mode,
+        discount_value: billDiscount.discount_value,
+        discount_amount: billDiscount.discount_amount,
         payments: payments.map((p) => ({
           method: p.method,
           amount: roundSunat(p.amount),
@@ -1256,7 +1270,17 @@ export default function POSPage() {
         },
       ])
       setPrintData(billRes.print_data ?? null)
-      setLastSale(billRes.data ? { number: billRes.data.number, total: billRes.data.total } : null)
+      const saleContact = contacts.find((c) => c.id === selectedContactId)
+      setLastSale(
+        billRes.data
+          ? {
+              id: billRes.data.id,
+              number: billRes.data.number,
+              total: billRes.data.total,
+              clientEmail: saleContact?.email?.trim() ?? '',
+            }
+          : null,
+      )
       setReceiptModalOpen(true)
       void loadPendingOrders({ silent: true })
       if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && billRes.print_data) {
@@ -1285,7 +1309,10 @@ export default function POSPage() {
       <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
         {branchSeriesMissing && (
           <div className="shrink-0 px-2 pb-2 lg:px-0">
-            <BranchCheckoutSeriesEmptyState />
+            <BranchCheckoutSeriesEmptyState
+              branchName={activeBranch?.name}
+              reason={seriesEmptyReason}
+            />
           </div>
         )}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
@@ -1720,11 +1747,12 @@ export default function POSPage() {
         loading={loading}
         rawTotal={total}
         payableTotal={payableTotal}
+        billingSubtotal={billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
-        igvAmount={totalsByAfectacion.gravado.taxAmount}
+        igvAmount={checkoutTaxAmount}
         series={checkoutSeries}
         seriesId={seriesId}
         docType={docType}
@@ -1952,14 +1980,16 @@ export default function POSPage() {
                       <p className="text-xs text-stone-500 line-clamp-2">{o.delivery_address}</p>
                     )}
                   </button>
-                  <button
-                    type="button"
-                    title="Anular pedido"
-                    onClick={() => void requestVoidOrder(o)}
-                    className="shrink-0 self-center p-2 rounded-lg text-red-600 hover:bg-red-50 border border-red-100"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {allowCancelOrder && (
+                    <button
+                      type="button"
+                      title="Anular pedido"
+                      onClick={() => void requestVoidOrder(o)}
+                      className="shrink-0 self-center p-2 rounded-lg text-red-600 hover:bg-red-50 border border-red-100"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -2138,8 +2168,10 @@ export default function POSPage() {
         open={receiptModalOpen}
         onClose={() => { setReceiptModalOpen(false); setPrintData(null); setLastSale(null) }}
         printData={printData}
+        saleId={lastSale?.id}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
+        defaultEmail={lastSale?.clientEmail}
       />
 
       <ManualProductModal

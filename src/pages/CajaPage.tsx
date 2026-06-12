@@ -9,18 +9,26 @@ import {
   type BankAccount,
   type PaymentMethodRecord,
   type CashSessionReport,
+  type MethodTotal,
 } from '@/services/cashbank.service'
 import { companyService } from '@/services/company.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
-import { canManageCashSettings, canViewCashSettings } from '@/utils/restaurantPermissions'
+import {
+  canManageCashSettings,
+  canViewBankAccountBalances,
+  canViewCashSettings,
+} from '@/utils/restaurantPermissions'
+import { MaskedAccountBalance } from '@/components/cash/MaskedAccountBalance'
 import { CashOpenSessionForm } from '@/components/cash/CashOpenSessionForm'
 import { CajaMovementsPanel } from '@/components/cash/CajaMovementsPanel'
 import { CajaSessionReportsModal } from '@/components/cash/CajaSessionReportsModal'
+import { CajaSessionReportView } from '@/components/cash/CajaSessionReportView'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { paymentMethodDisplayLabel } from '@/utils/paymentMethodLabels'
 
 const INCOME_CATEGORIES = [
   { value: 'ingreso_manual', label: 'Ingreso manual' },
@@ -160,6 +168,7 @@ export default function CajaPage() {
   const { user, restaurantPermissions, employeeType } = useAuth()
   const canManageCashConfig = canManageCashSettings(restaurantPermissions, employeeType)
   const canViewCashConfig = canViewCashSettings(restaurantPermissions, employeeType)
+  const canViewAccountBalances = canViewBankAccountBalances(employeeType)
   const restrictMovementsToUserId = canManageCashConfig ? undefined : user?.id
   const { activeBranch, activeBranchId } = useBranch()
   const {
@@ -175,6 +184,8 @@ export default function CajaPage() {
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [sessions, setSessions] = useState<CashSession[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
+  const [sessionSalesByMethod, setSessionSalesByMethod] = useState<MethodTotal[]>([])
+  const [sessionTotalSales, setSessionTotalSales] = useState(0)
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [tab, setTab] = useState<'sesion' | 'movimientos' | 'reporte' | 'config'>('sesion')
@@ -269,12 +280,8 @@ export default function CajaPage() {
     return map
   }, [bankAccounts])
 
-  const paymentMethodLabel = (code: string | undefined) => {
-    const v = (code || '').trim()
-    if (!v) return 'Efectivo'
-    const found = paymentMethods.find((m) => m.code === v)
-    return found?.name ?? v
-  }
+  const paymentMethodLabel = (code: string | undefined) =>
+    paymentMethodDisplayLabel(code, paymentMethods)
 
   const openNewAccount = () => {
     setEditingAccount(null)
@@ -506,11 +513,18 @@ export default function CajaPage() {
       setBankAccounts(ba ?? [])
       setPaymentMethods(pm ?? [])
       if (sess?.id != null) {
-        const movs = await cashbankService.listMovements(sess.id)
+        const [movs, rep] = await Promise.all([
+          cashbankService.listMovements(sess.id),
+          cashbankService.getSessionReport(sess.id).catch(() => null),
+        ])
         if (gen !== loadGenRef.current) return
         setMovements(movs ?? [])
+        setSessionSalesByMethod(rep?.totals_by_method?.sales ?? [])
+        setSessionTotalSales(Number(rep?.totals?.total_sales ?? 0))
       } else {
         setMovements([])
+        setSessionSalesByMethod([])
+        setSessionTotalSales(0)
       }
     } catch {
       if (gen === loadGenRef.current) toast.error('Error al cargar')
@@ -734,20 +748,38 @@ export default function CajaPage() {
             </h3>
             {isSessionOpen && session ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="rounded-xl border border-stone-200 p-3">
                     <p className="text-xs text-stone-500">Monto inicial</p>
                     <p className="text-lg font-bold text-stone-800">S/ {Number(session.opening_balance).toFixed(2)}</p>
                   </div>
                   <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-xs text-stone-500">Ingresos</p>
+                    <p className="text-xs text-stone-500">Ingresos efectivo (caja física)</p>
                     <p className="text-lg font-bold text-green-700">S/ {Number(totalIncome).toFixed(2)}</p>
                   </div>
                   <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-xs text-stone-500">Egresos</p>
+                    <p className="text-xs text-stone-500">Egresos de caja</p>
                     <p className="text-lg font-bold text-red-600">S/ {Number(totalExpense).toFixed(2)}</p>
                   </div>
+                  <div className="rounded-xl border border-stone-200 p-3">
+                    <p className="text-xs text-stone-500">Ventas cobradas (todos los medios)</p>
+                    <p className="text-lg font-bold text-stone-900">S/ {Number(sessionTotalSales).toFixed(2)}</p>
+                  </div>
                 </div>
+
+                {sessionSalesByMethod.length > 0 && (
+                  <div className="rounded-xl border border-stone-200 bg-stone-50/50 p-3">
+                    <p className="text-xs font-semibold text-stone-700 mb-2">Desglose de ventas por método</p>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+                      {sessionSalesByMethod.map((x) => (
+                        <li key={x.method} className="flex justify-between text-sm gap-2">
+                          <span className="text-stone-600">{paymentMethodLabel(x.method)}</span>
+                          <span className="font-semibold text-stone-800 tabular-nums">S/ {Number(x.total).toFixed(2)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {(() => {
                   const sn = parseSessionNotesBlock(session.notes)
@@ -773,7 +805,7 @@ export default function CajaPage() {
 
                 <div className="rounded-xl border border-stone-200 p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div>
-                    <p className="text-xs text-stone-500">Saldo actual</p>
+                    <p className="text-xs text-stone-500">Saldo actual en caja (efectivo)</p>
                     <p className="text-xl font-bold text-stone-900">S/ {Number(currentBalance).toFixed(2)}</p>
                     <p className="text-xs text-stone-500">
                       Abierta: {session.opened_at ? new Date(session.opened_at).toLocaleString() : '—'}
@@ -920,7 +952,9 @@ export default function CajaPage() {
             <div className="bg-white rounded-2xl border border-stone-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-stone-800">Sesión abierta (ID {session.id})</p>
-                <p className="text-xs text-stone-500">{movements.length} movimiento(s) en la sesión actual</p>
+                <p className="text-xs text-stone-500">
+                  {movements.length} movimiento(s) físicos en caja · ventas electrónicas en la tabla inferior
+                </p>
               </div>
               <div className="flex gap-2">
                 <button
@@ -955,6 +989,7 @@ export default function CajaPage() {
             paymentMethods={paymentMethods}
             sessionOptions={movementSessionOptions}
             restrictToUserId={restrictMovementsToUserId}
+            defaultSessionId={session?.id ?? selectedReportSessionId}
           />
         </div>
       )}
@@ -1034,231 +1069,21 @@ export default function CajaPage() {
             {!report ? (
               <p className="text-sm text-stone-400">{loadingReport ? 'Cargando reporte...' : 'Seleccione una sesión y genere el reporte.'}</p>
             ) : (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                  <div className="rounded-xl border border-stone-200 p-3 sm:col-span-2">
-                    <p className="text-xs text-stone-500">Sesión</p>
-                    <p className="text-sm font-semibold text-stone-800">{report.session.branch_name || 'Sucursal'}</p>
-                    <p className="text-xs text-stone-500">
-                      Apertura: {report.session.opened_at ? new Date(report.session.opened_at).toLocaleString() : '—'}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      Cierre: {report.session.closed_at ? new Date(report.session.closed_at).toLocaleString() : '—'}
-                    </p>
-                    <p className="text-xs text-stone-500 mt-1">
-                      Abierto por: {report.session.opened_by_user_name || '—'}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-xs text-stone-500">Inicial</p>
-                    <p className="text-lg font-bold text-stone-800">S/ {Number(report.session.opening_balance).toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-xs text-stone-500">Ingresos</p>
-                    <p className="text-lg font-bold text-green-700">S/ {Number(report.totals.total_income).toFixed(2)}</p>
-                  </div>
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-xs text-stone-500">Egresos</p>
-                    <p className="text-lg font-bold text-red-700">S/ {Number(report.totals.total_expense).toFixed(2)}</p>
-                  </div>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-stone-200 p-3 bg-stone-50/50 text-sm">
+                  <p className="font-semibold text-stone-800">{report.session.branch_name || 'Sucursal'}</p>
+                  <p className="text-xs text-stone-500 mt-1">
+                    Apertura: {report.session.opened_at ? new Date(report.session.opened_at).toLocaleString() : '—'}
+                    {' · '}
+                    Cierre: {report.session.closed_at ? new Date(report.session.closed_at).toLocaleString() : '—'}
+                    {' · '}
+                    {report.session.opened_by_user_name || '—'}
+                  </p>
+                  <p className="text-xs text-stone-500 mt-2">
+                    Resumen consolidado de la sesión. El saldo físico solo incluye efectivo; los medios electrónicos se reportan aparte.
+                  </p>
                 </div>
-
-                <div className="rounded-xl border border-stone-200 p-3">
-                  <p className="text-xs text-stone-500">Saldo final (calculado)</p>
-                  <p className="text-2xl font-bold text-stone-900">S/ {Number(report.totals.final_balance).toFixed(2)}</p>
-                </div>
-
-                {(() => {
-                  const rn = parseSessionNotesBlock(report.session.notes)
-                  if (!rn.opening && !rn.closing) return null
-                  return (
-                    <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-4 space-y-2">
-                      <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Notas de la sesión</p>
-                      {rn.opening ? (
-                        <div>
-                          <p className="text-xs text-stone-500">Apertura</p>
-                          <p className="text-sm text-stone-800 whitespace-pre-wrap">{rn.opening}</p>
-                        </div>
-                      ) : null}
-                      {rn.closing ? (
-                        <div>
-                          <p className="text-xs text-stone-500">Cierre</p>
-                          <p className="text-sm text-stone-800 whitespace-pre-wrap">{rn.closing}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })()}
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-sm font-semibold text-stone-800 mb-2">Ventas por método</p>
-                    {(report.totals_by_method.sales ?? []).length === 0 ? (
-                      <p className="text-sm text-stone-400">Sin ventas</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {report.totals_by_method.sales.map((x) => (
-                          <li key={`sales-${x.method}`} className="flex justify-between text-sm">
-                            <span className="text-stone-600">{paymentMethodLabel(x.method)}</span>
-                            <span className="font-semibold text-stone-800">S/ {Number(x.total).toFixed(2)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-sm font-semibold text-stone-800 mb-2">Compras por método</p>
-                    {(report.totals_by_method.purchases ?? []).length === 0 ? (
-                      <p className="text-sm text-stone-400">Sin compras</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {report.totals_by_method.purchases.map((x) => (
-                          <li key={`pur-${x.method}`} className="flex justify-between text-sm">
-                            <span className="text-stone-600">{paymentMethodLabel(x.method)}</span>
-                            <span className="font-semibold text-stone-800">S/ {Number(x.total).toFixed(2)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-stone-200 p-3">
-                    <p className="text-sm font-semibold text-stone-800 mb-2">Movimientos manuales por método</p>
-                    {(report.totals_by_method.movements ?? []).length === 0 ? (
-                      <p className="text-sm text-stone-400">Sin movimientos manuales</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {report.totals_by_method.movements.map((x) => (
-                          <li key={`mov-${x.method}-${x.total}`} className="flex justify-between text-sm">
-                            <span className="text-stone-600">{paymentMethodLabel(x.method)}</span>
-                            <span className={`font-semibold ${x.total >= 0 ? 'text-green-700' : 'text-red-700'}`}>S/ {Number(x.total).toFixed(2)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="rounded-xl border border-stone-200 overflow-hidden w-full">
-                    <div className="px-4 py-3 border-b border-stone-100">
-                      <p className="text-sm font-semibold text-stone-800">Detalle de ingresos</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[660px]">
-                        <thead className="bg-stone-50">
-                          <tr>
-                            {['Fecha', 'Tipo', 'Doc', 'Referencia', 'Método', 'Monto'].map((h) => (
-                              <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.income_detail ?? []).map((r, idx) => (
-                            <tr key={`in-${idx}`} className="border-b border-stone-100">
-                              <td className="px-4 py-2 text-xs whitespace-nowrap">{r.date ? new Date(r.date).toLocaleString() : '-'}</td>
-                              <td className="px-4 py-2 text-stone-700">{r.type}</td>
-                              <td className="px-4 py-2 text-stone-600">{r.doc_number || '—'}</td>
-                              <td className="px-4 py-2 text-stone-600">{r.reference || '—'}</td>
-                              <td className="px-4 py-2 text-stone-600">{paymentMethodLabel(r.payment_method)}</td>
-                              <td className="px-4 py-2 font-bold text-green-700 whitespace-nowrap">S/ {Number(r.amount).toFixed(2)}</td>
-                            </tr>
-                          ))}
-                          {(report.income_detail ?? []).length === 0 && (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-8 text-center text-sm text-stone-400">
-                                Sin ingresos
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-stone-200 overflow-hidden w-full">
-                    <div className="px-4 py-3 border-b border-stone-100">
-                      <p className="text-sm font-semibold text-stone-800">Detalle de egresos</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[660px]">
-                        <thead className="bg-stone-50">
-                          <tr>
-                            {['Fecha', 'Tipo', 'Doc', 'Referencia', 'Método', 'Monto'].map((h) => (
-                              <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.expense_detail ?? []).map((r, idx) => (
-                            <tr key={`out-${idx}`} className="border-b border-stone-100">
-                              <td className="px-4 py-2 text-xs whitespace-nowrap">{r.date ? new Date(r.date).toLocaleString() : '-'}</td>
-                              <td className="px-4 py-2 text-stone-700">{r.type}</td>
-                              <td className="px-4 py-2 text-stone-600">{r.doc_number || '—'}</td>
-                              <td className="px-4 py-2 text-stone-600">{r.reference || '—'}</td>
-                              <td className="px-4 py-2 text-stone-600">{paymentMethodLabel(r.payment_method)}</td>
-                              <td className="px-4 py-2 font-bold text-red-700 whitespace-nowrap">S/ {Number(r.amount).toFixed(2)}</td>
-                            </tr>
-                          ))}
-                          {(report.expense_detail ?? []).length === 0 && (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-8 text-center text-sm text-stone-400">
-                                Sin egresos
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-red-200 overflow-hidden w-full bg-red-50/30">
-                    <div className="px-4 py-3 border-b border-red-100">
-                      <p className="text-sm font-semibold text-red-900">Ventas anuladas</p>
-                      <p className="text-xs text-red-800/80 mt-0.5">
-                        Reversiones registradas en caja por anulación de notas de venta (trazabilidad).
-                      </p>
-                    </div>
-                    <div className="overflow-x-auto bg-white">
-                      <table className="w-full text-sm min-w-[660px]">
-                        <thead className="bg-red-50">
-                          <tr>
-                            {['Fecha', 'Comprobante', 'Método', 'Monto', 'Motivo'].map((h) => (
-                              <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-red-800 uppercase whitespace-nowrap">
-                                {h}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(report.cancelled_sales_detail ?? []).map((r, idx) => (
-                            <tr key={`void-${idx}`} className="border-b border-stone-100">
-                              <td className="px-4 py-2 text-xs whitespace-nowrap">
-                                {r.date ? new Date(r.date).toLocaleString() : '—'}
-                              </td>
-                              <td className="px-4 py-2 font-mono text-stone-700">{r.doc_number || '—'}</td>
-                              <td className="px-4 py-2 text-stone-600">{paymentMethodLabel(r.payment_method)}</td>
-                              <td className="px-4 py-2 font-bold text-red-700 whitespace-nowrap">
-                                S/ {Number(r.amount).toFixed(2)}
-                              </td>
-                              <td className="px-4 py-2 text-xs text-stone-600">{r.reason || '—'}</td>
-                            </tr>
-                          ))}
-                          {(report.cancelled_sales_detail ?? []).length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="px-4 py-8 text-center text-sm text-stone-400">
-                                Sin ventas anuladas en esta sesión
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+                <CajaSessionReportView report={report} paymentMethods={paymentMethods} />
               </div>
             )}
           </div>
@@ -1352,8 +1177,12 @@ export default function CajaPage() {
                             </td>
                             <td className="px-4 py-2 text-stone-700">{typeLabel}</td>
                             <td className="px-4 py-2 text-stone-700">{a.payment_method ? paymentMethodLabel(a.payment_method) : '—'}</td>
-                            <td className="px-4 py-2 font-bold text-stone-900 whitespace-nowrap">
-                              {a.currency} {Number(a.balance).toFixed(2)}
+                            <td className="px-4 py-2">
+                              <MaskedAccountBalance
+                                currency={a.currency}
+                                balance={a.balance}
+                                visible={canViewAccountBalances}
+                              />
                             </td>
                             <td className="px-4 py-2">
                               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-stone-200 text-stone-700'}`}>
@@ -1732,8 +1561,14 @@ export default function CajaPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="font-bold text-stone-800">Movimientos — {selectedAccount.name}</h3>
-                <p className="text-xs text-stone-500">
-                  Saldo: {selectedAccount.currency} {Number(selectedAccount.balance).toFixed(2)}
+                <p className="text-xs text-stone-500 flex items-center gap-1.5">
+                  <span>Saldo:</span>
+                  <MaskedAccountBalance
+                    currency={selectedAccount.currency}
+                    balance={selectedAccount.balance}
+                    visible={canViewAccountBalances}
+                    className="font-semibold"
+                  />
                 </p>
               </div>
               <button

@@ -23,6 +23,7 @@ import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, print
 import {
   cartLineToPrecuentaPrintItem,
   cartToOrderItems,
+  collectCheckoutLineTaxTotals,
   comandaToPrecuentaPrintItem,
   comandaLineTotal,
   formatPrecuentaIssueDate,
@@ -78,26 +79,33 @@ import {
 } from '@/utils/contactDocTypes'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
 import {
-  calcCheckoutDiscountAmount,
-  calcPayableTotal,
+  applyCheckoutDiscountToLines,
+  buildRestaurantBillDiscount,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
 import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
 import { formatMoney, formatSoles } from '@/utils/format'
-import { canApplyCheckoutDiscount } from '@/utils/restaurantPermissions'
+import { canApplyCheckoutDiscount, canCancelComanda } from '@/utils/restaurantPermissions'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { REST_PAGE_MODAL_Z, useFlyToCart } from '@/hooks/useFlyToCart'
 
 export default function MesaPage() {
-  const { canAccess, hasPerm, employeeType, restaurantPermissions } = useAuth()
+  const { canAccess, employeeType, restaurantPermissions } = useAuth()
   const allowCheckoutDiscount = canApplyCheckoutDiscount(restaurantPermissions, employeeType)
-  const { activeBranchId } = useBranch()
-  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunatEnabled } = useBranchCheckoutSeries()
+  const { activeBranchId, activeBranch } = useBranch()
+  const {
+    checkoutSeries,
+    seriesMetaReady,
+    hasCheckoutSeries,
+    sunatEnabled,
+    seriesLoadError,
+    seriesOnOtherBranches,
+  } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const canCerrarMesa = canAccess('cerrar_mesa')
-  const canAnularComanda = hasPerm('s.m')
+  const canAnularComanda = canCancelComanda(restaurantPermissions, employeeType)
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const id = Number(sessionId)
@@ -131,7 +139,12 @@ export default function MesaPage() {
   const [anulPin, setAnulPin] = useState('')
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
-  const [lastSale, setLastSale] = useState<{ number: string; total: number } | null>(null)
+  const [lastSale, setLastSale] = useState<{
+    id: number
+    number: string
+    total: number
+    clientEmail?: string
+  } | null>(null)
   const [comandaModal, setComandaModal] = useState<{ orderId: number; orderNumber: number; comandas: Comanda[] } | null>(null)
   const [kitchenHistoryOpen, setKitchenHistoryOpen] = useState(false)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
@@ -200,6 +213,11 @@ export default function MesaPage() {
   }, [checkoutSeries])
 
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
+  const seriesEmptyReason = seriesLoadError
+    ? 'load_error'
+    : seriesOnOtherBranches
+      ? 'other_branch'
+      : 'missing'
 
   const {
     products,
@@ -334,14 +352,21 @@ export default function MesaPage() {
   )
   const sessionTotal = session?.total_amount ?? 0
   const totalToPay = sumMoney(cartTotal, sessionTotal)
-  const checkoutDiscountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(totalToPay, checkoutDiscountMode, checkoutDiscountValue),
-    [totalToPay, checkoutDiscountMode, checkoutDiscountValue],
+
+  const checkoutLineTax = useMemo(
+    () => collectCheckoutLineTaxTotals(cart, session, taxRate, taxConfig),
+    [cart, session, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
-  const payableTotal = useMemo(
-    () => calcPayableTotal(totalToPay, checkoutDiscountMode, checkoutDiscountValue),
-    [totalToPay, checkoutDiscountMode, checkoutDiscountValue],
+  const checkoutBilling = useMemo(
+    () => applyCheckoutDiscountToLines(checkoutLineTax, checkoutDiscountMode, checkoutDiscountValue),
+    [checkoutLineTax, checkoutDiscountMode, checkoutDiscountValue],
   )
+  const billingSubtotal = useMemo(
+    () => roundSunat(checkoutLineTax.reduce((acc, line) => acc + line.subtotal, 0)),
+    [checkoutLineTax],
+  )
+  const payableTotal = allowCheckoutDiscount ? checkoutBilling.payableTotal : totalToPay
+  const checkoutTaxAmount = checkoutBilling.taxAmount
   const canComanda = cart.length > 0
   const canGenerarVenta = (cart.length > 0 || sessionTotal > 0) && session?.status === 'open'
   const soloCerrarMesa = session?.status === 'open' && sessionTotal <= 0 && cart.length === 0
@@ -586,16 +611,28 @@ export default function MesaPage() {
 
     setAdding(true)
     try {
+      let sessionForBill = s
       if (cart.length > 0) {
         const items = resolveOrderItems()
         if (!items) return
         const orderRes = await restaurantService.addOrder(id, { items })
         const order = (orderRes as { data?: { id?: number; order_number?: number; comandas?: Comanda[] } })?.data
         setCart([])
-        const refreshed = await restaurantService.getSession(id)
-        setSession(refreshed)
-        if (order) await printNewKitchenRound(order, refreshed)
+        sessionForBill = await restaurantService.getSession(id)
+        setSession(sessionForBill)
+        if (order) await printNewKitchenRound(order, sessionForBill)
         else await load()
+      }
+      const billLines = collectCheckoutLineTaxTotals([], sessionForBill, taxRate, taxConfig)
+      const billDiscount = buildRestaurantBillDiscount(
+        billLines,
+        checkoutDiscountMode,
+        checkoutDiscountValue,
+        allowCheckoutDiscount,
+      )
+      if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
+        toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+        return
       }
       if (needsCashSession) {
         if (!canChargeCash) {
@@ -612,12 +649,11 @@ export default function MesaPage() {
         doc_type: docType,
         currency: 'PEN',
         contact_id: selectedContactId,
-        cash_session_id: needsCashSession ? myCashSession?.id ?? null : null,
+        cash_session_id: myCashSession?.id ?? null,
         close_session: true,
-        discount_amount:
-          allowCheckoutDiscount && checkoutDiscountAmount > 0
-            ? roundSunat(checkoutDiscountAmount)
-            : undefined,
+        discount_mode: billDiscount.discount_mode,
+        discount_value: billDiscount.discount_value,
+        discount_amount: billDiscount.discount_amount,
         payments: payments.map((p) => ({
           method: p.method,
           amount: roundSunat(p.amount),
@@ -628,7 +664,17 @@ export default function MesaPage() {
       toast.success('Venta generada. Mesa cerrada.')
       setCheckoutOpen(false)
       setPrintData(res.print_data ?? null)
-      setLastSale(res.data ? { number: res.data.number, total: res.data.total } : null)
+      const saleContact = contacts.find((c) => c.id === selectedContactId)
+      setLastSale(
+        res.data
+          ? {
+              id: res.data.id,
+              number: res.data.number,
+              total: res.data.total,
+              clientEmail: saleContact?.email?.trim() ?? '',
+            }
+          : null,
+      )
       setReceiptModalOpen(true)
       if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && res.print_data) {
         const cfg = getConfiguredPrinter('documentos')
@@ -832,7 +878,10 @@ export default function MesaPage() {
       <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
         {branchSeriesMissing && (
           <div className="shrink-0 px-2 pb-2 lg:px-0">
-            <BranchCheckoutSeriesEmptyState />
+            <BranchCheckoutSeriesEmptyState
+              branchName={activeBranch?.name}
+              reason={seriesEmptyReason}
+            />
           </div>
         )}
         <div className="shrink-0 flex flex-wrap items-center gap-2 px-0 pb-1.5 min-w-0 w-full">
@@ -1147,10 +1196,12 @@ export default function MesaPage() {
         confirmLabel="Confirmar venta"
         rawTotal={totalToPay}
         payableTotal={payableTotal}
+        billingSubtotal={billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
+        igvAmount={checkoutTaxAmount}
         series={checkoutSeries}
         seriesId={seriesId}
         docType={docType}
@@ -1551,8 +1602,10 @@ export default function MesaPage() {
           navigate('/salas')
         }}
         printData={printData}
+        saleId={lastSale?.id}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
+        defaultEmail={lastSale?.clientEmail}
       />
 
       <ManualProductModal

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Check, Package, Play, Trash2 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
+import { canCancelComanda } from '@/utils/restaurantPermissions'
 import type { ComandasKitchenProps } from '@/components/comandas/comandasKitchenProps'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import {
@@ -64,6 +66,8 @@ function statusBadgeClass(status: string): string {
 }
 
 export function ComandasItemsView({ comandas, loading, onReload }: ComandasKitchenProps) {
+  const { restaurantPermissions, employeeType } = useAuth()
+  const allowCancel = canCancelComanda(restaurantPermissions, employeeType)
   const [filter, setFilter] = useState<ComandaStatus>('pendiente')
   const [anullModal, setAnullModal] = useState<KitchenComanda | null>(null)
   const [anullPin, setAnullPin] = useState('')
@@ -223,15 +227,17 @@ export function ComandasItemsView({ comandas, loading, onReload }: ComandasKitch
                     </button>
                   )
                 })()}
-                <button
-                  type="button"
-                  onClick={() => setAnullModal(c)}
-                  className="inline-flex items-center justify-center gap-1.5 px-2 py-2 sm:p-1.5 rounded-lg text-red-600 border border-red-100 hover:bg-red-50 touch-manipulation text-xs font-medium min-h-[2.5rem] sm:min-h-0 sm:ml-auto"
-                  title="Anular comanda"
-                >
-                  <Trash2 size={16} />
-                  Anular
-                </button>
+                {allowCancel && (
+                  <button
+                    type="button"
+                    onClick={() => setAnullModal(c)}
+                    className="inline-flex items-center justify-center gap-1.5 px-2 py-2 sm:p-1.5 rounded-lg text-red-600 border border-red-100 hover:bg-red-50 touch-manipulation text-xs font-medium min-h-[2.5rem] sm:min-h-0 sm:ml-auto"
+                    title="Anular comanda"
+                  >
+                    <Trash2 size={16} />
+                    Anular
+                  </button>
+                )}
               </div>
             </article>
           ))}

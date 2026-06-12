@@ -11,6 +11,8 @@ export type RestaurantFeature =
   | 'cerrar_mesa'
   | 'ventas'
   | 'caja'
+  | 'reportes'
+  | 'dashboard'
   | 'clientes'
   | 'repartidores'
 
@@ -26,14 +28,20 @@ const FEATURE_PERM: Record<RestaurantFeature, string> = {
   cerrar_mesa: 'o.ch',
   ventas: 'o.ch',
   caja: 'c.v',
+  reportes: 'o.ch',
+  dashboard: 'o.ch',
   clientes: 'o.ch',
   repartidores: 'd.v',
 }
 
 export function featureAllowed(permissions: string[] | null | undefined, feature: RestaurantFeature): boolean {
   if (!permissions || permissions.length === 0) return false
-  if (feature === 'ventas') {
-    return permissions.includes('o.ch') || permissions.includes('c.v')
+  if (feature === 'ventas' || feature === 'reportes' || feature === 'dashboard') {
+    return (
+      permissions.includes('o.ch') ||
+      permissions.includes('c.v') ||
+      permissions.includes('s.m')
+    )
   }
   const need = FEATURE_PERM[feature]
   return permissions.includes(need)
@@ -75,6 +83,32 @@ export function canAccessAppSettings(
 /** Permiso corto backend: cobrar / generar venta (restaurantperm.OrdersCharge). */
 export const PERM_ORDERS_CHARGE = 'o.ch'
 
+/** Anular comandas o ítems (restaurantperm.OrdersCancel; requiere PIN en API). */
+export const PERM_ORDERS_CANCEL = 'o.cx'
+
+const CANCEL_ORDER_EMPLOYEE_TYPES = new Set(['admin', 'supervisor', 'cashier', 'cajero', 'vendedor'])
+
+/** Puede anular comandas o pedidos (cajero, admin, supervisor o quien tenga o.cx / s.m). */
+export function canCancelComanda(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  const et = String(employeeType ?? '').toLowerCase()
+  if (CANCEL_ORDER_EMPLOYEE_TYPES.has(et)) return true
+  return (
+    hasPermission(permissions, PERM_ORDERS_CANCEL) ||
+    hasPermission(permissions, 's.m')
+  )
+}
+
+/** Alias semántico: anular pedido completo usa los mismos permisos que anular comanda. */
+export function canCancelOrder(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  return canCancelComanda(permissions, employeeType)
+}
+
 /** Descuento en cobro: mismo criterio que generar venta (no usa roles del panel tenant). */
 export function canApplyCheckoutDiscount(
   permissions: string[] | null | undefined,
@@ -95,12 +129,28 @@ export function canManageCashSettings(
   return et === 'admin' || et === 'supervisor'
 }
 
+/** Ver saldos de cuentas bancarias/billeteras en Caja → Cuentas y métodos. */
+export function canViewBankAccountBalances(employeeType?: string | null): boolean {
+  return String(employeeType ?? '').toLowerCase() === 'admin'
+}
+
 /** Ver configuración global de caja (cajero: solo lectura). */
 export function canViewCashSettings(
   permissions: string[] | null | undefined,
   employeeType?: string | null,
 ): boolean {
   return canManageCashSettings(permissions, employeeType) || hasPermission(permissions, 'c.v')
+}
+
+/** Sección Reportes del panel restaurante (admin, supervisor, cajero con c.v u o.ch). */
+export function canViewRestaurantReports(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  if (hasPermission(permissions, 's.m')) return true
+  const et = String(employeeType ?? '').toLowerCase()
+  if (et === 'admin' || et === 'supervisor') return true
+  return hasPermission(permissions, 'o.ch') || hasPermission(permissions, 'c.v')
 }
 
 /** Historial y reportes de todas las sesiones de la sucursal. */
@@ -111,19 +161,77 @@ export function canViewAllCashSessions(
   return canManageCashSettings(permissions, employeeType)
 }
 
-export function defaultRouteForPermissions(permissions: string[] | null | undefined): string {
-  const order: { feature: RestaurantFeature; route: string }[] = [
+/** Ruta inicial tras login según rol restaurante y permisos efectivos. */
+export function defaultRouteForPermissions(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): string {
+  const et = String(employeeType ?? '').toLowerCase()
+  const isAdminLike =
+    hasPermission(permissions, 's.m') || et === 'admin' || et === 'supervisor'
+
+  if (isAdminLike && featureAllowed(permissions, 'dashboard')) {
+    return '/dashboard'
+  }
+
+  // Orden por rol operativo típico (primer vista accesible gana).
+  const orderByRole: Record<string, RestaurantFeature[]> = {
+    cook: ['comandas'],
+    cocinero: ['comandas'],
+    waiter: ['salas', 'mesa', 'comandas', 'pos'],
+    mozo: ['salas', 'mesa', 'comandas', 'pos'],
+    cashier: ['pos', 'ventas', 'caja', 'salas', 'comandas'],
+    cajero: ['pos', 'ventas', 'caja', 'salas', 'comandas'],
+    vendedor: ['pos', 'ventas', 'caja', 'salas', 'comandas'],
+    driver: ['repartidores', 'comandas'],
+  }
+
+  const roleFeatures = orderByRole[et]
+  if (roleFeatures) {
+    for (const feature of roleFeatures) {
+      if (featureAllowed(permissions, feature)) {
+        return featureToRoute(feature)
+      }
+    }
+  }
+
+  const fallback: { feature: RestaurantFeature; route: string }[] = [
     { feature: 'pos', route: '/pos' },
     { feature: 'salas', route: '/salas' },
     { feature: 'comandas', route: '/comandas' },
+    { feature: 'dashboard', route: '/dashboard' },
     { feature: 'ventas', route: '/ventas' },
     { feature: 'caja', route: '/caja' },
+    { feature: 'reportes', route: '/reportes' },
+    { feature: 'productos', route: '/productos' },
     { feature: 'clientes', route: '/clientes' },
+    { feature: 'repartidores', route: '/repartidores' },
+    { feature: 'mesas', route: '/mesas' },
   ]
-  for (const { feature, route } of order) {
+  for (const { feature, route } of fallback) {
     if (featureAllowed(permissions, feature)) return route
   }
   return '/comandas'
+}
+
+function featureToRoute(feature: RestaurantFeature): string {
+  const map: Record<RestaurantFeature, string> = {
+    productos: '/productos',
+    modificadores: '/modificadores',
+    mesas: '/mesas',
+    pos: '/pos',
+    salas: '/salas',
+    mesa: '/salas',
+    comandas: '/comandas',
+    cerrar_mesa: '/salas',
+    ventas: '/ventas',
+    caja: '/caja',
+    reportes: '/reportes',
+    dashboard: '/dashboard',
+    clientes: '/clientes',
+    repartidores: '/repartidores',
+  }
+  return map[feature] ?? '/comandas'
 }
 
 export const EMPLOYEE_TYPE_LABELS: Record<string, string> = {

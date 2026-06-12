@@ -130,6 +130,23 @@ export interface MethodTotal {
   total: number
 }
 
+export interface SessionCashPhysical {
+  opening_balance: number
+  total_income: number
+  total_expense: number
+  physical_balance: number
+  sales_total: number
+  cash_sales: IncomeDetailRow[]
+  manual_income: IncomeDetailRow[]
+  expenses: ExpenseDetailRow[]
+}
+
+export interface SessionElectronic {
+  total_sales: number
+  sales_by_method: MethodTotal[]
+  sales: IncomeDetailRow[]
+}
+
 export interface CashSessionReport {
   session: CashSessionReportSession
   income_detail: IncomeDetailRow[]
@@ -147,6 +164,8 @@ export interface CashSessionReport {
     total_purchases: number
     final_balance: number
   }
+  cash_physical: SessionCashPhysical
+  electronic: SessionElectronic
 }
 
 export interface MovementReportRow {
@@ -165,11 +184,20 @@ export interface MovementReportRow {
   notes_detail?: string
 }
 
-export interface MovementReportSummary {
+export interface MovementChannelSummary {
   total_rows: number
   sum_income: number
   sum_expense: number
   net_movement: number
+  opening_balance?: number | null
+  physical_balance?: number | null
+  sales_by_method?: MethodTotal[]
+}
+
+export interface MovementChannelBlock {
+  data: MovementReportRow[]
+  total: number
+  summary: MovementChannelSummary
 }
 
 export interface MovementsReportParams {
@@ -185,9 +213,8 @@ export interface MovementsReportParams {
 }
 
 export interface MovementsReportResult {
-  data: MovementReportRow[]
-  total: number
-  summary: MovementReportSummary
+  cash: MovementChannelBlock
+  electronic: MovementChannelBlock
 }
 
 export interface SessionProductSoldRow {
@@ -258,16 +285,27 @@ export const cashbankService = {
 
   listMovementsReport: async (params?: MovementsReportParams): Promise<MovementsReportResult> => {
     const r = await api.get('/api/cashbank/reports/movements', { params: params ?? {} })
-    const summaryRaw = r.data.summary ?? {}
+    const body = (r.data ?? {}) as Record<string, unknown>
+    const parseBlock = (raw: Record<string, unknown> | undefined): MovementChannelBlock => {
+      const summary = (raw?.summary ?? {}) as Record<string, unknown>
+      const rows = (raw?.data as MovementReportRow[]) ?? []
+      return {
+        data: Array.isArray(rows) ? rows : [],
+        total: Number(raw?.total ?? rows.length ?? 0),
+        summary: {
+          total_rows: Number(summary.total_rows ?? 0),
+          sum_income: Number(summary.sum_income ?? 0),
+          sum_expense: Number(summary.sum_expense ?? 0),
+          net_movement: Number(summary.net_movement ?? 0),
+          opening_balance: summary.opening_balance != null ? Number(summary.opening_balance) : null,
+          physical_balance: summary.physical_balance != null ? Number(summary.physical_balance) : null,
+          sales_by_method: (summary.sales_by_method as MethodTotal[]) ?? [],
+        },
+      }
+    }
     return {
-      data: r.data.data ?? [],
-      total: Number(r.data.total ?? 0),
-      summary: {
-        total_rows: Number(summaryRaw.total_rows ?? 0),
-        sum_income: Number(summaryRaw.sum_income ?? 0),
-        sum_expense: Number(summaryRaw.sum_expense ?? 0),
-        net_movement: Number(summaryRaw.net_movement ?? 0),
-      },
+      cash: parseBlock(body.cash as Record<string, unknown> | undefined),
+      electronic: parseBlock(body.electronic as Record<string, unknown> | undefined),
     }
   },
 

@@ -9,6 +9,8 @@ import {
   Users,
   Wallet,
   Bike,
+  BarChart3,
+  LayoutDashboard,
 } from 'lucide-react'
 
 export type NavFeature =
@@ -21,6 +23,8 @@ export type NavFeature =
   | 'comandas'
   | 'ventas'
   | 'caja'
+  | 'reportes'
+  | 'dashboard'
   | 'clientes'
   | 'repartidores'
 
@@ -54,12 +58,14 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'management',
     label: 'Gestión',
     items: [
-      { to: '/mesas', label: 'Configurar mesas', icon: Layers, feature: 'mesas' },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
       { to: '/productos', label: 'Productos', icon: UtensilsCrossed, feature: 'productos' },
+      { to: '/mesas', label: 'Configurar mesas', icon: Layers, feature: 'mesas' },
       { to: '/clientes', label: 'Clientes', icon: Users, feature: 'clientes' },
       { to: '/repartidores', label: 'Repartidores', icon: Bike, feature: 'repartidores' },
       { to: '/ventas', label: 'Ventas', icon: FileText, feature: 'ventas' },
       { to: '/caja', label: 'Caja', icon: Wallet, feature: 'caja' },
+      { to: '/reportes', label: 'Reportes', icon: BarChart3, feature: 'reportes' },
     ],
   },
 ]

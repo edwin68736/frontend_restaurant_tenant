@@ -11,8 +11,13 @@ import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
 import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
 import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
+import { useBranch } from '@/contexts/BranchContext'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { filterRestaurantCheckoutSeries } from '@/utils/restaurantCheckoutSeries'
-import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
+import {
+  BranchCheckoutSeriesEmptyState,
+  type BranchSeriesEmptyReason,
+} from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
 
 export type CheckoutPaymentLine = {
@@ -58,6 +63,8 @@ type Props = {
   onClose: () => void
   loading: boolean
   rawTotal: number
+  /** Base imponible (subtotal sin IGV) antes del descuento; si no se envía, se usa rawTotal. */
+  billingSubtotal?: number
   payableTotal: number
   discountMode: CheckoutDiscountMode
   discountValue: number
@@ -93,6 +100,7 @@ export function POSCheckoutModal({
   onClose,
   loading,
   rawTotal,
+  billingSubtotal,
   payableTotal,
   discountMode,
   discountValue,
@@ -119,15 +127,25 @@ export function POSCheckoutModal({
   allowDiscount = true,
   sunatEnabled = true,
 }: Props) {
+  const { activeBranch } = useBranch()
+  const { seriesLoadError, seriesOnOtherBranches } = useBranchCheckoutSeries()
+  const seriesEmptyReason: BranchSeriesEmptyReason = seriesLoadError
+    ? 'load_error'
+    : seriesOnOtherBranches
+      ? 'other_branch'
+      : 'missing'
+
   const [showMoreMethods, setShowMoreMethods] = useState(false)
   const [methodPickerIndex, setMethodPickerIndex] = useState<number | null>(null)
   const [isEditingDiscount, setIsEditingDiscount] = useState(false)
   const [discountDraft, setDiscountDraft] = useState('0')
   const discountPrevRef = useRef(0)
 
+  const discountBase = billingSubtotal ?? rawTotal
+
   const discountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(rawTotal, discountMode, discountValue),
-    [rawTotal, discountMode, discountValue],
+    () => calcCheckoutDiscountAmount(discountBase, discountMode, discountValue),
+    [discountBase, discountMode, discountValue],
   )
 
   useEffect(() => {
@@ -274,7 +292,11 @@ export function POSCheckoutModal({
 
           <div className="scrollbar-checkout min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
             {checkoutSeries.length === 0 ? (
-              <BranchCheckoutSeriesEmptyState compact />
+              <BranchCheckoutSeriesEmptyState
+                compact
+                branchName={activeBranch?.name}
+                reason={seriesEmptyReason}
+              />
             ) : (
               <>
             <CheckoutCartBillingFields
@@ -468,23 +490,25 @@ export function POSCheckoutModal({
                 )}
 
                 <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2.5 space-y-1">
-                  {discountAmount > 0 && (
+                  {(discountAmount > 0 || igvAmount > 0) && (
                     <>
                       <div className="flex justify-between text-[11px] text-stone-500">
-                        <span>Subtotal</span>
-                        <span>{formatMoney(rawTotal)}</span>
+                        <span>Base imponible</span>
+                        <span>{formatMoney(discountBase)}</span>
                       </div>
-                      <div className="flex justify-between text-[11px] text-stone-500">
-                        <span>Descuento</span>
-                        <span>− {formatMoney(discountAmount)}</span>
-                      </div>
+                      {discountAmount > 0 && (
+                        <div className="flex justify-between text-[11px] text-stone-500">
+                          <span>Descuento</span>
+                          <span>− {formatMoney(discountAmount)}</span>
+                        </div>
+                      )}
+                      {igvAmount > 0 && (
+                        <div className="flex justify-between text-[11px] text-stone-500">
+                          <span>IGV</span>
+                          <span>{formatMoney(igvAmount)}</span>
+                        </div>
+                      )}
                     </>
-                  )}
-                  {igvAmount > 0 && (
-                    <div className="flex justify-between text-[11px] text-stone-500">
-                      <span>IGV gravado</span>
-                      <span>{formatMoney(igvAmount)}</span>
-                    </div>
                   )}
                   <div
                     className={clsx(

@@ -22,6 +22,7 @@ function money(n: number): string {
 function paymentMethodLabel(code: string): string {
   const c = (code || '').toLowerCase()
   const map: Record<string, string> = {
+    cash: 'Efectivo',
     efectivo: 'Efectivo',
     tarjeta: 'Tarjeta',
     yape: 'Yape',
@@ -288,59 +289,119 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
     }
   }
 
+  const cash = report.cash_physical
+  const electronic = report.electronic
+
   drawSectionTitle(doc, y, 'Resumen financiero')
   drawSummaryBoxes(doc, y, [
-    { label: 'Saldo inicial', value: money(s.opening_balance) },
-    { label: 'Total ingresos', value: money(report.totals.total_income), tone: 'green' },
-    { label: 'Total egresos', value: money(report.totals.total_expense), tone: 'red' },
-    { label: 'Saldo final (calc.)', value: money(report.totals.final_balance), tone: 'strong' },
+    { label: 'Saldo físico en caja', value: money(cash?.physical_balance ?? report.totals.final_balance), tone: 'strong' },
+    { label: 'Ingresos efectivo (caja)', value: money(cash?.total_income ?? report.totals.total_income), tone: 'green' },
+    { label: 'Egresos de caja', value: money(cash?.total_expense ?? report.totals.total_expense), tone: 'red' },
+    { label: 'Ventas electrónicas', value: money(electronic?.total_sales ?? 0) },
+    { label: 'Total ventas sesión', value: money(report.totals.total_sales) },
   ])
 
-  drawSectionTitle(doc, y, 'Totales por método de pago')
-  const methodRows: string[][] = []
+  ensureSpace(doc, y, 6)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(...C_MUTED)
+  doc.text(`Saldo inicial de caja: ${money(cash?.opening_balance ?? s.opening_balance)}`, MARGIN, y.v)
+  y.v += 8
+
+  drawSectionTitle(doc, y, 'Totales por método — caja física')
+  const cashMethodRows: string[][] = []
   for (const x of report.totals_by_method.sales ?? []) {
-    methodRows.push(['Ventas', paymentMethodLabel(x.method), money(x.total)])
-  }
-  for (const x of report.totals_by_method.purchases ?? []) {
-    methodRows.push(['Compras', paymentMethodLabel(x.method), money(x.total)])
+    const m = (x.method || '').toLowerCase()
+    if (m === 'cash' || m === 'efectivo') {
+      cashMethodRows.push(['Ventas efectivo', paymentMethodLabel(x.method), money(x.total)])
+    }
   }
   for (const x of report.totals_by_method.movements ?? []) {
-    methodRows.push(['Mov. manual', paymentMethodLabel(x.method), money(x.total)])
+    cashMethodRows.push(['Mov. manual', paymentMethodLabel(x.method), money(x.total)])
   }
-  if (methodRows.length === 0) {
+  if (cashMethodRows.length === 0) {
     ensureSpace(doc, y, 6)
     doc.setFontSize(8.5)
     doc.setTextColor(...C_MUTED)
-    doc.text('Sin movimientos por método en esta sesión.', MARGIN, y.v)
+    doc.text('Sin movimientos de caja física por método.', MARGIN, y.v)
     y.v += 8
   } else {
-    drawDataTable(doc, y, ['Origen', 'Método', 'Monto'], methodRows, [42, 118, 26])
+    drawDataTable(doc, y, ['Origen', 'Método', 'Monto'], cashMethodRows, [42, 118, 26])
   }
 
-  const detailCols = [34, 22, 26, 58, 22, 24] as const
-  const detailHeaders = ['Fecha / hora', 'Tipo', 'Documento', 'Referencia', 'Método', 'Monto']
-
-  drawSectionTitle(doc, y, 'Detalle de ingresos')
-  const incomeRows = (report.income_detail ?? []).map((r) => [
-    fmtDate(r.date),
-    r.type,
-    r.doc_number || '—',
-    r.reference || '—',
-    paymentMethodLabel(r.payment_method),
-    money(r.amount),
+  drawSectionTitle(doc, y, 'Totales por método — medios electrónicos')
+  const electronicMethodRows: string[][] = (electronic?.sales_by_method ?? []).map((x) => [
+    'Ventas',
+    paymentMethodLabel(x.method),
+    money(x.total),
   ])
-  if (incomeRows.length === 0) {
+  if (electronicMethodRows.length === 0) {
     ensureSpace(doc, y, 6)
     doc.setFontSize(8.5)
     doc.setTextColor(...C_MUTED)
-    doc.text('Sin registros de ingresos.', MARGIN, y.v)
+    doc.text('Sin ventas por medios electrónicos en esta sesión.', MARGIN, y.v)
     y.v += 8
   } else {
-    drawDataTable(doc, y, [...detailHeaders], incomeRows, [...detailCols])
+    drawDataTable(doc, y, ['Origen', 'Método', 'Monto'], electronicMethodRows, [42, 118, 26])
   }
 
-  drawSectionTitle(doc, y, 'Detalle de egresos')
-  const expenseRows = (report.expense_detail ?? []).map((r) => [
+  if ((report.totals_by_method.purchases ?? []).length > 0) {
+    drawSectionTitle(doc, y, 'Compras por método')
+    const purchaseRows = (report.totals_by_method.purchases ?? []).map((x) => [
+      'Compras',
+      paymentMethodLabel(x.method),
+      money(x.total),
+    ])
+    drawDataTable(doc, y, ['Origen', 'Método', 'Monto'], purchaseRows, [42, 118, 26])
+  }
+
+  const incomeCols = [38, 28, 58, 28, 26] as const
+  const incomeHeaders = ['Fecha / hora', 'Documento', 'Referencia', 'Método', 'Monto']
+  const mapIncomeRows = (rows: CashSessionReport['income_detail']) =>
+    (rows ?? []).map((r) => [
+      fmtDate(r.date),
+      r.doc_number || '—',
+      r.reference || '—',
+      paymentMethodLabel(r.payment_method),
+      money(r.amount),
+    ])
+
+  drawSectionTitle(doc, y, 'Ventas en efectivo (caja física)')
+  const cashSalesRows = mapIncomeRows(cash?.cash_sales ?? [])
+  if (cashSalesRows.length === 0) {
+    ensureSpace(doc, y, 6)
+    doc.setFontSize(8.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Sin ventas en efectivo en esta sesión.', MARGIN, y.v)
+    y.v += 8
+  } else {
+    drawDataTable(doc, y, [...incomeHeaders], cashSalesRows, [...incomeCols])
+  }
+
+  drawSectionTitle(doc, y, 'Ventas por medios electrónicos')
+  const electronicSalesRows = mapIncomeRows(electronic?.sales ?? [])
+  if (electronicSalesRows.length === 0) {
+    ensureSpace(doc, y, 6)
+    doc.setFontSize(8.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Sin ventas por Yape, Plin, tarjeta u otros medios.', MARGIN, y.v)
+    y.v += 8
+  } else {
+    drawDataTable(doc, y, [...incomeHeaders], electronicSalesRows, [...incomeCols])
+  }
+
+  const manualIncome = cash?.manual_income ?? []
+  if (manualIncome.length > 0) {
+    drawSectionTitle(doc, y, 'Ingresos manuales (caja)')
+    drawDataTable(doc, y, [...incomeHeaders], mapIncomeRows(manualIncome), [...incomeCols])
+  }
+
+  const expenseCols = [34, 22, 26, 58, 22, 24] as const
+  const expenseHeaders = ['Fecha / hora', 'Tipo', 'Documento', 'Referencia', 'Método', 'Monto']
+  const expenseSource = cash?.expenses ?? report.expense_detail ?? []
+
+  drawSectionTitle(doc, y, 'Gastos y egresos (caja física)')
+  const expenseRows = expenseSource.map((r) => [
     fmtDate(r.date),
     r.type,
     r.doc_number || '—',
@@ -352,10 +413,10 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
     ensureSpace(doc, y, 6)
     doc.setFontSize(8.5)
     doc.setTextColor(...C_MUTED)
-    doc.text('Sin registros de egresos.', MARGIN, y.v)
+    doc.text('Sin egresos en esta sesión.', MARGIN, y.v)
     y.v += 8
   } else {
-    drawDataTable(doc, y, [...detailHeaders], expenseRows, [...detailCols])
+    drawDataTable(doc, y, [...expenseHeaders], expenseRows, [...expenseCols])
   }
 
   drawSectionTitle(doc, y, 'Ventas anuladas')

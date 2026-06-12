@@ -1,7 +1,7 @@
 {
   "name": "restaurant-frontend-react",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "type": "module",
   "scripts": {
     "version:sync": "node scripts/sync-app-version.mjs",
@@ -46,6 +46,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
+    "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^3.4.14"
