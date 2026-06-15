@@ -23,7 +23,7 @@ export function PageShell({
 }: Props) {
   return (
     <div className={clsx('w-full flex flex-col', fill && 'flex-1 min-h-0', className)}>
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1.5 sm:gap-3 mb-2 sm:mb-3 shrink-0">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-1 sm:gap-2 lg:gap-3 mb-1.5 sm:mb-2 lg:mb-3 shrink-0">
         <div className="min-w-0 flex-1">
           <h1 className="text-base sm:text-xl font-bold text-stone-900 tracking-tight leading-tight">{title}</h1>
           {subtitle && (

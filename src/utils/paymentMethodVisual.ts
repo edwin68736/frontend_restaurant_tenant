@@ -13,13 +13,13 @@ export function resolvePaymentMethodImagePath(code: string, name: string): strin
 
 export function docTypeShortLabel(docType: string, sunatCode?: string): string {
   const code = String(sunatCode ?? '').trim()
-  if (code === '00') return 'Nota de venta'
+  if (code === '00') return 'Nota Venta'
   if (code === '03') return 'Boleta'
   if (code === '01') return 'Factura'
   const d = docType.toLowerCase().replace(/\s+/g, '')
   if (d.includes('credito') || d.includes('crédito')) return 'N. Crédito'
   if (d.includes('debito') || d.includes('débito')) return 'N. Débito'
-  if ((d.includes('nota') && d.includes('venta')) || d === 'notadeventa') return 'Nota de venta'
+  if ((d.includes('nota') && d.includes('venta')) || d === 'notadeventa') return 'Nota Venta'
   if (d === 'boleta') return 'Boleta'
   if (d === 'factura') return 'Factura'
   const t = docType.trim()

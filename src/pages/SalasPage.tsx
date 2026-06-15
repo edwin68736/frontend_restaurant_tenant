@@ -11,6 +11,13 @@ import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
 import { sortRestaurantTables } from '@/utils/sortRestaurantTables'
 import { PortalModal } from '@/components/ui/PortalModal'
 
+/** Sesión open es la fuente de verdad: si hay session_id, la mesa está ocupada. */
+function tableEffectiveStatus(t: RestaurantTable): RestaurantTable['status'] {
+  if (t.session_id) return 'ocupada'
+  if (t.status === 'ocupada') return 'libre'
+  return t.status
+}
+
 export default function SalasPage() {
   const navigate = useNavigate()
   const { hasPerm } = useAuth()
@@ -69,6 +76,7 @@ export default function SalasPage() {
         payload.staff_id = Number(openForm.staff_id)
       }
       const res = await restaurantService.openSession(payload)
+      const sessionId = (res as { data: { id: number } }).data.id
       toast.success('Mesa abierta')
       setOpenModal(null)
       if (floorId === '') {
@@ -76,7 +84,7 @@ export default function SalasPage() {
       } else {
         restaurantService.listTables(Number(floorId)).then(setTables)
       }
-      navigate(`/mesa/${(res as { data: { id: number } }).data.id}`)
+      navigate(`/mesa/${sessionId}`)
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     }
@@ -94,8 +102,9 @@ export default function SalasPage() {
     let libre = 0
     let ocupada = 0
     for (const t of filteredTables) {
-      if (t.status === 'libre') libre += 1
-      else if (t.status === 'ocupada') ocupada += 1
+      const st = tableEffectiveStatus(t)
+      if (st === 'libre') libre += 1
+      else if (st === 'ocupada') ocupada += 1
     }
     return { libre, ocupada, total: filteredTables.length }
   }, [filteredTables])
@@ -178,18 +187,19 @@ export default function SalasPage() {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 pb-1">
             {filteredTables.map((t) => {
-              const st = tableStatusStyles(t.status)
-              const clickable =
-                (t.status === 'ocupada' && !!t.session_id) || t.status === 'libre'
+              const effectiveStatus = tableEffectiveStatus(t)
+              const st = tableStatusStyles(effectiveStatus)
+              const hasActiveSession = !!t.session_id
+              const clickable = hasActiveSession || effectiveStatus === 'libre'
               return (
                 <button
                   key={t.id}
                   type="button"
                   disabled={!clickable}
                   onClick={() => {
-                    if (t.status === 'ocupada' && t.session_id) {
+                    if (hasActiveSession) {
                       navigate(`/mesa/${t.session_id}`)
-                    } else if (t.status === 'libre') {
+                    } else if (effectiveStatus === 'libre') {
                       setOpenModal(t)
                       setOpenForm({ staff_id: '', guests: 2, notes: '' })
                     }
@@ -201,13 +211,13 @@ export default function SalasPage() {
                   <span
                     className={`absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 sm:px-2 rounded-full ${st.statusChip}`}
                   >
-                    {tableStatusLabel(t.status)}
+                    {tableStatusLabel(effectiveStatus)}
                   </span>
 
                   <TableWithChairsVisual
                     name={t.name}
                     capacity={t.capacity}
-                    status={t.status}
+                    status={effectiveStatus}
                     size="md"
                     className="my-0.5 sm:my-1"
                   />
@@ -218,8 +228,8 @@ export default function SalasPage() {
 
                   <TableCardFooter
                     floorName={t.floor_name}
-                    waiterName={t.status === 'ocupada' ? t.waiter_name : undefined}
-                    totalAmount={t.status === 'ocupada' ? t.total_amount : undefined}
+                    waiterName={effectiveStatus === 'ocupada' ? t.waiter_name : undefined}
+                    totalAmount={effectiveStatus === 'ocupada' ? t.total_amount : undefined}
                     amountClassName={st.amount}
                   />
                 </button>

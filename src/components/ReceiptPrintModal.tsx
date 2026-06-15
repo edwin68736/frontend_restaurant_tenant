@@ -6,8 +6,9 @@ import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { formatMoney } from '@/utils/format'
+import { receiptChangeAmount } from '@/utils/receiptChange'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
-import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
+import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import { downloadReceiptPdf, printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
@@ -57,7 +58,7 @@ export function ReceiptPrintModal({
   const loadedFormatRef = useRef<PdfFormat | null>(null)
 
   const printerCfg = getConfiguredPrinter('documentos')
-  const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
+  const canNativePrint = isNativePrintAvailable()
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
@@ -72,7 +73,11 @@ export function ReceiptPrintModal({
     return printData.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   }, [printData, displayTotal])
 
-  const change = Math.max(0, paidTotal - displayTotal)
+  const change = receiptChangeAmount({
+    total: displayTotal,
+    payments: printData?.payments ?? [],
+    change_amount: printData?.change_amount,
+  })
 
   const revokePdfUrl = useCallback(() => {
     if (pdfUrlRef.current) {
@@ -150,7 +155,11 @@ export function ReceiptPrintModal({
 
   const handleDirectPrint = async () => {
     if (!printData) return
-    if (!hasDirectPrinter) {
+    if (!canNativePrint) {
+      toast.error('Impresión directa no disponible en este dispositivo')
+      return
+    }
+    if (!printerCfg) {
       toast.error('Configura la impresora de documentos en Ajustes')
       return
     }
@@ -292,7 +301,7 @@ export function ReceiptPrintModal({
                     </button>
                   )}
 
-                  {hasDirectPrinter && (
+                  {canNativePrint && (
                     <button
                       type="button"
                       disabled={!!busy || !printData}
@@ -416,13 +425,7 @@ export function ReceiptPrintModal({
                       <Loader2 className="h-8 w-8 animate-spin text-rest-600" />
                     </div>
                   ) : (
-                    <div className="bg-stone-100 p-1">
-                      <iframe
-                        src={pdfEmbedSrc(pdfUrl)}
-                        title="Comprobante PDF"
-                        className="h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white"
-                      />
-                    </div>
+                    <PdfBlobViewer url={pdfUrl} title="Comprobante PDF" />
                   )}
                 </div>
               ) : printData ? (
@@ -491,6 +494,12 @@ export function ReceiptPrintModal({
                             <span>{formatMoney(p.amount, printData.currency)}</span>
                           </div>
                         ))}
+                        {change > 0.009 && (
+                          <div className="flex justify-between py-0.5 font-semibold text-amber-800">
+                            <span>Vuelto</span>
+                            <span>{formatMoney(change, printData.currency)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

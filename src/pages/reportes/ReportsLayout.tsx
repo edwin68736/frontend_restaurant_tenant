@@ -12,6 +12,7 @@ export default function ReportsLayout() {
     <PageShell
       title={title}
       subtitle="Análisis del restaurante con exportación PDF y Excel"
+      subtitleClassName="hidden lg:block"
       actions={<ReportsSubNav />}
       className="flex-1 min-h-0 h-full"
       fill

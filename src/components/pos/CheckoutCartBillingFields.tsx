@@ -25,6 +25,8 @@ type Props = {
   onPreferVariosContact?: () => void
   /** Si false, solo notas de venta (series ya filtradas en el padre). */
   sunatEnabled?: boolean
+  /** Oculta el selector de serie (p. ej. cuando el padre lo muestra en otra fila). */
+  hideSeriesPicker?: boolean
 }
 
 const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
@@ -42,6 +44,7 @@ export function CheckoutCartBillingFields({
   onAddContact,
   onPreferVariosContact,
   sunatEnabled = true,
+  hideSeriesPicker = false,
 }: Props) {
   const checkoutSeries = useMemo(
     () => filterRestaurantCheckoutSeries(series, { sunatEnabled }),
@@ -138,7 +141,7 @@ export function CheckoutCartBillingFields({
                 key={g.key}
                 type="button"
                 onClick={() => selectDocType(g.key)}
-                className={`rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors ${
+                className={`rounded-lg border px-1.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${
                   selectedDocKey === g.key
                     ? 'border-blue-700 bg-blue-700 text-white'
                     : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300'
@@ -151,7 +154,7 @@ export function CheckoutCartBillingFields({
         </div>
       )}
 
-      {showSeriesPicker && (
+      {showSeriesPicker && !hideSeriesPicker && (
         <div>
           <label className={LABEL}>Serie</label>
           <SearchableSelect

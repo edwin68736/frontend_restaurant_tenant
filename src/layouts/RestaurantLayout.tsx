@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 /** Altura del menú inferior móvil (h-14) + safe area. */
 const MOBILE_BOTTOM_NAV_OFFSET = 'calc(3.5rem + env(safe-area-inset-bottom, 0px))'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
 import RestaurantHeader from '@/components/layout/RestaurantHeader'
 import RestaurantSidebar, {
@@ -13,11 +13,14 @@ import MobileBottomNav from '@/components/layout/MobileBottomNav'
 import { CashSessionOpenModal } from '@/components/CashSessionOpenModal'
 import { BackendOfflineOverlay } from '@/components/layout/BackendOfflineOverlay'
 import { BRAND_TOP_BAR } from '@/config/branding'
+import { isPosFullBleedRoute } from '@/utils/posFullBleedRoute'
 
 /**
  * Layout Tukichef: barra decorativa solo en pantallas grandes (lg+); sidebar colapsable como Tukifac.
  */
 export default function RestaurantLayout() {
+  const { pathname } = useLocation()
+  const fullBleedMobile = isPosFullBleedRoute(pathname)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readRestaurantSidebarCollapsed)
 
@@ -79,8 +82,20 @@ export default function RestaurantLayout() {
             </div>
           ) : null}
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden px-2 pt-2 pb-safe sm:px-3 lg:gap-2 lg:px-2 lg:pt-2 lg:pb-2">
-            <div className="relative z-[100] shrink-0 overflow-visible rounded-2xl border border-stone-100 bg-white shadow-md">
+          <div
+            className={clsx(
+              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-safe lg:gap-2 lg:pb-2',
+              fullBleedMobile ? 'gap-0 px-0 pt-0 lg:px-2 lg:pt-2' : 'gap-2 px-2 pt-2 sm:px-3 lg:px-2 lg:pt-2',
+            )}
+          >
+            <div
+              className={clsx(
+                'relative z-[100] shrink-0 overflow-visible bg-white',
+                fullBleedMobile
+                  ? 'rounded-none border-0 border-b border-stone-100 shadow-none lg:rounded-2xl lg:border lg:border-stone-100 lg:shadow-md'
+                  : 'rounded-2xl border border-stone-100 shadow-md',
+              )}
+            >
               <RestaurantHeader
                 onMenuClick={() => setSidebarOpen(true)}
                 sidebarCollapsed={sidebarCollapsed}
@@ -89,8 +104,22 @@ export default function RestaurantLayout() {
             </div>
             <CashSessionOpenModal />
             <BackendOfflineOverlay />
-            <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-100 bg-white shadow-md">
-              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 py-2.5 pb-mobile-nav sm:px-4 sm:py-3 lg:px-5 lg:pb-3">
+            <main
+              className={clsx(
+                'flex min-h-0 flex-1 flex-col overflow-hidden bg-white',
+                fullBleedMobile
+                  ? 'rounded-none border-0 shadow-none lg:rounded-2xl lg:border lg:border-stone-100 lg:shadow-md'
+                  : 'rounded-2xl border border-stone-100 shadow-md',
+              )}
+            >
+              <div
+                className={clsx(
+                  'flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-mobile-nav',
+                  fullBleedMobile
+                    ? 'px-0 py-0 lg:px-5 lg:py-3 lg:pb-3'
+                    : 'px-3 py-2.5 sm:px-4 sm:py-3 lg:px-5 lg:pb-3',
+                )}
+              >
                 <Outlet />
               </div>
             </main>

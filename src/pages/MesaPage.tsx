@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, X, Trash2, FileText, UtensilsCrossed, ShoppingCart, Plus } from 'lucide-react'
+import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
+import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
@@ -61,7 +62,7 @@ import { CartClearButton } from '@/components/pos/CartClearButton'
 import { playCartAddSound, playCartClearSound } from '@/utils/cartSounds'
 import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
-import { printKitchenRound } from '@/utils/kitchenPrint'
+import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
@@ -225,6 +226,7 @@ export default function MesaPage() {
     loading: productsLoading,
     loadingMore: productsLoadingMore,
     isSearching: productsSearching,
+    stockByProductId,
     loadMore: loadMoreProducts,
     search: productSearch,
   } = usePosInfiniteProducts({
@@ -375,6 +377,10 @@ export default function MesaPage() {
   const activeSessionOrders = useMemo(() => getActiveSessionOrders(session), [session])
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(session), [session])
   const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(session), [session])
+  const printableKitchenRounds = useMemo(
+    () => kitchenRoundHistory.filter((r) => r.comandas.length > 0),
+    [kitchenRoundHistory],
+  )
   const newCartQty = useMemo(() => sumCartQty(cart), [cart])
 
   useEffect(() => {
@@ -456,6 +462,24 @@ export default function MesaPage() {
     }
   }
 
+  const reprintAllKitchenRounds = async () => {
+    if (!session || printableKitchenRounds.length === 0) return
+    const printed = await printAllKitchenRounds({
+      sessionDetail: session,
+      orderCode: session.order_code ?? '',
+      rounds: printableKitchenRounds,
+      manual: true,
+      markPrinted: false,
+    })
+    if (!printed) {
+      if (!isNativePrintAvailable()) {
+        toast.info('Vista previa de comanda (impresión solo en app de escritorio o Android)')
+      } else {
+        toast.error('No se pudo imprimir. Revisa la impresora de comandas en Ajustes.')
+      }
+    }
+  }
+
   const printNewKitchenRound = async (
     order: { id?: number; order_number?: number; comandas?: Comanda[] },
     sessionSnapshot: SessionDetail,
@@ -477,58 +501,38 @@ export default function MesaPage() {
     }
   }
 
-  const renderSentKitchenBlock = () => {
-    if (activeKitchenRounds.length === 0) return null
+  const renderKitchenCartStrip = () => {
+    if (activeSessionOrders.length === 0) return null
+    const inKitchenItems = activeKitchenRounds.reduce((n, r) => n + r.comandas.length, 0)
     return (
       <div className="px-2 py-2 border-b border-amber-200/80 bg-amber-50/50 shrink-0">
-        <div className="flex items-center justify-between gap-2 mb-1.5">
-          <p className="text-xs font-semibold text-amber-900">Ya en cocina</p>
-          {kitchenRoundHistory.some((r) => r.comandas.length > 0) && (
-            <button
-              type="button"
-              onClick={() => setKitchenHistoryOpen(true)}
-              className="text-[10px] font-semibold text-rest-600 hover:underline"
-            >
-              Historial
-            </button>
-          )}
-        </div>
-        <div className="space-y-2 max-h-32 overflow-y-auto">
-          {activeKitchenRounds.map((round) => (
-            <div key={round.orderId} className="rounded-lg border border-amber-200/60 bg-white/90 px-2 py-1.5">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-xs font-medium text-stone-700">Comanda #{round.orderNumber}</span>
-                <button
-                  type="button"
-                  onClick={() => void reprintKitchenRound(round)}
-                  className="text-[10px] font-semibold text-rest-600 hover:underline"
-                >
-                  Reimprimir
-                </button>
-              </div>
-              <ul className="text-[11px] text-stone-600 space-y-0.5">
-                {round.comandas.map((c) => {
-                  const mods = parseStoredModifiers(c.modifiers_json)
-                  const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
-                  return (
-                    <li key={c.id} className="flex justify-between gap-2 text-[11px] text-stone-600">
-                      <span className="truncate min-w-0" title={summary || undefined}>
-                        {c.quantity}x {c.product_name}
-                        {summary ? ` · ${summary}` : ''}
-                      </span>
-                      <span className="shrink-0 tabular-nums font-medium text-stone-700">
-                        {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <p className="text-[10px] text-stone-500 mt-1 leading-snug">
-          El carrito solo tiene ítems nuevos para la siguiente comanda.
-        </p>
+        <button
+          type="button"
+          onClick={() => setOrdersModalOpen(true)}
+          className="w-full flex items-center gap-2 rounded-xl border border-amber-200/80 bg-white px-2.5 py-2 text-left hover:bg-amber-50/90 transition-colors touch-manipulation"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+            <FileText size={16} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-stone-800">
+              {activeSessionOrders.length}{' '}
+              {activeSessionOrders.length === 1 ? 'comanda en mesa' : 'comandas en mesa'}
+            </p>
+            <p className="text-[10px] text-stone-500 truncate">
+              {inKitchenItems > 0
+                ? `${inKitchenItems} ítem${inKitchenItems === 1 ? '' : 's'} en cocina · `
+                : ''}
+              {formatSoles(sessionTotal)} · Ver, imprimir o anular
+            </p>
+          </div>
+          <ChevronRight size={16} className="shrink-0 text-stone-400" aria-hidden />
+        </button>
+        {cart.length > 0 && (
+          <p className="text-[10px] text-stone-500 mt-1.5 px-0.5 leading-snug">
+            Abajo: ítems nuevos para la siguiente comanda.
+          </p>
+        )}
       </div>
     )
   }
@@ -759,8 +763,10 @@ export default function MesaPage() {
     if (!checkoutOpen || payments.length !== 1) return
     setPayments((prev) => {
       if (prev.length !== 1) return prev
+      const cur = prev[0]?.amount ?? 0
       const nextAmount = payableTotal
-      if (Math.abs((prev[0]?.amount ?? 0) - nextAmount) < 0.009) return prev
+      if (cur > nextAmount + 0.009) return prev
+      if (Math.abs(cur - nextAmount) < 0.009) return prev
       return [{ ...prev[0], amount: nextAmount }]
     })
   }, [checkoutOpen, payableTotal, payments.length])
@@ -874,8 +880,8 @@ export default function MesaPage() {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-stone-50/80 overflow-hidden w-full max-w-full h-full lg:-mx-5 lg:-my-3">
-      <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
+    <div className="flex-1 min-h-0 flex flex-col bg-white overflow-hidden w-full max-w-full h-full lg:bg-stone-50/80 lg:-mx-5 lg:-my-3">
+      <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-0 pb-0 lg:pt-1 lg:pb-2 lg:pl-2 lg:pr-0">
         {branchSeriesMissing && (
           <div className="shrink-0 px-2 pb-2 lg:px-0">
             <BranchCheckoutSeriesEmptyState
@@ -884,7 +890,7 @@ export default function MesaPage() {
             />
           </div>
         )}
-        <div className="shrink-0 flex flex-wrap items-center gap-2 px-0 pb-1.5 min-w-0 w-full">
+        <div className="shrink-0 flex flex-wrap items-center gap-2 px-1 pb-1 min-w-0 w-full lg:px-0 lg:pb-1.5">
           <button
             type="button"
             onClick={() => navigate('/salas')}
@@ -916,9 +922,9 @@ export default function MesaPage() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-0 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
           <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 mx-auto">
-            <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+            <div className="flex w-full gap-1 overflow-x-auto px-1 pb-1 min-w-0 shrink-0 lg:gap-1.5 lg:px-0 lg:pb-1.5">
               <button
                 type="button"
                 onClick={() => setCategoryFilter(null)}
@@ -946,7 +952,7 @@ export default function MesaPage() {
               ))}
             </div>
             {preparationAreas.length > 0 && (
-              <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+              <div className="flex w-full gap-1 overflow-x-auto px-1 pb-1 min-w-0 shrink-0 lg:gap-1.5 lg:px-0 lg:pb-1.5">
                 <span className="shrink-0 text-xs text-stone-500 self-center pr-1">Área:</span>
                   <button
                     type="button"
@@ -976,8 +982,8 @@ export default function MesaPage() {
               </div>
             )}
 
-            <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm sm:rounded-2xl">
-              <div className="px-2 py-1.5 sm:px-3 sm:py-2 border-b border-stone-100 shrink-0 flex items-center gap-2">
+            <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 border-y border-stone-200/80 bg-white shadow-none lg:rounded-2xl lg:border lg:shadow-sm">
+              <div className="px-2 py-1.5 border-b border-stone-100 shrink-0 flex items-center gap-2 lg:px-3 lg:py-2">
                 <SearchInput
                   value={search}
                   onChange={setSearch}
@@ -987,48 +993,21 @@ export default function MesaPage() {
                   inputClassName="text-sm py-1.5"
                 />
               </div>
-              <div ref={productsScrollRef} className="flex-1 min-h-0 overflow-y-auto p-1.5 sm:p-3">
-              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
-              {products.map((p) => {
-                const imgUrl = getProductImageUrl(p.image_url)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={(e) => {
-                      const visual = (e.currentTarget as HTMLElement).querySelector(
-                        '[data-product-visual]',
-                      ) as HTMLElement | null
-                      addToCart(p, visual ?? e.currentTarget)
-                    }}
-                    className="group rounded-xl border border-stone-200 bg-stone-50/50 overflow-hidden text-left transition-all duration-200 hover:border-rest-400 hover:shadow-md hover:shadow-rest-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-rest-400/50"
-                  >
-                    <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
-                      {imgUrl ? (
-                        <img
-                          src={imgUrl}
-                          alt={p.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-stone-400">
-                          <UtensilsCrossed className="w-8 h-8" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-2">
-                      <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
-                        {p.name}
-                      </p>
-                      <p className="text-rest-600 font-semibold text-xs mt-1">
-                        {formatSoles(Number(p.sale_price))}
-                      </p>
-                    </div>
-                  </button>
-                )
-              })}
+              <div ref={productsScrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 py-2 lg:p-3">
+              <div className="grid w-full max-w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
+              {products.map((p) => (
+                <PosProductGridCard
+                  key={p.id}
+                  product={p}
+                  stockQuantity={stockByProductId[String(p.id)]}
+                  onClick={(e) => {
+                    const visual = (e.currentTarget as HTMLElement).querySelector(
+                      '[data-product-visual]',
+                    ) as HTMLElement | null
+                    addToCart(p, visual ?? e.currentTarget)
+                  }}
+                />
+              ))}
               </div>
               <div ref={productsSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
               {(productsLoading || productsSearching) && products.length === 0 && (
@@ -1075,7 +1054,7 @@ export default function MesaPage() {
                   </div>
                 </div>
               </div>
-              {renderSentKitchenBlock()}
+              {renderKitchenCartStrip()}
               <ul className="px-2 py-2 space-y-0.5 text-sm overflow-y-auto flex-1 min-h-0">
                 {renderCartLines()}
               </ul>
@@ -1108,7 +1087,7 @@ export default function MesaPage() {
           </div>
         }
       >
-        {renderSentKitchenBlock()}
+        {renderKitchenCartStrip()}
         <ul className="p-4 pt-2 space-y-0.5 text-sm flex-1 min-h-0 overflow-y-auto">
           {renderCartLines()}
         </ul>
@@ -1120,68 +1099,131 @@ export default function MesaPage() {
           <div className="absolute inset-x-0 top-0 p-4 sm:p-6 flex justify-center">
             <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
               <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <h3 className="font-bold text-stone-800">Pedidos en mesa</h3>
                   <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-rest-600 text-white text-sm font-bold">
                     {activeSessionOrders.length}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOrdersModalOpen(false)}
-                  className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
-                  aria-label="Cerrar"
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {printableKitchenRounds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setKitchenHistoryOpen(true)}
+                      className="px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-700 text-xs font-semibold hover:bg-stone-50"
+                    >
+                      Historial
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOrdersModalOpen(false)}
+                    className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
+                    aria-label="Cerrar"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="px-4 py-2 bg-amber-50/60 border-b border-amber-100 text-[11px] text-amber-900">
+                Detalle de comandas enviadas. El carrito solo agrega ítems nuevos.
               </div>
               <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
                 {activeSessionOrders.length === 0 ? (
                   <p className="text-sm text-stone-500 text-center py-6">No hay ítems activos en pedidos</p>
                 ) : (
-                activeSessionOrders.map((ord) => (
+                activeSessionOrders.map((ord) => {
+                  const round = printableKitchenRounds.find((r) => r.orderId === ord.id)
+                  return (
                   <div key={ord.id} className="rounded-xl border border-stone-200 overflow-hidden">
                     <div className="px-3 py-2 bg-stone-50/60 flex items-center justify-between gap-2">
-                      <span className="text-sm font-semibold text-stone-800">#{ord.order_number}</span>
-                      <span className="text-sm font-semibold text-rest-700">
-                        {formatSoles(
-                          sumMoney(...(ord.comandas ?? []).map((c) => comandaLineTotal(c, taxRate, taxConfig))),
+                      <span className="text-sm font-semibold text-stone-800">Comanda #{ord.order_number}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {round && (
+                          <button
+                            type="button"
+                            onClick={() => void reprintKitchenRound(round)}
+                            className="text-xs font-semibold text-rest-600 hover:underline"
+                          >
+                            Reimprimir
+                          </button>
                         )}
-                      </span>
+                        <span className="text-sm font-semibold text-rest-700 tabular-nums">
+                          {formatSoles(
+                            sumMoney(...(ord.comandas ?? []).map((c) => comandaLineTotal(c, taxRate, taxConfig))),
+                          )}
+                        </span>
+                      </div>
                     </div>
                     <div className="px-3 py-2">
-                      <ul className="space-y-1 text-sm">
-                        {ord.comandas?.map((c) => (
+                      <ul className="space-y-2 text-sm">
+                        {ord.comandas?.map((c) => {
+                          const mods = parseStoredModifiers(c.modifiers_json)
+                          const summary = mods.length > 0 ? formatModifierSummary(mods) : ''
+                          return (
                           <li key={c.id} className="flex items-start justify-between gap-2 text-stone-600">
                             <span className="min-w-0">
-                              {c.product_name} x{c.quantity} — {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
+                              <span className="font-medium text-stone-800">
+                                {c.quantity}x {c.product_name}
+                              </span>
+                              {summary ? (
+                                <span className="block text-xs text-stone-500 mt-0.5">{summary}</span>
+                              ) : null}
+                              {c.notes?.trim() ? (
+                                <span className="block text-xs text-amber-700 italic mt-0.5">Obs: {c.notes.trim()}</span>
+                              ) : null}
                             </span>
-                            {session.status === 'open' && canAnularComanda && (
-                              <button
-                                type="button"
-                                onClick={() => { setAnulComanda(c); setAnulReason(''); setAnulPin('') }}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs flex items-center gap-1 shrink-0"
-                                title="Anular comanda (requiere PIN)"
-                              >
-                                <Trash2 size={12} /> Anular
-                              </button>
-                            )}
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="tabular-nums font-medium text-stone-800">
+                                {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
+                              </span>
+                              {session.status === 'open' && canAnularComanda && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setAnulComanda(c); setAnulReason(''); setAnulPin('') }}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs flex items-center gap-1"
+                                  title="Anular comanda (requiere PIN)"
+                                >
+                                  <Trash2 size={12} /> Anular
+                                </button>
+                              )}
+                            </div>
                           </li>
-                        ))}
+                          )
+                        })}
                       </ul>
                     </div>
                   </div>
-                ))
+                  )
+                })
                 )}
               </div>
-              <div className="p-4 border-t border-stone-200 bg-stone-50/30">
-                <button
-                  type="button"
-                  onClick={() => setOrdersModalOpen(false)}
-                  className="w-full py-2.5 rounded-xl bg-stone-800 text-white hover:bg-stone-900 font-medium"
-                >
-                  Cerrar
-                </button>
+              <div className="p-4 border-t border-stone-200 bg-stone-50/30 space-y-3">
+                <div className="flex justify-between items-center text-sm font-bold text-stone-800">
+                  <span>Total en mesa</span>
+                  <span className="tabular-nums text-rest-700">{formatSoles(sessionTotal)}</span>
+                </div>
+                <div className="flex gap-2">
+                  {printableKitchenRounds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void reprintAllKitchenRounds()}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-rest-600 text-white hover:bg-rest-700 font-medium"
+                    >
+                      <Printer size={16} />
+                      Imprimir todas
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setOrdersModalOpen(false)}
+                    className={`py-2.5 rounded-xl border border-stone-200 bg-white text-stone-800 hover:bg-stone-50 font-medium ${
+                      printableKitchenRounds.length > 0 ? 'px-4' : 'w-full'
+                    }`}
+                  >
+                    Cerrar
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1591,6 +1633,8 @@ export default function MesaPage() {
         rounds={kitchenRoundHistory}
         orderCode={session?.order_code}
         onReprint={(round) => void reprintKitchenRound(round)}
+        onReprintAll={() => void reprintAllKitchenRounds()}
+        showReprintAll={printableKitchenRounds.length > 0}
       />
 
       <ReceiptPrintModal

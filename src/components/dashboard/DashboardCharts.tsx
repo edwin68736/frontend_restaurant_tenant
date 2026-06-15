@@ -98,18 +98,24 @@ export function CategoriesBarChart({ rows }: { rows: DashboardCategoryRow[] }) {
   )
 }
 
+function dayRowAmount(row: DashboardDayRow): number {
+  const n = typeof row.total === 'number' ? row.total : Number(row.total)
+  return Number.isFinite(n) ? n : 0
+}
+
 function trendStats(rows: DashboardDayRow[]) {
-  const withSales = rows.filter((r) => r.total > 0)
+  const withSales = rows.filter((r) => dayRowAmount(r) > 0)
   if (!withSales.length) {
     return { avg: 0, best: null as DashboardDayRow | null, worst: null as DashboardDayRow | null }
   }
-  const total = rows.reduce((s, r) => s + r.total, 0)
+  const total = rows.reduce((s, r) => s + dayRowAmount(r), 0)
   const avg = total / rows.length
   let best = withSales[0]
   let worst = withSales[0]
   for (const r of withSales) {
-    if (r.total > best.total) best = r
-    if (r.total < worst.total) worst = r
+    const amount = dayRowAmount(r)
+    if (amount > dayRowAmount(best)) best = r
+    if (amount < dayRowAmount(worst)) worst = r
   }
   return { avg, best, worst }
 }
@@ -118,8 +124,10 @@ export function TrendLineChart({ rows }: { rows: DashboardDayRow[] }) {
   const stats = trendStats(rows)
   const chartData = rows.map((r) => ({
     ...r,
+    total: dayRowAmount(r),
     label: formatDisplayDate(r.day),
   }))
+  const hasSales = chartData.some((r) => r.total > 0)
 
   return (
     <div className="space-y-4">
@@ -131,17 +139,17 @@ export function TrendLineChart({ rows }: { rows: DashboardDayRow[] }) {
         <div className="rounded-xl bg-green-50 border border-green-100 px-3 py-2">
           <p className="text-[10px] uppercase font-semibold text-green-700">Mejor día</p>
           <p className="text-sm font-bold tabular-nums text-green-800">
-            {stats.best ? `${formatDisplayDate(stats.best.day)} · ${formatSoles(stats.best.total)}` : '—'}
+            {stats.best ? `${formatDisplayDate(stats.best.day)} · ${formatSoles(dayRowAmount(stats.best))}` : '—'}
           </p>
         </div>
         <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
           <p className="text-[10px] uppercase font-semibold text-amber-700">Peor día</p>
           <p className="text-sm font-bold tabular-nums text-amber-900">
-            {stats.worst ? `${formatDisplayDate(stats.worst.day)} · ${formatSoles(stats.worst.total)}` : '—'}
+            {stats.worst ? `${formatDisplayDate(stats.worst.day)} · ${formatSoles(dayRowAmount(stats.worst))}` : '—'}
           </p>
         </div>
       </div>
-      {!rows.some((r) => r.total > 0) ? (
+      {!hasSales ? (
         <DashboardEmpty message="Sin ventas en los últimos 30 días" />
       ) : (
         <ResponsiveContainer width="100%" height={300}>

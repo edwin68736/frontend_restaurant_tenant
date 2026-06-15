@@ -30,10 +30,12 @@ export function usePosInfiniteProducts({
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [refreshNonce, setRefreshNonce] = useState(0)
+  const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
 
   const search = useDebouncedSearch()
   const requestIdRef = useRef(0)
   const listEpochRef = useRef(0)
+  const fetchedStockIdsRef = useRef(new Set<number>())
   const prevListKeyRef = useRef<string | null>(null)
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
@@ -53,6 +55,8 @@ export function usePosInfiniteProducts({
     setPage(1)
     setProducts([])
     setTotalProducts(0)
+    setStockByProductId({})
+    fetchedStockIdsRef.current = new Set()
   }, [listKey])
 
   useEffect(() => {
@@ -117,6 +121,26 @@ export function usePosInfiniteProducts({
     return () => controller.abort()
   }, [canFetch, activeBranchId, categoryFilter, preparationAreaFilter, page, query, listKey])
 
+  useEffect(() => {
+    const missing = products.filter(
+      (p) => p.manage_stock && !fetchedStockIdsRef.current.has(p.id),
+    )
+    if (missing.length === 0) return
+    let cancelled = false
+    const ids = missing.map((p) => p.id)
+    void productsService
+      .getStockSummary(ids)
+      .then((data) => {
+        if (cancelled) return
+        for (const id of ids) fetchedStockIdsRef.current.add(id)
+        setStockByProductId((prev) => ({ ...prev, ...data }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [products])
+
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore || !canFetch || query === null) return
     setPage((p) => p + 1)
@@ -135,6 +159,7 @@ export function usePosInfiniteProducts({
     loading,
     loadingMore,
     isSearching,
+    stockByProductId,
     loadMore,
     refresh,
     search,

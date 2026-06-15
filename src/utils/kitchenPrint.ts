@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
 import { restaurantService } from '@/services/restaurant.service'
 import { normalizePreparationAreaKey } from '@/constants/preparationAreas'
+import type { KitchenRound } from '@/utils/posOrderHelpers'
 import {
   getConfiguredComandaDefaultPrinter,
   getConfiguredComandaPrinter,
@@ -61,6 +62,8 @@ export async function printKitchenRound(params: {
   manual?: boolean
   silentConfigError?: boolean
   markPrinted?: boolean
+  /** Sin toasts de éxito (p. ej. impresión masiva). */
+  quiet?: boolean
 }): Promise<boolean> {
   const { sessionDetail, orderCode, orderNumber, tableOrderId, comandas } = params
   if (comandas.length === 0) {
@@ -126,13 +129,15 @@ export async function printKitchenRound(params: {
       await restaurantService.markTableOrderPrinted(tableOrderId)
     }
 
-    if (groups.size > 1) {
-      toast.success(`Comanda #${orderNumber} enviada (${printedCount} ticket(s) por área)`)
-    } else if (printedCount === 1) {
-      toast.success(`Comanda #${orderNumber} enviada a impresora`)
+    if (!params.quiet) {
+      if (groups.size > 1) {
+        toast.success(`Comanda #${orderNumber} enviada (${printedCount} ticket(s) por área)`)
+      } else if (printedCount === 1) {
+        toast.success(`Comanda #${orderNumber} enviada a impresora`)
+      }
     }
 
-    if (errors.length > 0 && !params.silentConfigError) {
+    if (errors.length > 0 && !params.silentConfigError && !params.quiet) {
       toast.message(`Algunas áreas no imprimieron: ${errors.join(', ')}`)
     }
 
@@ -142,4 +147,62 @@ export async function printKitchenRound(params: {
     toast.error(e instanceof Error ? e.message : 'No se pudo imprimir la comanda')
     return false
   }
+}
+
+/** Imprime cada ronda por separado (misma lógica que Reimprimir individual). */
+export async function printAllKitchenRounds(params: {
+  sessionDetail: SessionDetail | null
+  orderCode: string
+  rounds: KitchenRound[]
+  manual?: boolean
+  markPrinted?: boolean
+}): Promise<boolean> {
+  const rounds = params.rounds.filter((r) => r.comandas.length > 0)
+  if (rounds.length === 0) {
+    toast.error('No hay comandas para imprimir')
+    return false
+  }
+
+  if (!isNativePrintAvailable()) return false
+  if (!(params.manual ?? true) && !isAutoPrintEnabled('comandas')) return false
+
+  if (!getConfiguredComandaDefaultPrinter()) {
+    toast.error('Configura la impresora de comandas por defecto en Ajustes')
+    return false
+  }
+
+  let okCount = 0
+  for (const round of rounds) {
+    const printed = await printKitchenRound({
+      sessionDetail: params.sessionDetail,
+      orderCode: params.orderCode,
+      orderNumber: round.orderNumber,
+      tableOrderId: round.orderId,
+      comandas: round.comandas,
+      manual: params.manual ?? true,
+      silentConfigError: true,
+      markPrinted: false,
+      quiet: true,
+    })
+    if (printed) okCount += 1
+  }
+
+  if (okCount === 0) return false
+
+  if (params.markPrinted !== false) {
+    const orderIds = [...new Set(rounds.map((r) => r.orderId))]
+    for (const orderId of orderIds) {
+      await restaurantService.markTableOrderPrinted(orderId)
+    }
+  }
+
+  if (okCount === rounds.length) {
+    toast.success(
+      okCount === 1 ? 'Comanda enviada a impresora' : `Se imprimieron ${okCount} comandas`,
+    )
+  } else {
+    toast.message(`Se imprimieron ${okCount} de ${rounds.length} comandas`)
+  }
+
+  return true
 }

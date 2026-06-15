@@ -13,6 +13,7 @@ import {
   reportInputClass,
   reportSelectClass,
 } from '@/components/reports/ReportFilterCard'
+import { ReportSummaryCard, ReportSummaryRow } from '@/components/reports/ReportSummaryCard'
 
 const EXPORT_COLS: ExportColumn<SalesByProductRow>[] = [
   { key: 'category_name', label: 'Categoría' },
@@ -28,8 +29,8 @@ const EXPORT_COLS: ExportColumn<SalesByProductRow>[] = [
 
 function PlatosVendidosFilters({ filters, onChange, catalogs, exportActions }: ReportFilterPanelProps) {
   return (
-    <ReportFilterCard hint="Ranking de platos vendidos por categoría en el periodo seleccionado.">
-      <ReportFilterField label="Desde">
+    <ReportFilterCard horizontal hint="Ranking de platos vendidos por categoría en el periodo seleccionado.">
+      <ReportFilterField label="Desde" className="shrink-0">
         <input
           type="date"
           value={String(filters.from ?? '')}
@@ -37,7 +38,7 @@ function PlatosVendidosFilters({ filters, onChange, catalogs, exportActions }: R
           className={reportInputClass}
         />
       </ReportFilterField>
-      <ReportFilterField label="Hasta">
+      <ReportFilterField label="Hasta" className="shrink-0">
         <input
           type="date"
           value={String(filters.to ?? '')}
@@ -46,7 +47,7 @@ function PlatosVendidosFilters({ filters, onChange, catalogs, exportActions }: R
         />
       </ReportFilterField>
       {catalogs.branches.length > 1 && (
-        <ReportFilterField label="Sucursal">
+        <ReportFilterField label="Sucursal" className="shrink-0">
           <select
             value={String(filters.branch_id ?? '')}
             onChange={(e) => onChange({ branch_id: e.target.value ? Number(e.target.value) : '' })}
@@ -59,7 +60,7 @@ function PlatosVendidosFilters({ filters, onChange, catalogs, exportActions }: R
           </select>
         </ReportFilterField>
       )}
-      <ReportFilterField label="Categoría">
+      <ReportFilterField label="Categoría" className="shrink-0">
         <select
           value={String(filters.category_id ?? '')}
           onChange={(e) => onChange({ category_id: e.target.value ? Number(e.target.value) : '' })}
@@ -85,7 +86,7 @@ function PlatosVendidosSummary({
   const s = summary as SalesByProductSummary | null
   if (!s) return null
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <ReportSummaryRow desktopCols={5}>
       {[
         { label: 'Total vendido', value: formatSoles(s.total_amount) },
         { label: 'Unidades', value: Number(s.total_quantity).toFixed(3) },
@@ -93,12 +94,9 @@ function PlatosVendidosSummary({
         { label: 'Comprobantes', value: String(s.distinct_sales) },
         { label: 'Platos distintos', value: String(s.products_count) },
       ].map((card) => (
-        <div key={card.label} className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-          <p className="text-xs font-semibold uppercase text-stone-500">{card.label}</p>
-          <p className="text-lg font-bold text-stone-900 tabular-nums">{card.value}</p>
-        </div>
+        <ReportSummaryCard key={card.label} label={card.label} value={card.value} />
       ))}
-    </div>
+    </ReportSummaryRow>
   )
 }
 

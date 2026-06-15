@@ -23,6 +23,7 @@ import {
   FileSignature,
   Receipt,
   Printer,
+  MoreVertical,
 } from 'lucide-react'
 import { salesService, formatSaleDocumentNumber, emptySaleListSummary, type Sale, type SaleDetail, type SaleItem, type SaleListSummary } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -47,8 +48,9 @@ import { SearchInput } from '@/components/SearchInput'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import type { PrintData } from '@/types/printData'
-import { getConfiguredPrinter, isNativePrintAvailable, printDocumentAuto } from '@/services/printers.service'
-import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
+import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, printDocumentAuto } from '@/services/printers.service'
+import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
+import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import {
   downloadReceiptPdf,
   generateReceiptPdf,
@@ -65,6 +67,7 @@ import {
   resolveManualBillingStatus,
 } from '@/utils/manualBilling'
 import { clsx } from 'clsx'
+import { isCapacitorAndroid } from '@/lib/platform/detect'
 import {
   BILLING_FILTER_GROUPS,
   BILLING_STATUS,
@@ -93,6 +96,8 @@ const THERMAL_PRINT_BTN =
   'inline-flex items-center justify-center p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 shrink-0'
 const DOWNLOAD_DROPDOWN_TRIGGER =
   'inline-flex items-center gap-0.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50'
+const ANDROID_MORE_BTN =
+  'inline-flex items-center justify-center p-1.5 rounded-lg border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 shrink-0'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -158,6 +163,14 @@ export default function VentasPage() {
   const [xmlViewerTitle, setXmlViewerTitle] = useState<string>('XML')
   const [viewingXmlSaleId, setViewingXmlSaleId] = useState<number | null>(null)
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  const [receiptPrintData, setReceiptPrintData] = useState<PrintData | null>(null)
+  const [receiptSaleMeta, setReceiptSaleMeta] = useState<{
+    id: number
+    number: string
+    total: number
+    clientEmail: string
+  } | null>(null)
 
   useEffect(() => {
     companyService.getSunat().then((d) => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
@@ -383,6 +396,44 @@ export default function VentasPage() {
     }
   }, [emitOpen, emitDocKind, emitNotaContactId, emitContacts])
 
+  const openReceiptAfterEmit = async (
+    sale: Sale,
+    printData: PrintData | null | undefined,
+    clientEmail: string,
+  ) => {
+    let data = printData ?? null
+    if (!data) {
+      try {
+        const detail = await salesService.get(sale.id)
+        data = (detail.print_data as PrintData | undefined) ?? null
+      } catch {
+        data = null
+      }
+    }
+    setReceiptPrintData(data)
+    setReceiptSaleMeta({
+      id: sale.id,
+      number: formatSaleDocumentNumber(sale),
+      total: Number(sale.total) || 0,
+      clientEmail,
+    })
+    setReceiptModalOpen(true)
+    if (data && isNativePrintAvailable() && isAutoPrintEnabled('documentos')) {
+      const cfg = getConfiguredPrinter('documentos')
+      if (!cfg) {
+        toast.error('Configura la impresora de documentos en Ajustes')
+      } else {
+        try {
+          const msg = await printDocumentAuto(data)
+          toast.success(msg || 'Comprobante enviado a la impresora')
+        } catch (e) {
+          console.error('[document print error]', e)
+          toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+        }
+      }
+    }
+  }
+
   const submitEmit = async () => {
     if (!emitRow || !emitDetail) return
     if (!emitContactId || !emitContactOk) {
@@ -405,13 +456,16 @@ export default function VentasPage() {
         issue_date: emitIssueDate.trim() || undefined,
         contact_id: emitContactId,
       })
-      toast.success(
-        `Comprobante generado: ${res.sale?.doc_type ?? ''} ${formatSaleDocumentNumber(res.sale ?? {})}. Envíelo a SUNAT desde Facturación.`,
-      )
+      const sale = res.sale
+      const contact = emitContacts.find((c) => c.id === emitContactId)
+      toast.success(`Comprobante generado: ${sale?.doc_type ?? ''} ${formatSaleDocumentNumber(sale ?? {})}`)
       setEmitOpen(false)
       setEmitRow(null)
       setEmitDetail(null)
       refresh()
+      if (sale) {
+        await openReceiptAfterEmit(sale, res.print_data, contact?.email?.trim() ?? '')
+      }
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo emitir')
     } finally {
@@ -562,6 +616,7 @@ export default function VentasPage() {
   }
 
   const closeDropdown = () => setOpenDropdownId(null)
+  const androidSalesUi = isCapacitorAndroid()
 
   const requirePrintData = async (saleId: number): Promise<PrintData> => {
     const d = await salesService.get(saleId)
@@ -689,6 +744,304 @@ export default function VentasPage() {
         <Printer size={14} />
       )}
     </button>
+  )
+
+  const renderTicketPdfButton = (saleId: number) => (
+    <button
+      type="button"
+      className={PDF_TICKET_BTN}
+      title="Ver PDF ticket"
+      disabled={localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'ticket'}
+      onClick={() => void openLocalPdfViewer(saleId, 'ticket')}
+    >
+      {localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'ticket' ? (
+        <RefreshCw size={14} className="animate-spin" />
+      ) : (
+        <Ticket size={14} />
+      )}
+    </button>
+  )
+
+  const renderSunatSendResendButton = (sale: Sale) => {
+    const bs = sale.billing_status
+    if (bs === 'pending') {
+      return (
+        <button
+          type="button"
+          className={SUNAT_SEND_BTN}
+          title="Enviar a SUNAT"
+          disabled={sending === sale.id}
+          onClick={() => void handleSend(sale.id)}
+        >
+          {sending === sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+        </button>
+      )
+    }
+    if (bs === 'error' || bs === 'sent') {
+      return (
+        <button
+          type="button"
+          className={SUNAT_RESEND_BTN}
+          title="Reenviar a SUNAT"
+          disabled={resending === sale.id}
+          onClick={() => void handleResend(sale.id)}
+        >
+          {resending === sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+        </button>
+      )
+    }
+    return null
+  }
+
+  const renderSunatDownloadMenuItems = (sale: Sale, showXmlViewers: boolean) => {
+    const bs = sale.billing_status
+    return (
+      <>
+        {canShowSunatOfficialPdf(bs) && (
+          <>
+            <button
+              type="button"
+              className={ROW_DROPDOWN_ITEM}
+              disabled={viewingPdfSaleId === sale.id}
+              onClick={() => {
+                closeDropdown()
+                void openSunatPdfViewer(sale.id)
+              }}
+            >
+              <FileSearch size={14} />
+              Ver PDF oficial
+            </button>
+            <button
+              type="button"
+              className={ROW_DROPDOWN_ITEM}
+              disabled={downloading?.saleId === sale.id && downloading?.kind === 'pdf'}
+              onClick={() => {
+                closeDropdown()
+                void handleDownload(sale.id, 'pdf')
+              }}
+            >
+              <FileText size={14} />
+              Descargar PDF oficial
+            </button>
+          </>
+        )}
+        {canShowXmlSent(bs) && (
+          <>
+            {showXmlViewers && (
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={viewingXmlSaleId === sale.id}
+                onClick={() => {
+                  closeDropdown()
+                  void openXmlViewer(sale.id, 'xml')
+                }}
+              >
+                <FileCode size={14} />
+                Ver XML enviado
+              </button>
+            )}
+            <button
+              type="button"
+              className={ROW_DROPDOWN_ITEM}
+              disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml'}
+              onClick={() => {
+                closeDropdown()
+                void handleDownload(sale.id, 'xml')
+              }}
+            >
+              <FileCode size={14} />
+              Descargar XML enviado
+            </button>
+          </>
+        )}
+        {canShowXmlGenerated(bs) && (
+          <>
+            {showXmlViewers && (
+              <button
+                type="button"
+                className={ROW_DROPDOWN_ITEM}
+                disabled={viewingXmlSaleId === sale.id}
+                onClick={() => {
+                  closeDropdown()
+                  void openXmlViewer(sale.id, 'xml-generated')
+                }}
+              >
+                <FileCode size={14} />
+                Ver XML generado
+              </button>
+            )}
+            <button
+              type="button"
+              className={ROW_DROPDOWN_ITEM}
+              disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml-generated'}
+              onClick={() => {
+                closeDropdown()
+                void handleDownload(sale.id, 'xml-generated')
+              }}
+            >
+              <FileCode size={14} />
+              Descargar XML generado
+            </button>
+          </>
+        )}
+        {canShowCdr(bs) && (
+          <button
+            type="button"
+            className={ROW_DROPDOWN_ITEM}
+            disabled={downloading?.saleId === sale.id && downloading?.kind === 'cdr'}
+            onClick={() => {
+              closeDropdown()
+              void handleDownload(sale.id, 'cdr')
+            }}
+          >
+            <Archive size={14} />
+            Descargar CDR
+          </button>
+        )}
+      </>
+    )
+  }
+
+  const renderLocalPdfOverflowItems = (saleId: number) => (
+    <>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        title="Ver detalle"
+        onClick={() => {
+          closeDropdown()
+          openDetail(saleId)
+        }}
+      >
+        <Eye size={14} />
+        Ver detalle
+      </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localPdfPreviewBusy?.saleId === saleId && localPdfPreviewBusy?.format === 'a4'}
+        onClick={() => {
+          closeDropdown()
+          void openLocalPdfViewer(saleId, 'a4')
+        }}
+      >
+        <FileOutput size={14} />
+        Ver PDF A4
+      </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localTicketTabBusyId === saleId}
+        onClick={() => {
+          closeDropdown()
+          void openLocalPdfTicketTab(saleId)
+        }}
+      >
+        <ExternalLink size={14} />
+        Abrir ticket en pestaña
+      </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localPdfDownloadBusy?.saleId === saleId && localPdfDownloadBusy?.format === 'ticket'}
+        onClick={() => {
+          closeDropdown()
+          void downloadLocalPdf(saleId, 'ticket')
+        }}
+      >
+        <Download size={14} />
+        Descargar ticket
+      </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localPdfDownloadBusy?.saleId === saleId && localPdfDownloadBusy?.format === 'a4'}
+        onClick={() => {
+          closeDropdown()
+          void downloadLocalPdf(saleId, 'a4')
+        }}
+      >
+        <Download size={14} />
+        Descargar A4
+      </button>
+    </>
+  )
+
+  const renderAndroidMoreMenu = (
+    sale: Sale,
+    menuKey: string,
+    context: 'nota' | 'fact' | 'nc',
+  ) => (
+    <AnchoredDropdown
+      menuId={`${menuKey}-android-more-${sale.id}`}
+      openId={openDropdownId}
+      onOpenChange={setOpenDropdownId}
+      triggerClassName={ANDROID_MORE_BTN}
+      menuWidth={248}
+      align="right"
+      trigger={
+        <>
+          <MoreVertical size={16} aria-hidden />
+          <span className="sr-only">Más acciones</span>
+        </>
+      }
+    >
+      {renderLocalPdfOverflowItems(sale.id)}
+      {context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && sunatEnabled && (
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          onClick={() => {
+            closeDropdown()
+            void openEmit(sale)
+          }}
+        >
+          <Receipt size={14} />
+          Convertir a factura o boleta
+        </button>
+      )}
+      {context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && (
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          onClick={() => {
+            closeDropdown()
+            openVoidNota(sale)
+          }}
+        >
+          <Ban size={14} />
+          Anular nota de venta
+        </button>
+      )}
+      {(context === 'fact' || context === 'nc') && renderSunatDownloadMenuItems(sale, context === 'nc')}
+      {context === 'fact' && sale.billing_status === 'accepted' && sale.status !== 'cancelled' && (
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          onClick={() => {
+            closeDropdown()
+            openVoidNc(sale)
+          }}
+        >
+          <Ban size={14} />
+          Anular con nota de crédito
+        </button>
+      )}
+    </AnchoredDropdown>
+  )
+
+  const renderAndroidRowActions = (
+    sale: Sale,
+    menuKey: string,
+    context: 'nota' | 'fact' | 'nc',
+  ) => (
+    <div className="flex items-center gap-1">
+      {renderThermalPrintButton(sale.id)}
+      {renderTicketPdfButton(sale.id)}
+      {(context === 'fact' || context === 'nc') && renderSunatSendResendButton(sale)}
+      {renderAndroidMoreMenu(sale, menuKey, context)}
+    </div>
   )
 
   /** PDF devuelto por el PSE / almacenado tras envío a SUNAT (puede no existir si aún está pendiente). */
@@ -896,108 +1249,7 @@ export default function VentasPage() {
             </>
           }
         >
-          {canShowSunatOfficialPdf(bs) && (
-            <>
-              <button
-                type="button"
-                className={ROW_DROPDOWN_ITEM}
-                disabled={viewingPdfSaleId === sale.id}
-                onClick={() => {
-                  closeDropdown()
-                  void openSunatPdfViewer(sale.id)
-                }}
-              >
-                <FileSearch size={14} />
-                Ver PDF oficial
-              </button>
-              <button
-                type="button"
-                className={ROW_DROPDOWN_ITEM}
-                disabled={downloading?.saleId === sale.id && downloading?.kind === 'pdf'}
-                onClick={() => {
-                  closeDropdown()
-                  void handleDownload(sale.id, 'pdf')
-                }}
-              >
-                <FileText size={14} />
-                Descargar PDF oficial
-              </button>
-            </>
-          )}
-          {canShowXmlSent(bs) && (
-            <>
-              {showXmlViewers && (
-                <button
-                  type="button"
-                  className={ROW_DROPDOWN_ITEM}
-                  disabled={viewingXmlSaleId === sale.id}
-                  onClick={() => {
-                    closeDropdown()
-                    void openXmlViewer(sale.id, 'xml')
-                  }}
-                >
-                  <FileCode size={14} />
-                  Ver XML enviado
-                </button>
-              )}
-              <button
-                type="button"
-                className={ROW_DROPDOWN_ITEM}
-                disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml'}
-                onClick={() => {
-                  closeDropdown()
-                  void handleDownload(sale.id, 'xml')
-                }}
-              >
-                <FileCode size={14} />
-                Descargar XML enviado
-              </button>
-            </>
-          )}
-          {canShowXmlGenerated(bs) && (
-            <>
-              {showXmlViewers && (
-                <button
-                  type="button"
-                  className={ROW_DROPDOWN_ITEM}
-                  disabled={viewingXmlSaleId === sale.id}
-                  onClick={() => {
-                    closeDropdown()
-                    void openXmlViewer(sale.id, 'xml-generated')
-                  }}
-                >
-                  <FileCode size={14} />
-                  Ver XML generado
-                </button>
-              )}
-              <button
-                type="button"
-                className={ROW_DROPDOWN_ITEM}
-                disabled={downloading?.saleId === sale.id && downloading?.kind === 'xml-generated'}
-                onClick={() => {
-                  closeDropdown()
-                  void handleDownload(sale.id, 'xml-generated')
-                }}
-              >
-                <FileCode size={14} />
-                Descargar XML generado
-              </button>
-            </>
-          )}
-          {canShowCdr(bs) && (
-            <button
-              type="button"
-              className={ROW_DROPDOWN_ITEM}
-              disabled={downloading?.saleId === sale.id && downloading?.kind === 'cdr'}
-              onClick={() => {
-                closeDropdown()
-                void handleDownload(sale.id, 'cdr')
-              }}
-            >
-              <Archive size={14} />
-              Descargar CDR
-            </button>
-          )}
+          {renderSunatDownloadMenuItems(sale, showXmlViewers)}
         </AnchoredDropdown>
         )}
       </div>
@@ -1181,14 +1433,32 @@ export default function VentasPage() {
                       <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Comprobante</th>
                       <th className="hidden md:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Cliente</th>
                       <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Total</th>
-                      <th className="hidden sm:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Imprimir</th>
+                      <th
+                        className={clsx(
+                          'text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500',
+                          androidSalesUi ? 'hidden' : 'hidden sm:table-cell',
+                        )}
+                      >
+                        Imprimir
+                      </th>
                       {tab === 'facturacion' && (
                         <>
                           <th className="hidden lg:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
-                          <th className="hidden xl:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">PDF local</th>
+                          <th
+                            className={clsx(
+                              'text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500',
+                              androidSalesUi ? 'hidden' : 'hidden xl:table-cell',
+                            )}
+                          >
+                            PDF local
+                          </th>
                           <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">
-                            <span className="sm:hidden">SUNAT</span>
-                            <span className="hidden sm:inline">SUNAT / PSE</span>
+                            {androidSalesUi ? 'Acciones' : (
+                              <>
+                                <span className="sm:hidden">SUNAT</span>
+                                <span className="hidden sm:inline">SUNAT / PSE</span>
+                              </>
+                            )}
                           </th>
                         </>
                       )}
@@ -1242,7 +1512,14 @@ export default function VentasPage() {
                             <span className="ml-1 sm:ml-2 text-[9px] sm:text-[10px] font-semibold uppercase text-red-600">Anulada</span>
                           )}
                         </td>
-                        <td className="hidden sm:table-cell px-2 sm:px-4 py-1.5 sm:py-3">{renderThermalPrintButton(s.id)}</td>
+                        <td
+                          className={clsx(
+                            'px-2 sm:px-4 py-1.5 sm:py-3',
+                            androidSalesUi ? 'hidden' : 'hidden sm:table-cell',
+                          )}
+                        >
+                          {renderThermalPrintButton(s.id)}
+                        </td>
                         {tab === 'facturacion' && (
                           <>
                             <td className="hidden lg:table-cell px-2 sm:px-4 py-1.5 sm:py-3">
@@ -1252,23 +1529,34 @@ export default function VentasPage() {
                                 {billingStatusDisplayLabel(s.billing_status)}
                               </span>
                             </td>
-                            <td className="hidden xl:table-cell px-2 sm:px-4 py-1.5 sm:py-3">{renderLocalPdfActions(s.id, 'fact')}</td>
+                            <td
+                              className={clsx(
+                                'px-2 sm:px-4 py-1.5 sm:py-3',
+                                androidSalesUi ? 'hidden' : 'hidden xl:table-cell',
+                              )}
+                            >
+                              {renderLocalPdfActions(s.id, 'fact')}
+                            </td>
                             <td className="px-2 sm:px-4 py-1.5 sm:py-3">
-                              <div className="flex items-center gap-1 flex-wrap">
-                                <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
-                                <span className="xl:hidden">{renderLocalPdfActions(s.id, 'fact')}</span>
-                                {renderSunatPseActions(s, 'fact')}
-                                {s.billing_status === 'accepted' && s.status !== 'cancelled' && (
-                                  <button
-                                    type="button"
-                                    title="Anular con nota de crédito"
-                                    onClick={() => openVoidNc(s)}
-                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
-                                  >
-                                    <Ban size={13} /> NC
-                                  </button>
-                                )}
-                              </div>
+                              {androidSalesUi ? (
+                                renderAndroidRowActions(s, 'fact', 'fact')
+                              ) : (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
+                                  <span className="xl:hidden">{renderLocalPdfActions(s.id, 'fact')}</span>
+                                  {renderSunatPseActions(s, 'fact')}
+                                  {s.billing_status === 'accepted' && s.status !== 'cancelled' && (
+                                    <button
+                                      type="button"
+                                      title="Anular con nota de crédito"
+                                      onClick={() => openVoidNc(s)}
+                                      className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
+                                    >
+                                      <Ban size={13} /> NC
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </td>
                           </>
                         )}
@@ -1282,51 +1570,59 @@ export default function VentasPage() {
                               </span>
                             </td>
                             <td className="px-2 sm:px-4 py-1.5 sm:py-3">
-                              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-                                <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
-                                <button type="button" onClick={() => openDetail(s.id)} className={DETAIL_BTN} title="Ver detalle">
-                                  <Eye size={14} />
-                                </button>
-                                {renderLocalPdfActions(s.id, 'nc')}
-                                {renderSunatPseActions(s, 'nc', { hideDetailButton: true })}
-                              </div>
+                              {androidSalesUi ? (
+                                renderAndroidRowActions(s, 'nc', 'nc')
+                              ) : (
+                                <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                                  <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
+                                  <button type="button" onClick={() => openDetail(s.id)} className={DETAIL_BTN} title="Ver detalle">
+                                    <Eye size={14} />
+                                  </button>
+                                  {renderLocalPdfActions(s.id, 'nc')}
+                                  {renderSunatPseActions(s, 'nc', { hideDetailButton: true })}
+                                </div>
+                              )}
                             </td>
                           </>
                         )}
                         {tab === 'notas' && (
                           <td className="px-2 sm:px-4 py-1.5 sm:py-3">
-                            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-                              <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
-                              <button
-                                type="button"
-                                onClick={() => openDetail(s.id)}
-                                className={DETAIL_BTN}
-                                title="Ver detalle"
-                              >
-                                <Eye size={14} />
-                              </button>
-                              {renderLocalPdfActions(s.id, 'nota')}
-                              {s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
+                            {androidSalesUi ? (
+                              renderAndroidRowActions(s, 'nota', 'nota')
+                            ) : (
+                              <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
+                                <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
                                 <button
                                   type="button"
-                                  title="Convertir a factura o boleta"
-                                  onClick={() => void openEmit(s)}
-                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rest-600 text-white text-xs font-semibold hover:bg-rest-700"
+                                  onClick={() => openDetail(s.id)}
+                                  className={DETAIL_BTN}
+                                  title="Ver detalle"
                                 >
-                                  <Receipt size={13} /> FE
+                                  <Eye size={14} />
                                 </button>
-                              )}
-                              {s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
-                                <button
-                                  type="button"
-                                  title="Anular nota de venta"
-                                  onClick={() => openVoidNota(s)}
-                                  className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
-                                >
-                                  <Ban size={13} /> Anular
-                                </button>
-                              )}
-                            </div>
+                                {renderLocalPdfActions(s.id, 'nota')}
+                                {s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
+                                  <button
+                                    type="button"
+                                    title="Convertir a factura o boleta"
+                                    onClick={() => void openEmit(s)}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rest-600 text-white text-xs font-semibold hover:bg-rest-700"
+                                  >
+                                    <Receipt size={13} /> FE
+                                  </button>
+                                )}
+                                {s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
+                                  <button
+                                    type="button"
+                                    title="Anular nota de venta"
+                                    onClick={() => openVoidNota(s)}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-semibold hover:bg-red-100"
+                                  >
+                                    <Ban size={13} /> Anular
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </td>
                         )}
                       </tr>
@@ -1650,13 +1946,11 @@ export default function VentasPage() {
               </div>
             )}
             {pdfViewerUrl ? (
-              <div className="bg-stone-100 p-1">
-                <iframe
-                  src={pdfEmbedSrc(pdfViewerUrl)}
-                  title="Comprobante PDF"
-                  className="h-[75vh] min-h-[320px] w-full border-0 bg-white"
-                />
-              </div>
+              <PdfBlobViewer
+                url={pdfViewerUrl}
+                title="Comprobante PDF"
+                className="h-[75vh] min-h-[320px]"
+              />
             ) : (
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
@@ -1879,6 +2173,20 @@ export default function VentasPage() {
           </div>
         </div>
       </PortalModal>
+
+      <ReceiptPrintModal
+        open={receiptModalOpen}
+        onClose={() => {
+          setReceiptModalOpen(false)
+          setReceiptPrintData(null)
+          setReceiptSaleMeta(null)
+        }}
+        printData={receiptPrintData}
+        saleId={receiptSaleMeta?.id}
+        saleNumber={receiptSaleMeta?.number}
+        total={receiptSaleMeta?.total}
+        defaultEmail={receiptSaleMeta?.clientEmail ?? ''}
+      />
     </PageShell>
   )
 }

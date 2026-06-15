@@ -8,6 +8,7 @@ import {
   reportInputClass,
   reportSelectClass,
 } from '@/components/reports/ReportFilterCard'
+import { ReportSummaryCard, ReportSummaryRow } from '@/components/reports/ReportSummaryCard'
 
 const PREP_AREAS = [
   { value: '', label: 'Todas' },
@@ -119,24 +120,18 @@ function ProductosSummary({
 }) {
   const active = rows.filter((r) => r.active).length
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-        <p className="text-xs font-semibold uppercase text-stone-500">Platos en listado</p>
-        <p className="text-lg font-bold text-stone-900">{rows.length}</p>
-      </div>
-      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-        <p className="text-xs font-semibold uppercase text-stone-500">Activos (página)</p>
-        <p className="text-lg font-bold text-stone-900">{active}</p>
-      </div>
-      <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-        <p className="text-xs font-semibold uppercase text-stone-500">Precio promedio</p>
-        <p className="text-lg font-bold text-stone-900 tabular-nums">
-          {rows.length
+    <ReportSummaryRow desktopCols={3}>
+      <ReportSummaryCard label="Platos en listado" value={rows.length} />
+      <ReportSummaryCard label="Activos (página)" value={active} />
+      <ReportSummaryCard
+        label="Precio promedio"
+        value={
+          rows.length
             ? formatSoles(rows.reduce((s, r) => s + Number(r.sale_price) || 0, 0) / rows.length)
-            : '—'}
-        </p>
-      </div>
-    </div>
+            : '—'
+        }
+      />
+    </ReportSummaryRow>
   )
 }
 

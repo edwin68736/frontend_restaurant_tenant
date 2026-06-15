@@ -12,17 +12,17 @@ export function ReportTable<T extends object>({
     <div
       className={
         fill
-          ? 'flex-1 min-h-[200px] overflow-auto'
+          ? 'flex-1 min-h-[12rem] overflow-auto'
           : 'overflow-auto max-h-[60vh]'
       }
     >
-      <table className="w-full text-sm min-w-[720px]">
+      <table className="w-full text-xs sm:text-sm min-w-[720px]">
         <thead className="bg-stone-50 sticky top-0 z-10">
           <tr>
             {columns.map((col) => (
               <th
                 key={String(col.key)}
-                className="text-left px-4 py-2.5 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap"
+                className="text-left px-2 py-2 sm:px-4 sm:py-2.5 text-[10px] sm:text-xs font-semibold text-stone-500 uppercase whitespace-nowrap"
               >
                 {col.label}
               </th>
@@ -53,7 +53,7 @@ export function ReportTable<T extends object>({
                       ? col.format(raw, row)
                       : String(raw ?? '—')
                   return (
-                    <td key={String(col.key)} className="px-4 py-2 text-stone-700 whitespace-nowrap">
+                    <td key={String(col.key)} className="px-2 py-1.5 sm:px-4 sm:py-2 text-stone-700 whitespace-nowrap">
                       {content}
                     </td>
                   )

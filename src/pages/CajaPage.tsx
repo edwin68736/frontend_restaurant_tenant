@@ -710,12 +710,12 @@ export default function CajaPage() {
 
   return (
     <div className="w-full flex flex-col">
-      <div className="sticky top-0 z-20 -mx-3 px-3 pt-0 pb-2 sm:-mx-4 sm:px-4 lg:-mx-5 lg:px-5 bg-white/95 backdrop-blur-sm border-b border-stone-200/80 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
-        <div className="mb-2 pt-0.5">
+      <div className="mb-3 border-b border-stone-200/80 pb-2">
+        <div className="mb-2">
           <h2 className="text-lg font-bold text-stone-800">Caja</h2>
-          <p className="text-sm text-stone-500">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
+          <p className="text-sm text-stone-500 hidden sm:block">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin" role="tablist" aria-label="Secciones de caja">
+        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin" role="tablist" aria-label="Secciones de caja">
           {cajaTabs.map((t) => {
             const Icon = t.icon
             const active = tab === t.key
@@ -738,7 +738,7 @@ export default function CajaPage() {
         </div>
       </div>
 
-      <div className="pt-3 pb-1">
+      <div className="pb-1">
       {tab === 'sesion' && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-stone-200 p-6">

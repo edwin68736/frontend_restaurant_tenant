@@ -24,19 +24,23 @@ export function TableReportView<T extends object>({ definition }: Props<T>) {
   )
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 gap-3">
-      <FilterPanel
-        filters={runner.filters}
-        onChange={runner.patchFilters}
-        catalogs={catalogs}
-        exportActions={exportActions}
-      />
+    <div className="flex flex-col flex-1 min-h-0 gap-2 lg:gap-3">
+      <div className="shrink-0 space-y-2 lg:space-y-3">
+        <FilterPanel
+          filters={runner.filters}
+          onChange={runner.patchFilters}
+          catalogs={catalogs}
+          exportActions={exportActions}
+        />
 
-      {SummaryPanel && (
-        <SummaryPanel summary={runner.summary} rows={runner.allRows} />
-      )}
+        {SummaryPanel ? (
+          <div className="shrink-0">
+            <SummaryPanel summary={runner.summary} rows={runner.allRows} />
+          </div>
+        ) : null}
+      </div>
 
-      <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-stone-200 overflow-hidden">
+      <div className="flex-1 min-h-[min(52dvh,28rem)] lg:min-h-0 flex flex-col bg-white rounded-xl lg:rounded-2xl border border-stone-200 overflow-hidden">
         <ReportTable
           columns={definition.columns}
           rows={runner.rows}

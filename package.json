@@ -1,7 +1,7 @@
 {
   "name": "restaurant-frontend-react",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.9",
   "type": "module",
   "scripts": {
     "version:sync": "node scripts/sync-app-version.mjs",
@@ -41,6 +41,7 @@
     "hucre": "^0.5.1",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.577.0",
+    "pdfjs-dist": "^4.10.38",
     "postcss": "^8.5.8",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",

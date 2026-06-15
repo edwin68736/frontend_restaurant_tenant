@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { X, Printer } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { Comanda } from '@/services/restaurant.service'
 import type { KitchenRound } from '@/utils/posOrderHelpers'
@@ -9,10 +9,13 @@ type Props = {
   rounds: KitchenRound[]
   orderCode?: string
   onReprint: (round: KitchenRound) => void
+  onReprintAll?: () => void
+  showReprintAll?: boolean
 }
 
-export function KitchenRoundHistoryModal({ open, onClose, rounds, orderCode, onReprint }: Props) {
+export function KitchenRoundHistoryModal({ open, onClose, rounds, orderCode, onReprint, onReprintAll, showReprintAll }: Props) {
   const visible = rounds.filter((r) => r.comandas.length > 0)
+  const canReprintAll = showReprintAll && onReprintAll && visible.length > 0
   return (
     <PortalModal open={open} onClose={onClose} className="max-w-lg">
       <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(85vh,640px)] flex flex-col overflow-hidden">
@@ -26,6 +29,16 @@ export function KitchenRoundHistoryModal({ open, onClose, rounds, orderCode, onR
         </button>
       </div>
       <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+        {canReprintAll && (
+          <button
+            type="button"
+            onClick={onReprintAll}
+            className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl border border-rest-200 bg-rest-50 text-rest-700 text-sm font-semibold hover:bg-rest-100"
+          >
+            <Printer size={16} />
+            Imprimir todas ({visible.length})
+          </button>
+        )}
         {visible.length === 0 ? (
           <p className="text-sm text-stone-500 text-center py-6">Aún no hay comandas enviadas.</p>
         ) : (

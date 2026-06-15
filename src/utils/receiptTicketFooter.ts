@@ -2,6 +2,7 @@ import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { formatMoney } from '@/utils/format'
+import { receiptChangeAmount } from '@/utils/receiptChange'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 
 /** Mismo cuerpo que detalle/fecha en ticket PDF (receiptPdf FONT_SIZE_SM). */
@@ -20,6 +21,10 @@ export function paymentConditionLeftLines(data: PrintData): string[] {
     for (const p of data.payments) {
       const ref = p.reference?.trim() ? ` Ref:${p.reference}` : ''
       lines.push(`${salePaymentMethodLabelEs(p.method)}: ${formatMoney(p.amount, data.currency)}${ref}`)
+    }
+    const change = receiptChangeAmount(data)
+    if (change > 0.009) {
+      lines.push(`Vuelto: ${formatMoney(change, data.currency)}`)
     }
   }
   return lines

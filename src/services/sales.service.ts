@@ -1,5 +1,6 @@
 import api from './api'
 import type { InvoiceInfo } from './billing.service'
+import type { PrintData } from '@/types/printData'
 
 export interface Sale {
   id: number
@@ -200,7 +201,9 @@ export const salesService = {
       })),
 
   issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string; contact_id?: number }) =>
-    api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),
+    api
+      .post<{ sale: Sale; print_data?: PrintData }>(`/api/sales/${saleId}/issue-electronic`, body)
+      .then((r) => r.data),
 
   cancelNota: (saleId: number, reason: string) =>
     api.post<{ success: boolean; message?: string }>(`/api/sales/${saleId}/cancel`, { reason }).then((r) => r.data),

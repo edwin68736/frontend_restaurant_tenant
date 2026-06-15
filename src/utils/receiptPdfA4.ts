@@ -93,12 +93,20 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const headerTopY = y
   const showQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
 
-  const companyName = (data.company.trade_name || data.company.business_name || '').toUpperCase()
-  const centerLines: string[] = [companyName, `RUC ${data.company.ruc}`]
+  const tradeName = String(data.company.trade_name ?? '').trim()
+  const businessName = String(data.company.business_name ?? '').trim()
+  const centerLines: { text: string; size: number; bold: boolean }[] = []
+  if (tradeName) {
+    centerLines.push({ text: tradeName.toUpperCase(), size: FONT_LG + 2, bold: true })
+    if (businessName) centerLines.push({ text: businessName.toUpperCase(), size: FONT_SM, bold: false })
+  } else if (businessName) {
+    centerLines.push({ text: businessName.toUpperCase(), size: FONT_LG, bold: true })
+  }
+  centerLines.push({ text: `RUC ${data.company.ruc}`, size: FONT_SM, bold: false })
   const issuerAddress = getPrintIssuerAddress(data)
-  if (issuerAddress) centerLines.push(issuerAddress.toUpperCase())
-  if (data.company.phone) centerLines.push(`Central telefónica: ${data.company.phone}`)
-  if (data.company.email) centerLines.push(`Email: ${data.company.email}`)
+  if (issuerAddress) centerLines.push({ text: issuerAddress.toUpperCase(), size: FONT_SM, bold: false })
+  if (data.company.phone) centerLines.push({ text: `Central telefónica: ${data.company.phone}`, size: FONT_SM, bold: false })
+  if (data.company.email) centerLines.push({ text: `Email: ${data.company.email}`, size: FONT_SM, bold: false })
 
   const docLabel = getTipoComprobanteLabel(data.sunat_code, data.doc_type).toUpperCase()
   const boxPad = 3
@@ -106,9 +114,9 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   let cy = headerTopY + 3
   const centerX = col2X + col2W / 2
   for (const line of centerLines) {
-    doc.setFontSize(line === companyName ? FONT_LG : FONT_SM)
-    doc.setFont('helvetica', line === companyName ? 'bold' : 'normal')
-    const wrapped = doc.splitTextToSize(line, col2W - 8) as string[]
+    doc.setFontSize(line.size)
+    doc.setFont('helvetica', line.bold ? 'bold' : 'normal')
+    const wrapped = doc.splitTextToSize(line.text, col2W - 8) as string[]
     for (const wl of wrapped) {
       doc.text(wl, centerX, cy, { align: 'center' })
       cy += LINE_H

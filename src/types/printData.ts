@@ -18,6 +18,8 @@ export interface PrintData {
   total: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
+  /** Vuelto cuando la suma de pagos supera el total (p. ej. efectivo). */
+  change_amount?: number
   seller_name?: string
   payment_condition?: string
   bank_accounts?: PrintBankAccount[]

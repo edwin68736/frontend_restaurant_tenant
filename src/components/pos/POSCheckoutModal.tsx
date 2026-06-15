@@ -19,6 +19,7 @@ import {
   type BranchSeriesEmptyReason,
 } from '@/components/pos/BranchCheckoutSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
+import { SearchableSelect } from '@/components/SearchableSelect'
 
 export type CheckoutPaymentLine = {
   method: string
@@ -53,10 +54,6 @@ function isPrimaryMethod(opt: MethodOption): boolean {
   )
 }
 
-function isCashMethod(code: string, name: string): boolean {
-  const s = `${code} ${name}`.toLowerCase()
-  return s.includes('efectivo') || s.includes('cash') || code === '01'
-}
 
 type Props = {
   open: boolean
@@ -178,6 +175,13 @@ export function POSCheckoutModal({
     [checkoutSeries, seriesId],
   )
 
+  const selectedDocKey = normalizeDocTypeKey(docType)
+  const seriesForDocType = useMemo(
+    () => checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey),
+    [checkoutSeries, selectedDocKey],
+  )
+  const showSeriesPicker = seriesForDocType.length > 1
+
   const seriesCodeLabel = useMemo(() => {
     if (!selectedSeries) return '—'
     return String(selectedSeries.series ?? '').trim() || '—'
@@ -243,13 +247,6 @@ export function POSCheckoutModal({
     setIsEditingDiscount(false)
   }
 
-  const hasCash =
-    isModeSimple &&
-    payments.some((p) => {
-      const opt = methodOptions.find((m) => m.code === p.method)
-      return opt ? isCashMethod(opt.code, opt.name) : normalizeDocTypeKey(p.method) === 'cash'
-    })
-
   const slotButtons = useMemo(() => {
     const max = Math.min(4, showMoreMethods ? methodOptions.length : Math.max(4, visibleMethods.length))
     return Array.from({ length: max }, (_, i) => i + 1)
@@ -310,20 +307,41 @@ export function POSCheckoutModal({
               onAddContact={onAddContact}
               onPreferVariosContact={onPreferVariosContact}
               sunatEnabled={sunatEnabled}
+              hideSeriesPicker
             />
 
-            {allowDiscount ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className={LABEL}>Serie</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="min-w-0">
+                <label className={LABEL}>Serie</label>
+                {showSeriesPicker ? (
+                  <SearchableSelect
+                    value={seriesId || null}
+                    onChange={(v) => {
+                      const id = Number(v)
+                      const s =
+                        seriesForDocType.find((x) => x.id === id) ??
+                        checkoutSeries.find((x) => x.id === id)
+                      if (s) onSeriesChange(id, String(s.doc_type || '').trim() || 'NOTA DE VENTA')
+                    }}
+                    options={seriesForDocType.map((s) => ({
+                      value: s.id,
+                      label: String(s.series ?? '').trim() || `Serie ${s.id}`,
+                    }))}
+                    placeholder="Serie"
+                    searchable={seriesForDocType.length > 8}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[44px]"
+                  />
+                ) : (
                   <div
                     className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800"
                     title="Serie del comprobante seleccionado"
                   >
                     {seriesCodeLabel}
                   </div>
-                </div>
-                <div>
+                )}
+              </div>
+              {allowDiscount ? (
+                <div className="min-w-0">
                   <label className={LABEL}>Descuento</label>
                   <div className="flex overflow-hidden rounded-xl border border-stone-200 bg-white">
                     <button
@@ -355,15 +373,10 @@ export function POSCheckoutModal({
                     />
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div>
-                <label className={LABEL}>Serie</label>
-                <div className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800">
-                  {seriesCodeLabel}
-                </div>
-              </div>
-            )}
+              ) : (
+                <div className="min-w-0" aria-hidden />
+              )}
+            </div>
 
             {extraBeforePayments}
 
@@ -477,7 +490,7 @@ export function POSCheckoutModal({
               )}
 
               <div className="mt-3 space-y-2">
-                {change > 0.009 && hasCash && isModeSimple && (
+                {change > 0.009 && isModeSimple && (
                   <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-900">
                     <span className="text-[10px] font-bold uppercase tracking-wide">Vuelto</span>
                     <span className="text-sm font-bold">{formatMoney(change)}</span>

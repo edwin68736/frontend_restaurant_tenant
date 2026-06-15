@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { clsx } from 'clsx'
 import {
-  UtensilsCrossed,
   X,
   ShoppingCart,
   Trash2,
@@ -18,6 +17,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
+import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { restaurantService, type Comanda, type SessionDetail } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
@@ -53,7 +53,7 @@ import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { isCapacitorNative } from '@/lib/app'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { cartToOrderItems, collectCheckoutLineTaxTotals, comandaLineTotal, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
-import { printKitchenRound } from '@/utils/kitchenPrint'
+import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import {
   appendCatalogLine,
   applyCatalogLineUnitPrice,
@@ -319,6 +319,7 @@ export default function POSPage() {
     loading: productsLoading,
     loadingMore: productsLoadingMore,
     isSearching: productsSearching,
+    stockByProductId,
     loadMore: loadMoreProducts,
     refresh: refreshProducts,
     search: productSearch,
@@ -458,6 +459,10 @@ export default function POSPage() {
   const cartQty = sumCartQty(cart)
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(sessionDetail), [sessionDetail])
   const kitchenRoundHistory = useMemo(() => getOrderRoundHistory(sessionDetail), [sessionDetail])
+  const printableKitchenRounds = useMemo(
+    () => kitchenRoundHistory.filter((r) => r.comandas.length > 0),
+    [kitchenRoundHistory],
+  )
   const pendingOrdersCount = openOrdersList.length
   const hasPendingOrders = pendingOrdersCount > 0
   const isDirectSale = posOrderType === 'quick_sale'
@@ -559,21 +564,50 @@ export default function POSPage() {
     }
   }
 
+  const reprintAllKitchenRounds = async () => {
+    if (printableKitchenRounds.length === 0) return
+    const printed = await printAllKitchenRounds({
+      sessionDetail,
+      orderCode,
+      rounds: printableKitchenRounds,
+      manual: true,
+      markPrinted: false,
+    })
+    if (!printed) {
+      if (!isNativePrintAvailable()) {
+        toast.info('Vista previa de comanda (impresión solo en app de escritorio o Android)')
+      } else {
+        toast.error('No se pudo imprimir. Revisa la impresora de comandas en Ajustes.')
+      }
+    }
+  }
+
   const renderSentKitchenBlock = () => {
     if (!isRestaurantOrder || activeKitchenRounds.length === 0) return null
     return (
       <div className="px-2 py-2 border-b border-amber-200/80 bg-amber-50/50 shrink-0">
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <p className="text-xs font-semibold text-amber-900">Ya en cocina</p>
-          {kitchenRoundHistory.some((r) => r.comandas.length > 0) && (
-            <button
-              type="button"
-              onClick={() => setKitchenHistoryOpen(true)}
-              className="text-[10px] font-semibold text-rest-600 hover:underline"
-            >
-              Historial
-            </button>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {printableKitchenRounds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void reprintAllKitchenRounds()}
+                className="text-[10px] font-semibold text-rest-600 hover:underline"
+              >
+                Imprimir todas
+              </button>
+            )}
+            {printableKitchenRounds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setKitchenHistoryOpen(true)}
+                className="text-[10px] font-semibold text-rest-600 hover:underline"
+              >
+                Historial
+              </button>
+            )}
+          </div>
         </div>
         <div className="space-y-2 max-h-36 overflow-y-auto">
           {activeKitchenRounds.map((round) => (
@@ -1151,8 +1185,10 @@ export default function POSPage() {
     if (!checkoutOpen || payments.length !== 1) return
     setPayments((prev) => {
       if (prev.length !== 1) return prev
+      const cur = prev[0]?.amount ?? 0
       const nextAmount = payableTotal
-      if (Math.abs((prev[0]?.amount ?? 0) - nextAmount) < 0.009) return prev
+      if (cur > nextAmount + 0.009) return prev
+      if (Math.abs(cur - nextAmount) < 0.009) return prev
       return [{ ...prev[0], amount: nextAmount }]
     })
   }, [checkoutOpen, payableTotal, payments.length])
@@ -1305,8 +1341,8 @@ export default function POSPage() {
   }
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-stone-50/80 overflow-hidden w-full max-w-full h-full lg:-mx-5 lg:-my-3">
-      <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-1 pb-2 sm:pt-1.5 lg:pl-2 lg:pr-0 lg:pb-2">
+    <div className="flex-1 min-h-0 flex flex-col bg-white overflow-hidden w-full max-w-full h-full lg:bg-stone-50/80 lg:-mx-5 lg:-my-3">
+      <main className="flex-1 min-h-0 flex flex-col w-full max-w-full mx-auto px-0 pt-0 pb-0 lg:pt-1 lg:pb-2 lg:pl-2 lg:pr-0">
         {branchSeriesMissing && (
           <div className="shrink-0 px-2 pb-2 lg:px-0">
             <BranchCheckoutSeriesEmptyState
@@ -1315,11 +1351,11 @@ export default function POSPage() {
             />
           </div>
         )}
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-0 lg:gap-3 w-full min-w-0 max-w-full mx-auto">
           {/* Productos — ancho completo en móvil */}
           <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 mx-auto">
             {/* Filtro categorías */}
-            <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+            <div className="flex w-full gap-1 overflow-x-auto px-1 pb-1 min-w-0 shrink-0 lg:gap-1.5 lg:px-0 lg:pb-1.5">
               <button
                 type="button"
                 onClick={() => setCategoryFilter(null)}
@@ -1348,7 +1384,7 @@ export default function POSPage() {
             </div>
             {/* Filtro área de preparación */}
             {preparationAreas.length > 0 && (
-              <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0">
+              <div className="flex w-full gap-1 overflow-x-auto px-1 pb-1 min-w-0 shrink-0 lg:gap-1.5 lg:px-0 lg:pb-1.5">
                 <span className="shrink-0 text-xs text-stone-500 self-center pr-1">Área:</span>
                 <button
                   type="button"
@@ -1374,8 +1410,8 @@ export default function POSPage() {
               </div>
             )}
 
-            <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm sm:rounded-2xl">
-              <div className="px-2 py-1.5 sm:px-3 sm:py-2 border-b border-stone-100 shrink-0 flex items-center gap-2">
+            <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 border-y border-stone-200/80 bg-white shadow-none lg:rounded-2xl lg:border lg:shadow-sm">
+              <div className="px-2 py-1.5 border-b border-stone-100 shrink-0 flex items-center gap-2 lg:px-3 lg:py-2">
                 <SearchInput
                   ref={searchInputRef}
                   value={search}
@@ -1445,48 +1481,21 @@ export default function POSPage() {
                   </button>
                 </div>
               </div>
-              <div ref={productsScrollRef} className="flex-1 min-h-0 w-full overflow-y-auto p-1.5 sm:p-3">
-                <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:gap-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
-                {products.map((p) => {
-                  const imgUrl = getProductImageUrl(p.image_url)
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={(e) => {
-                        const visual = (e.currentTarget as HTMLElement).querySelector(
-                          '[data-product-visual]',
-                        ) as HTMLElement | null
-                        addProduct(p, visual ?? e.currentTarget)
-                      }}
-                      className="group rounded-xl border border-stone-200 bg-stone-50/50 overflow-hidden text-left transition-all duration-200 hover:border-rest-400 hover:shadow-md hover:shadow-rest-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-rest-400/50"
-                    >
-                      <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
-                        {imgUrl ? (
-                          <img
-                            src={imgUrl}
-                            alt={p.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-stone-400">
-                            <UtensilsCrossed className="w-8 h-8" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-2">
-                        <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
-                          {p.name}
-                        </p>
-                        <p className="text-rest-600 font-semibold text-xs mt-1">
-                          {formatSoles(Number(p.sale_price))}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })}
+              <div ref={productsScrollRef} className="flex-1 min-h-0 w-full overflow-y-auto px-2 py-2 lg:p-3">
+                <div className="grid w-full max-w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
+                {products.map((p) => (
+                  <PosProductGridCard
+                    key={p.id}
+                    product={p}
+                    stockQuantity={stockByProductId[String(p.id)]}
+                    onClick={(e) => {
+                      const visual = (e.currentTarget as HTMLElement).querySelector(
+                        '[data-product-visual]',
+                      ) as HTMLElement | null
+                      addProduct(p, visual ?? e.currentTarget)
+                    }}
+                  />
+                ))}
                 </div>
                 <div ref={productsSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
                 {(productsLoading || productsSearching) && products.length === 0 && (
@@ -2162,6 +2171,8 @@ export default function POSPage() {
         rounds={kitchenRoundHistory}
         orderCode={orderCode}
         onReprint={(round) => void reprintKitchenRound(round)}
+        onReprintAll={() => void reprintAllKitchenRounds()}
+        showReprintAll={printableKitchenRounds.length > 0}
       />
 
       <ReceiptPrintModal

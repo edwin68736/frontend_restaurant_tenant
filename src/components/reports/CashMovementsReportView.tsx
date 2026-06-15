@@ -60,12 +60,12 @@ function ChannelSummaryCards({
   const pmLabel = (code: string) => paymentMethodDisplayLabel(code, paymentMethods)
 
   return (
-    <div className={`rounded-2xl border p-4 space-y-3 ${accent}`}>
+    <div className={`rounded-xl lg:rounded-2xl border p-2.5 lg:p-4 space-y-2 lg:space-y-3 ${accent}`}>
       <div className="flex items-center gap-2">
-        <Icon size={18} className="text-stone-600" />
-        <p className="text-sm font-semibold text-stone-800">{title}</p>
+        <Icon size={16} className="text-stone-600 lg:w-[18px] lg:h-[18px]" />
+        <p className="text-xs lg:text-sm font-semibold text-stone-800">{title}</p>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-0.5 lg:grid lg:grid-cols-4 lg:gap-2 lg:overflow-visible">
         {[
           { label: 'Registros', value: String(s.total_rows) },
           { label: 'Ingresos', value: formatSoles(s.sum_income), cls: 'text-green-700' },
@@ -77,9 +77,12 @@ function ChannelSummaryCards({
             ),
           },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-white/80 bg-white/70 px-3 py-2">
-            <p className="text-[10px] uppercase text-stone-500 font-semibold">{k.label}</p>
-            <p className={`text-sm font-bold tabular-nums ${k.cls ?? 'text-stone-800'}`}>{k.value}</p>
+          <div
+            key={k.label}
+            className="shrink-0 min-w-[5.5rem] rounded-lg lg:rounded-xl border border-white/80 bg-white/70 px-2 py-1.5 lg:min-w-0 lg:px-3 lg:py-2"
+          >
+            <p className="text-[9px] lg:text-[10px] uppercase text-stone-500 font-semibold">{k.label}</p>
+            <p className={`text-xs lg:text-sm font-bold tabular-nums ${k.cls ?? 'text-stone-800'}`}>{k.value}</p>
           </div>
         ))}
       </div>
@@ -238,8 +241,8 @@ export function CashMovementsReportView() {
   )
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 gap-3">
-      <ReportFilterCard hint="Con sesión de caja seleccionada, las fechas se ignoran (misma lógica que reporte de cierre).">
+    <div className="flex flex-col flex-1 min-h-0 gap-2 lg:gap-3">
+      <ReportFilterCard horizontal hint="Con sesión de caja seleccionada, las fechas se ignoran (misma lógica que reporte de cierre).">
         <ReportFilterField label="Desde">
           <input
             type="date"
@@ -303,38 +306,42 @@ export function CashMovementsReportView() {
         {exportActions}
       </ReportFilterCard>
 
-      <ChannelSummaryCards
-        title="Caja física (efectivo)"
-        icon={Banknote}
-        accent="border-amber-200 bg-amber-50/50"
-        block={cashBlock}
-        isCash
-        paymentMethods={paymentMethods}
-      />
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-        <MovementsChannelTable
-          rows={cashBlock.data}
+      <div className="shrink-0 space-y-2 lg:space-y-3">
+        <ChannelSummaryCards
+          title="Caja física (efectivo)"
+          icon={Banknote}
+          accent="border-amber-200 bg-amber-50/50"
+          block={cashBlock}
+          isCash
           paymentMethods={paymentMethods}
-          loading={loading}
-          emptyMessage="Sin movimientos de efectivo"
+        />
+        <ChannelSummaryCards
+          title="Medios electrónicos"
+          icon={CreditCard}
+          accent="border-sky-200 bg-sky-50/50"
+          block={electronicBlock}
+          isCash={false}
+          paymentMethods={paymentMethods}
         />
       </div>
 
-      <ChannelSummaryCards
-        title="Medios electrónicos"
-        icon={CreditCard}
-        accent="border-sky-200 bg-sky-50/50"
-        block={electronicBlock}
-        isCash={false}
-        paymentMethods={paymentMethods}
-      />
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-        <MovementsChannelTable
-          rows={electronicBlock.data}
-          paymentMethods={paymentMethods}
-          loading={loading}
-          emptyMessage="Sin movimientos electrónicos"
-        />
+      <div className="flex-1 min-h-0 flex flex-col gap-2 lg:gap-3 overflow-hidden">
+        <div className="flex-1 min-h-[min(36dvh,20rem)] lg:min-h-[12rem] flex flex-col bg-white rounded-xl lg:rounded-2xl border border-stone-200 overflow-hidden">
+          <MovementsChannelTable
+            rows={cashBlock.data}
+            paymentMethods={paymentMethods}
+            loading={loading}
+            emptyMessage="Sin movimientos de efectivo"
+          />
+        </div>
+        <div className="flex-1 min-h-[min(36dvh,20rem)] lg:min-h-[12rem] flex flex-col bg-white rounded-xl lg:rounded-2xl border border-stone-200 overflow-hidden">
+          <MovementsChannelTable
+            rows={electronicBlock.data}
+            paymentMethods={paymentMethods}
+            loading={loading}
+            emptyMessage="Sin movimientos electrónicos"
+          />
+        </div>
       </div>
     </div>
   )

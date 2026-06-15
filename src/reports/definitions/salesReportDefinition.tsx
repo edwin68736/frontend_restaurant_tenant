@@ -14,6 +14,7 @@ import {
   reportInputClass,
   reportSelectClass,
 } from '@/components/reports/ReportFilterCard'
+import { ReportSummaryCard, ReportSummaryRow } from '@/components/reports/ReportSummaryCard'
 
 const fmtMoney = (v: unknown) => {
   const n = Number(v)
@@ -125,22 +126,16 @@ function SalesSummary({
   const s = summary as SaleListSummary | null
   if (!s) return null
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <ReportSummaryRow desktopCols={4}>
       {[
-        { label: 'Ventas activas', value: String(s.count_active ?? 0), amount: fmtMoney(s.sum_active) },
-        { label: 'Anuladas', value: String(s.count_cancelled ?? 0), amount: fmtMoney(s.sum_cancelled) },
+        { label: 'Ventas activas', value: fmtMoney(s.sum_active), hint: `${s.count_active ?? 0} comprobantes` },
+        { label: 'Anuladas', value: fmtMoney(s.sum_cancelled), hint: `${s.count_cancelled ?? 0} comprobantes` },
         { label: 'Subtotal', value: fmtMoney(s.sum_subtotal) },
         { label: 'Total general', value: fmtMoney(s.sum_total) },
       ].map((card) => (
-        <div key={card.label} className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-          <p className="text-xs font-semibold uppercase text-stone-500">{card.label}</p>
-          <p className="text-lg font-bold text-stone-900 tabular-nums">{card.amount}</p>
-          {card.value !== card.amount && (
-            <p className="text-xs text-stone-500">{card.value} comprobantes</p>
-          )}
-        </div>
+        <ReportSummaryCard key={card.label} label={card.label} value={card.value} hint={card.hint} />
       ))}
-    </div>
+    </ReportSummaryRow>
   )
 }
 

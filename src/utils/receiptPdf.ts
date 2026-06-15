@@ -24,6 +24,7 @@ import {
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
 const FONT_SIZE_TITLE = 12
+const FONT_SIZE_COMMERCIAL = 14
 const MARGIN = 15
 const TICKET_PAGE_HEIGHT = 520
 const A4_WIDTH = 210
@@ -193,8 +194,14 @@ export async function generateReceiptPdf(
       }
     }
 
-    addWrapped(data.company.business_name, FONT_SIZE_TITLE, 'center')
-    if (data.company.trade_name) addWrapped(data.company.trade_name, FONT_SIZE, 'center')
+    const tradeName = String(data.company.trade_name ?? '').trim()
+    const businessName = String(data.company.business_name ?? '').trim()
+    if (tradeName) {
+      addWrapped(tradeName, FONT_SIZE_COMMERCIAL, 'center')
+      if (businessName) addWrapped(businessName, FONT_SIZE, 'center')
+    } else if (businessName) {
+      addWrapped(businessName, FONT_SIZE_TITLE, 'center')
+    }
     addWrapped(`RUC: ${data.company.ruc}`, FONT_SIZE_SM, 'center')
     const issuerAddress = getPrintIssuerAddress(data)
     if (issuerAddress) addWrapped(issuerAddress, FONT_SIZE_SM, 'center')
