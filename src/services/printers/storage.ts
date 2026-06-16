@@ -1,4 +1,5 @@
 import type { PrinterConfig, PrinterConnectionMode, StoredPrinterSettings } from './types'
+import { defaultConnectionForPlatform, effectiveConnection } from './platform'
 
 export const PRINTER_SETTINGS_STORAGE_KEY_V3 = 'tukichef_kitchen_printer_settings_v3'
 const PRINTER_SETTINGS_STORAGE_KEY_V2 = 'tukichef_kitchen_printer_settings_v2'
@@ -22,7 +23,7 @@ function normalizeConnection(raw: unknown): PrinterConnectionMode {
 
 export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterConfig {
   const connection = normalizeConnection(raw?.connection)
-  return {
+  const slot: PrinterConfig = {
     connection,
     printerName: String(raw?.printerName ?? '').trim(),
     tcpHost: String(raw?.tcpHost ?? '').trim(),
@@ -33,11 +34,12 @@ export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterC
     bluetoothName: String(raw?.bluetoothName ?? '').trim(),
     bluetoothMac: String(raw?.bluetoothMac ?? '').trim(),
   }
+  return { ...slot, connection: effectiveConnection(slot) }
 }
 
 function emptySlot(): PrinterConfig {
   return {
-    connection: 'windows',
+    connection: defaultConnectionForPlatform(),
     printerName: '',
     tcpHost: '',
     tcpPort: DEFAULT_TCP_PORT,
@@ -107,6 +109,16 @@ function parseLegacyJson(raw: string): StoredPrinterSettings | null {
   }
 }
 
+function finalizeStoredSettings(parsed: StoredPrinterSettings): StoredPrinterSettings {
+  return {
+    version: 4,
+    comandasDefault: normalizeSlot(parsed.comandasDefault),
+    comandasByArea: normalizeByAreaRecord(parsed.comandasByArea),
+    precuenta: normalizeSlot(parsed.precuenta),
+    documentos: normalizeSlot(parsed.documentos),
+  }
+}
+
 export function loadStoredPrinterSettings(): StoredPrinterSettings {
   if (typeof window === 'undefined') return emptyPrinterSettings()
   const keys = [
@@ -121,8 +133,9 @@ export function loadStoredPrinterSettings(): StoredPrinterSettings {
     if (!raw) continue
     const parsed = parseLegacyJson(raw)
     if (parsed) {
-      saveStoredPrinterSettings(parsed)
-      return parsed
+      const normalized = finalizeStoredSettings(parsed)
+      saveStoredPrinterSettings(normalized)
+      return normalized
     }
   }
   return emptyPrinterSettings()
@@ -131,13 +144,7 @@ export function loadStoredPrinterSettings(): StoredPrinterSettings {
 export function saveStoredPrinterSettings(v: StoredPrinterSettings) {
   if (typeof window === 'undefined') return
   try {
-    const payload: StoredPrinterSettings = {
-      version: 4,
-      comandasDefault: normalizeSlot(v.comandasDefault),
-      comandasByArea: normalizeByAreaRecord(v.comandasByArea),
-      precuenta: normalizeSlot(v.precuenta),
-      documentos: normalizeSlot(v.documentos),
-    }
+    const payload = finalizeStoredSettings(v)
     localStorage.setItem(PRINTER_SETTINGS_STORAGE_KEY_V3, JSON.stringify(payload))
   } catch {
     /* quota */

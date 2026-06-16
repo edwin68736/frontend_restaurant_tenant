@@ -1,9 +1,11 @@
 import type { PrinterConfig, PrinterPaperWidth } from './types'
+import { effectiveConnection } from './platform'
 import { normalizeSlot } from './storage'
 
 /** Valida y devuelve config lista para imprimir, o null si faltan datos. */
 export function resolvePrinterConfig(raw: PrinterConfig): PrinterConfig | null {
-  const cfg = normalizeSlot(raw)
+  const normalized = normalizeSlot(raw)
+  const cfg = { ...normalized, connection: effectiveConnection(normalized) }
   const paperWidthMm: PrinterPaperWidth = cfg.paperWidthMm === 58 ? 58 : 80
   const base: PrinterConfig = { ...cfg, paperWidthMm, autoPrint: Boolean(cfg.autoPrint) }
 

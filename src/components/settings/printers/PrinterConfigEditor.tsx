@@ -1,5 +1,6 @@
+import { useEffect } from 'react'
 import type { PrinterConfig } from '@/services/printers.service'
-import { availableConnectionModes, defaultConnectionForPlatform, isPrinterConfigReady } from '@/services/printers.service'
+import { availableConnectionModes, effectiveConnection, isPrinterConfigReady } from '@/services/printers.service'
 import type { SearchableSelectOption } from '@/components/SearchableSelect'
 import { ConnectionMethodPicker } from './ConnectionMethodPicker'
 import { NetworkPrinterFields } from './NetworkPrinterFields'
@@ -29,14 +30,21 @@ export function PrinterConfigEditor({
   compact = false,
 }: Props) {
   const modes = availableConnectionModes()
-  const safeConnection = modes.includes(cfg.connection) ? cfg.connection : defaultConnectionForPlatform()
-  const ready = isPrinterConfigReady({ ...cfg, connection: safeConnection })
+  const resolvedConnection = effectiveConnection(cfg)
+
+  useEffect(() => {
+    if (cfg.connection !== resolvedConnection) {
+      onChange({ connection: resolvedConnection })
+    }
+  }, [cfg.connection, resolvedConnection, onChange])
+
+  const ready = isPrinterConfigReady({ ...cfg, connection: resolvedConnection })
 
   return (
     <div className={compact ? 'space-y-3' : 'space-y-4'}>
-      <ConnectionMethodPicker modes={modes} value={safeConnection} onChange={(c) => onChange({ connection: c })} />
+      <ConnectionMethodPicker modes={modes} value={resolvedConnection} onChange={(c) => onChange({ connection: c })} />
 
-      {safeConnection === 'windows' && (
+      {resolvedConnection === 'windows' && (
         <WindowsPrinterFields
           cfg={cfg}
           printerOptions={printerOptions}
@@ -45,8 +53,8 @@ export function PrinterConfigEditor({
           onChange={onChange}
         />
       )}
-      {safeConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
-      {safeConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
+      {resolvedConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
+      {resolvedConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
 
       <TicketGeneralFields
         cfg={cfg}

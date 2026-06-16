@@ -1,8 +1,9 @@
+import { useEffect } from 'react'
 import { Printer } from 'lucide-react'
 import type { PrinterConfig, PrinterConnectionMode, PrinterKind } from '@/services/printers.service'
 import {
   availableConnectionModes,
-  defaultConnectionForPlatform,
+  effectiveConnection,
 } from '@/services/printers.service'
 import type { SearchableSelectOption } from '@/components/SearchableSelect'
 import { ConnectionMethodPicker } from './ConnectionMethodPicker'
@@ -36,12 +37,17 @@ export function PrinterKindCard({
   testing,
 }: Props) {
   const modes = availableConnectionModes()
+  const resolvedConnection = effectiveConnection(cfg)
+
+  useEffect(() => {
+    if (cfg.connection !== resolvedConnection) {
+      onChange({ connection: resolvedConnection })
+    }
+  }, [cfg.connection, resolvedConnection, onChange])
 
   const setConnection = (connection: PrinterConnectionMode) => {
     onChange({ connection })
   }
-
-  const safeConnection = modes.includes(cfg.connection) ? cfg.connection : defaultConnectionForPlatform()
 
   return (
     <section className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
@@ -58,7 +64,7 @@ export function PrinterKindCard({
         <button
           type="button"
           onClick={onTest}
-          disabled={testing || !printerConfigReady({ ...cfg, connection: safeConnection })}
+          disabled={testing || !printerConfigReady({ ...cfg, connection: resolvedConnection })}
           className="px-4 py-2 rounded-xl text-sm font-semibold bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-50 shrink-0 self-start"
         >
           {testing ? 'Probando…' : 'Probar impresión'}
@@ -66,9 +72,9 @@ export function PrinterKindCard({
       </div>
 
       <div className="mt-5 space-y-4">
-        <ConnectionMethodPicker modes={modes} value={safeConnection} onChange={setConnection} />
+        <ConnectionMethodPicker modes={modes} value={resolvedConnection} onChange={setConnection} />
 
-        {safeConnection === 'windows' && (
+        {resolvedConnection === 'windows' && (
           <WindowsPrinterFields
             cfg={cfg}
             printerOptions={printerOptions}
@@ -77,8 +83,8 @@ export function PrinterKindCard({
             onChange={onChange}
           />
         )}
-        {safeConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
-        {safeConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
+        {resolvedConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
+        {resolvedConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
 
         <TicketGeneralFields cfg={cfg} paperOptions={paperOptions} onChange={onChange} />
       </div>

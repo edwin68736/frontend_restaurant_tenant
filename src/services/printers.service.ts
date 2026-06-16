@@ -48,6 +48,7 @@ export {
   availableConnectionModes,
   connectionModeLabel,
   defaultConnectionForPlatform,
+  effectiveConnection,
   getPrinterPlatformCapabilities,
 } from '@/services/printers/platform'
 export {
@@ -134,27 +135,32 @@ export async function testPrint(input: {
 }): Promise<string> {
   if (!isNativePrintAvailable()) return 'No disponible en navegador'
 
-  const cfg: PrinterConfig = normalizeSlot({
-    connection: input.connection,
-    printerName: input.printerName ?? '',
-    tcpHost: input.tcpHost ?? '',
-    tcpPort: input.tcpPort,
-    paperWidthMm: input.paperWidthMm,
-    autoPrint: true,
-    bluetoothMac: input.bluetoothMac ?? '',
-    bluetoothName: input.bluetoothName ?? '',
-  })
+  const cfg = resolvePrinterConfig(
+    normalizeSlot({
+      connection: input.connection,
+      printerName: input.printerName ?? '',
+      tcpHost: input.tcpHost ?? '',
+      tcpPort: input.tcpPort,
+      paperWidthMm: input.paperWidthMm,
+      autoPrint: true,
+      bluetoothMac: input.bluetoothMac ?? '',
+      bluetoothName: input.bluetoothName ?? '',
+    }),
+  )
+  if (!cfg) {
+    throw new Error('Completa los datos de conexión de la impresora')
+  }
 
-  if (isTauriDesktop() && (input.connection === 'windows' || input.connection === 'network')) {
+  if (isTauriDesktop() && (cfg.connection === 'windows' || cfg.connection === 'network')) {
     const { invoke } = await import('@tauri-apps/api/core')
-    const mode = input.connection === 'network' ? 'network' : 'windows'
+    const mode = cfg.connection === 'network' ? 'network' : 'windows'
     const out = await invoke<string>('printers_test_print', {
       input: {
         mode,
-        printer_name: input.printerName ?? '',
-        tcp_host: input.tcpHost ?? '',
-        tcp_port: clampPort(input.tcpPort ?? DEFAULT_TCP_PORT),
-        paper_width_mm: input.paperWidthMm,
+        printer_name: cfg.printerName ?? '',
+        tcp_host: cfg.tcpHost ?? '',
+        tcp_port: clampPort(cfg.tcpPort ?? DEFAULT_TCP_PORT),
+        paper_width_mm: cfg.paperWidthMm,
         kind: input.kind,
       },
     })
@@ -172,9 +178,9 @@ export async function testPrint(input: {
             { productName: 'Chicha morada', quantity: 1, unitPrice: 8, lineTotal: 8 },
           ],
           total: 64,
-          paperWidthMm: input.paperWidthMm,
+          paperWidthMm: cfg.paperWidthMm,
         })
-      : buildTestEscPosTicket(input.kind, input.paperWidthMm)
+      : buildTestEscPosTicket(input.kind, cfg.paperWidthMm)
   return sendEscPosPayload(cfg, data, 'Tukichef - Prueba')
 }
 
@@ -190,16 +196,21 @@ export async function printRawEscPos(input: {
   docName?: string
 }): Promise<string> {
   if (!isNativePrintAvailable()) return 'No disponible en navegador'
-  const cfg = normalizeSlot({
-    connection: input.connection,
-    printerName: input.printerName ?? '',
-    tcpHost: input.tcpHost ?? '',
-    tcpPort: input.tcpPort ?? DEFAULT_TCP_PORT,
-    paperWidthMm: input.paperWidthMm ?? 80,
-    autoPrint: true,
-    bluetoothMac: input.bluetoothMac ?? '',
-    bluetoothName: input.bluetoothName ?? '',
-  })
+  const cfg = resolvePrinterConfig(
+    normalizeSlot({
+      connection: input.connection,
+      printerName: input.printerName ?? '',
+      tcpHost: input.tcpHost ?? '',
+      tcpPort: input.tcpPort ?? DEFAULT_TCP_PORT,
+      paperWidthMm: input.paperWidthMm ?? 80,
+      autoPrint: true,
+      bluetoothMac: input.bluetoothMac ?? '',
+      bluetoothName: input.bluetoothName ?? '',
+    }),
+  )
+  if (!cfg) {
+    throw new Error('Impresora no configurada')
+  }
   return sendEscPosPayload(cfg, input.data, input.docName)
 }
 
