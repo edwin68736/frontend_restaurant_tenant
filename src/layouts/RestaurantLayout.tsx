@@ -84,7 +84,7 @@ export default function RestaurantLayout() {
 
           <div
             className={clsx(
-              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-safe lg:gap-2 lg:pb-2',
+              'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:gap-2 lg:pb-2',
               fullBleedMobile ? 'gap-0 px-0 pt-0 lg:px-2 lg:pt-2' : 'gap-2 px-2 pt-2 sm:px-3 lg:px-2 lg:pt-2',
             )}
           >

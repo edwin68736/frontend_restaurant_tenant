@@ -1,6 +1,7 @@
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import {
   buildEscPosLogoRaster,
@@ -492,13 +493,15 @@ function escposPushWrappedCenter(
 function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: number) {
   const tradeName = String(printData.company?.trade_name ?? '').trim()
   const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
-  const bigCols = Math.max(12, Math.floor(cols / 2))
+  const showBusinessName =
+    Boolean(businessName) &&
+    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
 
   if (tradeName) {
-    escposPushWrappedCenter(out, wrapText(tradeName, bigCols), { bold: true, widthMul: 2, heightMul: 2 })
-    if (businessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
+    escposPushWrappedCenter(out, wrapText(tradeName, cols))
+    if (showBusinessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
   } else {
-    escposPushWrappedCenter(out, wrapText(businessName, bigCols), { bold: true, widthMul: 2, heightMul: 2 })
+    escposPushWrappedCenter(out, wrapText(businessName, cols), { bold: true })
   }
 
   const metaLines: string[] = []
@@ -540,6 +543,12 @@ export async function buildSaleDocumentEscPos(
     wrapText(`Cliente: ${printData.client.business_name}`, cols).forEach((x) => detailLines.push(x))
     detailLines.push(`Doc: ${printData.client.doc_number}`)
     if (printData.client.address) wrapText(`Dir: ${printData.client.address}`, cols).forEach((x) => detailLines.push(x))
+  }
+  const creditNoteRef = getCreditNoteReference(printData)
+  if (creditNoteRef) {
+    wrapText(`Tipo Doc. Ref.: ${creditNoteRef.docTypeLabel}`, cols).forEach((x) => detailLines.push(x))
+    detailLines.push(`Documento Ref.: ${creditNoteRef.docNumber}`)
+    if (creditNoteRef.reason) wrapText(`Motivo: ${creditNoteRef.reason}`, cols).forEach((x) => detailLines.push(x))
   }
   detailLines.push('-'.repeat(cols))
   detailLines.push(itemDetailHeaderRow(cols, narrow))

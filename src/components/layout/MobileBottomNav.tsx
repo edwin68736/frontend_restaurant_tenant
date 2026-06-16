@@ -17,7 +17,7 @@ export default function MobileBottomNav() {
 
   return (
     <nav
-      className="lg:hidden fixed inset-x-0 bottom-0 z-[110] border-t border-stone-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_16px_rgba(15,23,42,0.06)] pb-[env(safe-area-inset-bottom)]"
+      className="lg:hidden fixed inset-x-0 bottom-0 z-[110] border-t border-stone-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_16px_rgba(15,23,42,0.06)] pb-safe"
       aria-label="Navegación principal"
     >
       <div

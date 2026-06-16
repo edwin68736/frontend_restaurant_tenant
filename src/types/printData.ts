@@ -18,6 +18,10 @@ export interface PrintData {
   total: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
+  /** Nota crédito/débito (07/08): documento afectado (SUNAT). */
+  affected_doc_sunat_code?: string
+  affected_doc_number?: string
+  credit_note_reason?: string
   /** Vuelto cuando la suma de pagos supera el total (p. ej. efectivo). */
   change_amount?: number
   seller_name?: string

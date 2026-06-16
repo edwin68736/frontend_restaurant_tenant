@@ -75,6 +75,17 @@ function activeComandas(comandas: Comanda[]): Comanda[] {
   return (comandas ?? []).filter((c) => !c.cancelled_at)
 }
 
+/** Comandas activas aún anulables (no entregadas). */
+export function countCancellableComandas(detail: SessionDetail | null, orderId?: number): number {
+  const orders = getActiveSessionOrders(detail)
+  let count = 0
+  for (const ord of orders) {
+    if (orderId != null && orderId > 0 && ord.id !== orderId) continue
+    count += (ord.comandas ?? []).filter((c) => c.status !== 'entregada').length
+  }
+  return count
+}
+
 /** Pedidos de sesión con solo comandas activas (no anuladas). */
 export function getActiveSessionOrders(detail: SessionDetail | null) {
   if (!detail?.orders?.length) return []

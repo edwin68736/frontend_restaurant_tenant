@@ -22,6 +22,8 @@ import { clsx } from 'clsx'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
+import { StockAdjustmentModal } from '@/components/products/StockAdjustmentModal'
+import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import {
   productsService,
   getProductImageUrl,
@@ -29,6 +31,7 @@ import {
   type ModifierGroup,
   type Category,
   type CreateProductInput,
+  type BulkDeleteRestaurantResult,
 } from '@/services/products.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
@@ -38,6 +41,7 @@ import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { isCapacitorNative } from '@/lib/app'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
+import { useInventoryAccess } from '@/hooks/useInventoryAccess'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -95,6 +99,7 @@ const emptyForm = (): CreateProductInput => ({
   category_id: null,
   preparation_area: '',
   manage_stock: false,
+  initial_stock: undefined,
   igv_affectation_type: '10',
   price_includes_igv: true,
 })
@@ -103,6 +108,7 @@ export default function ProductosPage() {
   const navigate = useNavigate()
   const { canAccess } = useAuth()
   const { activeBranchId, activeBranch } = useBranch()
+  const canAdjustInventory = useInventoryAccess()
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('')
@@ -122,6 +128,7 @@ export default function ProductosPage() {
   const [addingCategory, setAddingCategory] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [presentationsModalOpen, setPresentationsModalOpen] = useState(false)
   const [showInactiveOnly, setShowInactiveOnly] = useState(false)
   const [togglingActiveId, setTogglingActiveId] = useState<number | null>(null)
@@ -131,6 +138,8 @@ export default function ProductosPage() {
   const codeInputRef = useRef<HTMLInputElement>(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [productBarcodeScannerOpen, setProductBarcodeScannerOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const useCameraBarcodeScanner = isCapacitorNative()
 
   const revokeImagePreview = useCallback(() => {
@@ -233,6 +242,7 @@ export default function ProductosPage() {
     setCategoryFilter('')
     setAreaFilter('')
     setShowInactiveOnly(false)
+    setSelectedIds(new Set())
     refresh()
   })
 
@@ -290,6 +300,7 @@ export default function ProductosPage() {
           category_id: data.category_id ?? null,
           preparation_area: (data as Product & { preparation_area?: string }).preparation_area ?? '',
           manage_stock: data.manage_stock ?? false,
+          initial_stock: undefined,
           igv_affectation_type: data.igv_affectation_type ?? '10',
           price_includes_igv: data.price_includes_igv ?? true,
         })
@@ -352,6 +363,13 @@ export default function ProductosPage() {
       toast.error('Selecciona al menos un grupo de extras o desactiva «Extras»')
       return
     }
+    if (modal === 'create' && form.manage_stock) {
+      const stock = form.initial_stock ?? 0
+      if (stock < 0) {
+        toast.error('El stock inicial no puede ser negativo')
+        return
+      }
+    }
     const presentationsPayload = form.has_variants
       ? presentationRows.map((p) => ({
           name: p.name.trim(),
@@ -376,6 +394,10 @@ export default function ProductosPage() {
           category_id: form.category_id ?? null,
           preparation_area: form.preparation_area ?? '',
           manage_stock: form.manage_stock ?? false,
+          initial_stock:
+            form.manage_stock && form.initial_stock != null && form.initial_stock > 0
+              ? form.initial_stock
+              : undefined,
           igv_affectation_type: form.igv_affectation_type ?? '10',
           price_includes_igv: isGravadoIgv(form.igv_affectation_type ?? '10') ? form.price_includes_igv : false,
         })
@@ -477,6 +499,50 @@ export default function ProductosPage() {
   const totalPages = Math.max(1, Math.ceil(total / perPage))
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
+  const selectedCount = selectedIds.size
+  const pageIds = products.map((p) => p.id)
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id))
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allPageSelected) {
+        pageIds.forEach((id) => next.delete(id))
+      } else {
+        pageIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const handleBulkDeleteDone = (result: BulkDeleteRestaurantResult) => {
+    if (result.deleted.length > 0) {
+      const deletedSet = new Set(result.deleted.map((p) => p.id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        deletedSet.forEach((id) => next.delete(id))
+        return next
+      })
+      refresh()
+    }
+    if (result.deleted.length > 0 && result.blocked.length === 0) {
+      toast.success(`${result.deleted.length} producto(s) eliminado(s)`)
+    } else if (result.deleted.length > 0) {
+      toast.success(`${result.deleted.length} eliminado(s), ${result.blocked.length} bloqueado(s)`)
+    } else if (result.blocked.length > 0) {
+      toast.error('Ningún producto pudo eliminarse')
+    }
+  }
 
   return (
     <PageShell
@@ -597,6 +663,31 @@ export default function ProductosPage() {
           </div>
         </div>
 
+        {selectedCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-2 sm:mb-3 py-2 rounded-xl border border-red-200 bg-red-50/80">
+            <span className="text-sm font-medium text-red-900">
+              {selectedCount} producto{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set())}
+                className="px-3 py-1.5 text-xs font-medium border border-stone-200 rounded-lg bg-white text-stone-700 hover:bg-stone-50"
+              >
+                Limpiar
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkDeleteOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
+              >
+                <Trash2 size={14} />
+                Eliminar seleccionados
+              </button>
+            </div>
+          </div>
+        )}
+
       <div className="flex-1 min-h-0 flex flex-col">
         {loading ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">
@@ -608,6 +699,18 @@ export default function ProductosPage() {
               <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-stone-50 border-b border-stone-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
                 <tr>
+                  <th className="text-left px-2 py-1.5 sm:py-2 w-9">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = somePageSelected && !allPageSelected
+                      }}
+                      onChange={toggleSelectAllPage}
+                      aria-label="Seleccionar todos en esta página"
+                      className="rounded border-stone-300"
+                    />
+                  </th>
                   <th className="text-left px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-stone-700 w-11 sm:w-14">Imagen</th>
                   <th className="hidden sm:table-cell text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Código</th>
                   <th className="text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Nombre</th>
@@ -629,6 +732,15 @@ export default function ProductosPage() {
                       !p.active && 'bg-stone-50/80 opacity-75',
                     )}
                   >
+                    <td className="px-2 py-1.5 sm:py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelect(p.id)}
+                        aria-label={`Seleccionar ${p.name}`}
+                        className="rounded border-stone-300"
+                      />
+                    </td>
                     <td className="px-2 sm:px-3 py-1.5 sm:py-2">
                       <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-stone-100 overflow-hidden flex-shrink-0">
                         {p.image_url ? (
@@ -677,9 +789,21 @@ export default function ProductosPage() {
                     <td className="px-3 py-2 text-right font-semibold text-rest-700 whitespace-nowrap">S/ {Number(p.sale_price).toFixed(2)}</td>
                     <td className="hidden lg:table-cell px-3 py-2 text-right">
                       {p.manage_stock ? (
-                        <span className="font-mono text-sm text-stone-800">
-                          {typeof stockByProductId[p.id] === 'number' ? stockByProductId[p.id] : '—'}
-                        </span>
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="font-mono text-sm text-stone-800">
+                            {typeof stockByProductId[p.id] === 'number' ? stockByProductId[p.id] : '—'}
+                          </span>
+                          {canAdjustInventory && (
+                            <button
+                              type="button"
+                              onClick={() => setAdjustmentProduct(p)}
+                              title="Ajustar inventario"
+                              className="text-xs font-medium text-rest-700 hover:text-rest-900 underline-offset-2 hover:underline"
+                            >
+                              Ajustar
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-stone-400 text-xs">—</span>
                       )}
@@ -1069,7 +1193,14 @@ export default function ProductosPage() {
                   <input
                     type="checkbox"
                     checked={form.manage_stock ?? false}
-                    onChange={(e) => setForm((f) => ({ ...f, manage_stock: e.target.checked }))}
+                    onChange={(e) => {
+                      const on = e.target.checked
+                      setForm((f) => ({
+                        ...f,
+                        manage_stock: on,
+                        initial_stock: on && modal === 'create' ? f.initial_stock : undefined,
+                      }))
+                    }}
                     className="rounded border-stone-300"
                   />
                   Controlar stock
@@ -1087,6 +1218,41 @@ export default function ProductosPage() {
                 ) : (
                   <div />
                 )}
+              </div>
+              {form.manage_stock && modal === 'create' && (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/50 px-3 py-3 space-y-2">
+                  <label className="block text-sm font-medium text-stone-700">
+                    Stock inicial
+                    <span className="font-normal text-stone-500"> (opcional)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    value={form.initial_stock != null ? form.initial_stock : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setForm((f) => ({
+                        ...f,
+                        initial_stock: raw === '' ? undefined : Math.max(0, Number(raw) || 0),
+                      }))
+                    }}
+                    placeholder="0"
+                    className="w-full sm:max-w-xs border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
+                  />
+                  <p className="text-xs text-stone-500">
+                    Cantidad al dar de alta el producto. Los cambios posteriores se hacen con{' '}
+                    <span className="font-medium text-stone-600">Ajustar inventario</span> en el listado.
+                  </p>
+                </div>
+              )}
+              {form.manage_stock && modal === 'edit' && (
+                <p className="text-xs text-stone-600 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
+                  El stock no se edita aquí. Use{' '}
+                  <span className="font-medium">Ajustar</span> en la columna Stock del listado de productos.
+                </p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-stone-700 sm:col-span-2">
                   <input
                     type="checkbox"
@@ -1299,12 +1465,49 @@ export default function ProductosPage() {
         }}
       />
 
+      {adjustmentProduct && activeBranchId > 0 && (
+        <StockAdjustmentModal
+          product={adjustmentProduct}
+          branchId={activeBranchId}
+          branchName={activeBranch?.name ?? 'Sucursal actual'}
+          onClose={() => setAdjustmentProduct(null)}
+          onSaved={() => {
+            setAdjustmentProduct(null)
+            productsService.getStockSummary([adjustmentProduct.id]).then((summary) => {
+              setStockByProductId((prev) => ({
+                ...prev,
+                [adjustmentProduct.id]: summary[adjustmentProduct.id] ?? 0,
+              }))
+            })
+            refresh()
+          }}
+        />
+      )}
+
       <ProductPresentationsModal
         open={presentationsModalOpen}
         productName={form.name.trim() || undefined}
         presentations={form.presentations ?? []}
         onClose={() => setPresentationsModalOpen(false)}
         onSave={(presentations) => setForm((f) => ({ ...f, presentations }))}
+      />
+
+      <BulkDeleteProductsPinModal
+        open={bulkDeleteOpen}
+        selectedCount={selectedCount}
+        onClose={() => setBulkDeleteOpen(false)}
+        onConfirm={async (reason, pin) => {
+          try {
+            return await productsService.bulkDeleteRestaurant([...selectedIds], pin, reason)
+          } catch (e: unknown) {
+            const msg =
+              (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+              'Error al eliminar productos'
+            toast.error(msg)
+            throw e
+          }
+        }}
+        onDone={handleBulkDeleteDone}
       />
 
       <PosBarcodeScannerModal

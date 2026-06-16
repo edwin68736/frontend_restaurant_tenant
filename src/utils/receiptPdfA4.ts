@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -77,8 +78,14 @@ function fieldRow(doc: jsPDF, y: number, label: string, value: string, x: number
   doc.text(label, x, y)
   doc.setFont('helvetica', 'normal')
   const val = value?.trim() || '—'
-  doc.text(val, x + labelW, y, { maxWidth: A4_WIDTH - MARGIN - x - labelW })
-  return y + LINE_H
+  const valueX = x + labelW
+  const valueMaxW = A4_WIDTH - MARGIN - valueX
+  const valueLines = doc.splitTextToSize(val, valueMaxW) as string[]
+  const lineCount = Math.max(1, valueLines.length)
+  for (let i = 0; i < valueLines.length; i++) {
+    doc.text(valueLines[i], valueX, y + i * LINE_H)
+  }
+  return y + lineCount * LINE_H
 }
 
 export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = MARGIN): Promise<number> {
@@ -190,6 +197,14 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     )
     if (data.client.address) {
       y = fieldRow(doc, y, 'DIRECCIÓN:', data.client.address, MARGIN + 2)
+    }
+  }
+  const creditNoteRef = getCreditNoteReference(data)
+  if (creditNoteRef) {
+    y = fieldRow(doc, y, 'TIPO DOC. REF.:', creditNoteRef.docTypeLabel, MARGIN + 2)
+    y = fieldRow(doc, y, 'DOCUMENTO REF.:', creditNoteRef.docNumber, MARGIN + 2)
+    if (creditNoteRef.reason) {
+      y = fieldRow(doc, y, 'MOTIVO DE EMISIÓN:', creditNoteRef.reason, MARGIN + 2)
     }
   }
   y += 2

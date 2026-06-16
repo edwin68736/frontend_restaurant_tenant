@@ -16,6 +16,7 @@ type HucreRowError = {
 }
 import type { BulkImportItemPayload, Category, CreateProductInput } from '@/services/products.service'
 import { productsService } from '@/services/products.service'
+import { INITIAL_STOCK_REQUIRES_MANAGE_STOCK } from '@/constants/productStockRules'
 
 const IGV_CODES = ['10', '20', '30', '40'] as const
 
@@ -215,8 +216,8 @@ export async function downloadRestaurantProductTemplate(): Promise<void> {
     'cocina',
     '10',
     'si',
-    'si',
-    12,
+    'no',
+    0,
   ]
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
@@ -273,7 +274,17 @@ export async function validateRestaurantProductExcel(file: File): Promise<Import
       codesInFile.set(codigo, rowNumber)
     }
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
-    const controlStock = Boolean(row.control_stock) || stockInicial > 0
+    const controlStock = parseExcelBoolean(row.control_stock)
+    if (!controlStock && stockInicial > 0) {
+      extraErrors.push({
+        row: rowNumber,
+        column: 'stock_inicial',
+        field: 'stock_inicial',
+        message: INITIAL_STOCK_REQUIRES_MANAGE_STOCK,
+        value: stockInicial,
+      })
+      return
+    }
     parsed.push({
       rowNumber,
       nombre,
@@ -284,7 +295,7 @@ export async function validateRestaurantProductExcel(file: File): Promise<Import
       categoria: String(row.categoria ?? '').trim(),
       area_preparacion: String(row.area_preparacion ?? '').trim().toLowerCase(),
       afectacion_igv: String(row.afectacion_igv ?? '10').trim(),
-      precio_incluye_igv: Boolean(row.precio_incluye_igv),
+      precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
       stock_inicial: stockInicial,
     })
@@ -388,6 +399,7 @@ function rowToBulkPayload(row: ParsedImportRow): BulkImportItemPayload {
 
 export async function importRestaurantProducts(
   rows: ParsedImportRow[],
+  branchId: number,
   _categories: Category[],
   onProgress?: (p: ImportProgress) => void
 ): Promise<{
@@ -418,7 +430,7 @@ export async function importRestaurantProducts(
       current: chunk[0]?.nombre,
     })
     try {
-      const res = await productsService.bulkImportRestaurant(chunk.map(rowToBulkPayload))
+      const res = await productsService.bulkImportRestaurant(chunk.map(rowToBulkPayload), branchId)
       created += res.created
       updated += res.updated ?? 0
       stockRegistered += res.stock_registered

@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { formatMoney } from '@/utils/format'
+import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import { ticketDetailLayout4Col } from '@/utils/receiptTicketLayout'
 import { renderA4ReceiptPdf } from '@/utils/receiptPdfA4'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
@@ -22,9 +23,9 @@ import {
 } from '@/utils/receiptTicketPaper'
 
 const FONT_SIZE = 10
+const FONT_SIZE_COMMERCIAL = 12
 const FONT_SIZE_SM = 8
 const FONT_SIZE_TITLE = 12
-const FONT_SIZE_COMMERCIAL = 14
 const MARGIN = 15
 const TICKET_PAGE_HEIGHT = 520
 const A4_WIDTH = 210
@@ -106,9 +107,14 @@ export async function generateReceiptPdf(
 
   const ticketText = (text: string) => (isTicket ? normalizeTextForTicketPrint(text) : text)
 
-  const addWrapped = (text: string, size = FONT_SIZE_SM, align: 'left' | 'center' | 'right' = 'left') => {
+  const addWrapped = (
+    text: string,
+    size = FONT_SIZE_SM,
+    align: 'left' | 'center' | 'right' = 'left',
+    bold = false,
+  ) => {
     doc.setTextColor(0, 0, 0)
-    doc.setFont('helvetica', 'normal')
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
     doc.setFontSize(size)
     const lines = doc.splitTextToSize(ticketText(text), innerW) as string[]
     for (const line of lines) {
@@ -116,6 +122,30 @@ export async function generateReceiptPdf(
       else if (align === 'right') doc.text(line, pageW - margin, y, { align: 'right', maxWidth: innerW })
       else doc.text(line, margin, y)
       y += isTicket ? 4.2 : lineH
+    }
+  }
+
+  const addLabeledField = (label: string, value: string, size = FONT_SIZE_SM) => {
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(size)
+    const labelText = ticketText(label.endsWith(' ') ? label : `${label} `)
+    const valueText = ticketText(String(value ?? '').trim() || '—')
+    const labelW = doc.getTextWidth(labelText)
+    const firstLineMaxW = Math.max(10, innerW - labelW)
+    const valueLines = doc.splitTextToSize(valueText, firstLineMaxW) as string[]
+    const step = isTicket ? 4.2 : lineH
+    if (valueLines.length === 0) {
+      doc.text(labelText, margin, y)
+      y += step
+      return
+    }
+    doc.text(labelText, margin, y)
+    doc.text(valueLines[0], margin + labelW, y)
+    y += step
+    for (let i = 1; i < valueLines.length; i++) {
+      doc.text(valueLines[i], margin, y)
+      y += step
     }
   }
 
@@ -196,9 +226,12 @@ export async function generateReceiptPdf(
 
     const tradeName = String(data.company.trade_name ?? '').trim()
     const businessName = String(data.company.business_name ?? '').trim()
+    const showBusinessName =
+      Boolean(businessName) &&
+      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
     if (tradeName) {
-      addWrapped(tradeName, FONT_SIZE_COMMERCIAL, 'center')
-      if (businessName) addWrapped(businessName, FONT_SIZE, 'center')
+      addWrapped(tradeName, FONT_SIZE_COMMERCIAL, 'center', true)
+      if (showBusinessName) addWrapped(businessName, FONT_SIZE, 'center')
     } else if (businessName) {
       addWrapped(businessName, FONT_SIZE_TITLE, 'center')
     }
@@ -215,9 +248,15 @@ export async function generateReceiptPdf(
     addWrapped(`Fecha Emisión: ${data.issue_date}`)
     if (data.issue_time) addWrapped(`Hora Emisión: ${data.issue_time}`)
     if (data.client) {
-      addWrapped(`Cliente: ${data.client.business_name}`)
-      addWrapped(`${docClientLabel(data.client.doc_type)}: ${data.client.doc_number}`)
-      if (data.client.address) addWrapped(`Dirección: ${data.client.address}`)
+      addLabeledField('Cliente:', data.client.business_name)
+      addLabeledField(`${docClientLabel(data.client.doc_type)}:`, data.client.doc_number)
+      if (data.client.address) addLabeledField('Dirección:', data.client.address)
+    }
+    const creditNoteRef = getCreditNoteReference(data)
+    if (creditNoteRef) {
+      addLabeledField('Tipo Doc. Ref.:', creditNoteRef.docTypeLabel)
+      addLabeledField('Documento Ref.:', creditNoteRef.docNumber)
+      if (creditNoteRef.reason) addLabeledField('Motivo de emisión:', creditNoteRef.reason)
     }
     y += 2
 

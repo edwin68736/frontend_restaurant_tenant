@@ -42,6 +42,7 @@ export interface RestaurantStaffManagementRow {
   profile_complete?: boolean
   branch_ids?: number[]
   branch_names?: string[]
+  role_edit_locked?: boolean
 }
 
 export const RESTAURANT_EMPLOYEE_TYPES = [
@@ -304,6 +305,16 @@ export const restaurantService = {
     api.get<{ data: SessionDetail }>(`/api/restaurant/sessions/${sessionId}`).then((r) => r.data.data),
   cancelSession: (sessionId: number, reason: string, pin: string) =>
     api.post(`/api/restaurant/sessions/${sessionId}/cancel`, { reason, pin }).then((r) => r.data),
+  cancelAllComandas: (
+    sessionId: number,
+    data: { reason: string; pin: string; order_id?: number },
+  ) =>
+    api
+      .post<{ success: boolean; data: { cancelled_count: number } }>(
+        `/api/restaurant/sessions/${sessionId}/cancel-comandas`,
+        data,
+      )
+      .then((r) => r.data),
   addOrder: (sessionId: number, data: { staff_id?: number; notes?: string; items: OrderItemInput[] }) =>
     api.post(`/api/restaurant/sessions/${sessionId}/orders`, data).then((r) => r.data),
   billSession: (sessionId: number, data: {

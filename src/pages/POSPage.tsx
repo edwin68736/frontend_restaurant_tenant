@@ -52,7 +52,7 @@ import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { isCapacitorNative } from '@/lib/app'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
-import { cartToOrderItems, collectCheckoutLineTaxTotals, comandaLineTotal, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
+import { cartToOrderItems, collectCheckoutLineTaxTotals, comandaLineTotal, countCancellableComandas, formatPrecuentaIssueDate, getActiveKitchenRounds, getOrderRoundHistory, precuentaApiLineToPrintItem, type KitchenRound } from '@/utils/posOrderHelpers'
 import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import {
   appendCatalogLine,
@@ -203,6 +203,9 @@ export default function POSPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [orderDetailsModal, setOrderDetailsModal] = useState<'takeaway' | 'delivery' | null>(null)
   const [voidOrderTarget, setVoidOrderTarget] = useState<RestaurantOrderSummary | null>(null)
+  const [voidComandasTarget, setVoidComandasTarget] = useState<
+    { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number } | null
+  >(null)
   const [scannerMode, setScannerMode] = useState(readScannerModePreference)
   const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
   const [scanProcessing, setScanProcessing] = useState(false)
@@ -263,6 +266,41 @@ export default function POSPage() {
         return
       }
       setVoidOrderTarget(order)
+    } catch {
+      toast.error('No se pudo verificar el PIN de seguridad')
+    }
+  }
+
+  const requestVoidActiveSession = () => {
+    if (!activeSessionId) return
+    void requestVoidOrder({
+      id: activeSessionId,
+      order_code: orderCode,
+      order_type: posOrderType,
+      order_status: orderStatus ?? 'pending',
+      total_amount: sessionTotal,
+    } as RestaurantOrderSummary)
+  }
+
+  const requestVoidComandas = async (
+    target: { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number },
+  ) => {
+    if (!activeSessionId) return
+    const count =
+      target.mode === 'all'
+        ? countCancellableComandas(sessionDetail)
+        : countCancellableComandas(sessionDetail, target.orderId)
+    if (count === 0) {
+      toast.error('No hay ítems que se puedan anular')
+      return
+    }
+    try {
+      const ok = await restaurantService.ensureDeletionPinConfigured()
+      if (!ok) {
+        toast.error('Configure el PIN de operaciones en Ajustes → Restaurante')
+        return
+      }
+      setVoidComandasTarget(target)
     } catch {
       toast.error('No se pudo verificar el PIN de seguridad')
     }
@@ -584,11 +622,21 @@ export default function POSPage() {
 
   const renderSentKitchenBlock = () => {
     if (!isRestaurantOrder || activeKitchenRounds.length === 0) return null
+    const cancellableAll = countCancellableComandas(sessionDetail)
     return (
       <div className="px-2 py-2 border-b border-amber-200/80 bg-amber-50/50 shrink-0">
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <p className="text-xs font-semibold text-amber-900">Ya en cocina</p>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+            {allowCancelOrder && cancellableAll > 0 && (
+              <button
+                type="button"
+                onClick={() => void requestVoidComandas({ mode: 'all' })}
+                className="text-[10px] font-semibold text-red-600 hover:underline"
+              >
+                Anular todo
+              </button>
+            )}
             {printableKitchenRounds.length > 0 && (
               <button
                 type="button"
@@ -614,13 +662,30 @@ export default function POSPage() {
             <div key={round.orderId} className="rounded-lg border border-amber-200/60 bg-white/90 px-2 py-1.5">
               <div className="flex items-center justify-between gap-2 mb-1">
                 <span className="text-xs font-medium text-stone-700">Comanda #{round.orderNumber}</span>
-                <button
-                  type="button"
-                  onClick={() => void reprintKitchenRound(round)}
-                  className="text-[10px] font-semibold text-rest-600 hover:underline"
-                >
-                  Reimprimir
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {allowCancelOrder && countCancellableComandas(sessionDetail, round.orderId) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void requestVoidComandas({
+                          mode: 'round',
+                          orderId: round.orderId,
+                          orderNumber: round.orderNumber,
+                        })
+                      }
+                      className="text-[10px] font-semibold text-red-600 hover:underline"
+                    >
+                      Anular ronda
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void reprintKitchenRound(round)}
+                    className="text-[10px] font-semibold text-rest-600 hover:underline"
+                  >
+                    Reimprimir
+                  </button>
+                </div>
               </div>
               <ul className="text-[11px] text-stone-600 space-y-0.5">
                 {round.comandas.map((c) => {
@@ -692,6 +757,16 @@ export default function POSPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          {isRestaurantOrder && activeSessionId && allowCancelOrder && (
+            <button
+              type="button"
+              onClick={requestVoidActiveSession}
+              className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-red-600 border border-red-100 hover:bg-red-50"
+              title="Anular pedido completo"
+            >
+              <Trash2 size={12} /> Anular pedido
+            </button>
+          )}
           <CartClearButton disabled={cart.length === 0} onClear={clearPendingCart} />
           <div
             ref={desktopCartRef}
@@ -2027,6 +2102,56 @@ export default function POSPage() {
               setCart([])
               setSearchParams({})
             }
+            void loadPendingOrders({ silent: true })
+          } catch (e: unknown) {
+            toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al anular')
+            throw e
+          }
+        }}
+      />
+
+      <VoidOrderPinModal
+        open={voidComandasTarget != null}
+        title={
+          voidComandasTarget?.mode === 'round'
+            ? `Anular comanda #${voidComandasTarget.orderNumber}`
+            : 'Vaciar comandas del pedido'
+        }
+        orderLabel={
+          voidComandasTarget
+            ? `${countCancellableComandas(
+                sessionDetail,
+                voidComandasTarget.mode === 'round' ? voidComandasTarget.orderId : undefined,
+              )} ítem(s) por anular`
+            : orderCode || undefined
+        }
+        description={
+          voidComandasTarget?.mode === 'round'
+            ? 'Se anularán todos los ítems de esta ronda. El pedido sigue abierto.'
+            : 'Se anularán todas las comandas activas. El pedido sigue abierto para agregar nuevos ítems.'
+        }
+        confirmLabel="Anular todo"
+        pinHint="Mismo PIN configurado en Ajustes → Restaurante."
+        onClose={() => setVoidComandasTarget(null)}
+        onConfirm={async (reason, pin) => {
+          if (!voidComandasTarget || !activeSessionId) return
+          try {
+            const res = await restaurantService.cancelAllComandas(activeSessionId, {
+              reason: reason.trim(),
+              pin: pin.trim(),
+              ...(voidComandasTarget.mode === 'round'
+                ? { order_id: voidComandasTarget.orderId }
+                : {}),
+            })
+            toast.success(
+              res.data?.cancelled_count === 1
+                ? '1 ítem anulado'
+                : `${res.data?.cancelled_count ?? 0} ítems anulados`,
+            )
+            setVoidComandasTarget(null)
+            const refreshed = await loadSession(activeSessionId)
+            setSessionDetail(refreshed)
+            setSessionTotal(Number(refreshed.total_amount) || 0)
             void loadPendingOrders({ silent: true })
           } catch (e: unknown) {
             toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al anular')

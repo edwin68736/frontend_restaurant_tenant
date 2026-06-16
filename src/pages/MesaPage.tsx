@@ -31,6 +31,7 @@ import {
   getActiveKitchenRounds,
   getActiveSessionOrders,
   getOrderRoundHistory,
+  countCancellableComandas,
   sumSessionComandaQty,
   type KitchenRound,
 } from '@/utils/posOrderHelpers'
@@ -64,6 +65,7 @@ import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
+import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
@@ -148,6 +150,9 @@ export default function MesaPage() {
   } | null>(null)
   const [comandaModal, setComandaModal] = useState<{ orderId: number; orderNumber: number; comandas: Comanda[] } | null>(null)
   const [kitchenHistoryOpen, setKitchenHistoryOpen] = useState(false)
+  const [voidComandasTarget, setVoidComandasTarget] = useState<
+    { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number } | null
+  >(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
@@ -790,6 +795,29 @@ export default function MesaPage() {
     }
   }
 
+  const requestVoidComandas = async (
+    target: { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number },
+  ) => {
+    const count =
+      target.mode === 'all'
+        ? countCancellableComandas(session)
+        : countCancellableComandas(session, target.orderId)
+    if (count === 0) {
+      toast.error('No hay ítems que se puedan anular')
+      return
+    }
+    try {
+      const ok = await restaurantService.ensureDeletionPinConfigured()
+      if (!ok) {
+        toast.error('Configure el PIN de operaciones en Ajustes → Restaurante')
+        return
+      }
+      setVoidComandasTarget(target)
+    } catch {
+      toast.error('No se pudo verificar el PIN de seguridad')
+    }
+  }
+
   const renderCartLines = () =>
     cart.map((item, i) => (
       <PosCartLineRow
@@ -1106,6 +1134,15 @@ export default function MesaPage() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {canAnularComanda && countCancellableComandas(session) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void requestVoidComandas({ mode: 'all' })}
+                      className="px-2.5 py-1.5 rounded-lg border border-red-200 text-red-700 text-xs font-semibold hover:bg-red-50"
+                    >
+                      Anular todo
+                    </button>
+                  )}
                   {printableKitchenRounds.length > 0 && (
                     <button
                       type="button"
@@ -1139,6 +1176,21 @@ export default function MesaPage() {
                     <div className="px-3 py-2 bg-stone-50/60 flex items-center justify-between gap-2">
                       <span className="text-sm font-semibold text-stone-800">Comanda #{ord.order_number}</span>
                       <div className="flex items-center gap-2 shrink-0">
+                        {canAnularComanda && countCancellableComandas(session, ord.id) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void requestVoidComandas({
+                                mode: 'round',
+                                orderId: ord.id,
+                                orderNumber: ord.order_number,
+                              })
+                            }
+                            className="text-xs font-semibold text-red-600 hover:underline"
+                          >
+                            Anular ronda
+                          </button>
+                        )}
                         {round && (
                           <button
                             type="button"
@@ -1436,6 +1488,53 @@ export default function MesaPage() {
           </div>
         </div>
       )}
+
+      <VoidOrderPinModal
+        open={voidComandasTarget != null}
+        title={
+          voidComandasTarget?.mode === 'round'
+            ? `Anular comanda #${voidComandasTarget.orderNumber}`
+            : 'Vaciar comandas de la mesa'
+        }
+        orderLabel={
+          voidComandasTarget
+            ? `${countCancellableComandas(
+                session,
+                voidComandasTarget.mode === 'round' ? voidComandasTarget.orderId : undefined,
+              )} ítem(s) por anular`
+            : undefined
+        }
+        description={
+          voidComandasTarget?.mode === 'round'
+            ? 'Se anularán todos los ítems de esta ronda. La mesa sigue abierta.'
+            : 'Se anularán todas las comandas activas de la mesa. La mesa sigue abierta para nuevos pedidos.'
+        }
+        confirmLabel="Anular todo"
+        pinHint="Mismo PIN configurado en Ajustes → Restaurante."
+        onClose={() => setVoidComandasTarget(null)}
+        onConfirm={async (reason, pin) => {
+          if (!voidComandasTarget || !id) return
+          try {
+            const res = await restaurantService.cancelAllComandas(id, {
+              reason: reason.trim(),
+              pin: pin.trim(),
+              ...(voidComandasTarget.mode === 'round'
+                ? { order_id: voidComandasTarget.orderId }
+                : {}),
+            })
+            toast.success(
+              res.data?.cancelled_count === 1
+                ? '1 ítem anulado'
+                : `${res.data?.cancelled_count ?? 0} ítems anulados`,
+            )
+            setVoidComandasTarget(null)
+            load({ silent: true })
+          } catch (e: unknown) {
+            toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al anular')
+            throw e
+          }
+        }}
+      />
 
       {/* Modal Anular comanda */}
       {anulComanda && (

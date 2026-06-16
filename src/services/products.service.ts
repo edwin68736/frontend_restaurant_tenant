@@ -83,6 +83,22 @@ export interface BulkImportResultPayload {
   failed: { row: number; name: string; error: string }[]
 }
 
+export interface BulkDeleteProductRef {
+  id: number
+  name: string
+}
+
+export interface BulkDeleteBlockedItem {
+  id: number
+  name: string
+  reasons: string[]
+}
+
+export interface BulkDeleteRestaurantResult {
+  deleted: BulkDeleteProductRef[]
+  blocked: BulkDeleteBlockedItem[]
+}
+
 export interface CreateProductInput {
   code?: string
   name: string
@@ -184,11 +200,11 @@ export const productsService = {
         presentations: r.data.presentations ?? [],
       })),
 
-  bulkImportRestaurant: (items: BulkImportItemPayload[]) =>
+  bulkImportRestaurant: (items: BulkImportItemPayload[], branchId?: number) =>
     api
       .post<{ success: boolean; data: BulkImportResultPayload }>(
         '/api/products/bulk-import/restaurant',
-        { items },
+        { branch_id: branchId && branchId > 0 ? branchId : undefined, items },
       )
       .then((r) => r.data.data),
 
@@ -227,12 +243,22 @@ export const productsService = {
 
   delete: (id: number) => api.delete(`/api/products/${id}`).then((r) => r.data),
 
+  bulkDeleteRestaurant: (productIds: number[], pin: string, reason: string) =>
+    api
+      .post<BulkDeleteRestaurantResult>('/api/products/bulk-delete/restaurant', {
+        product_ids: productIds,
+        pin,
+        reason,
+      })
+      .then((r) => r.data),
+
   /** Listado para reportes: stock, categoría, series (cartá restaurante con restaurant_only). */
   listReport: (params: {
     q?: string
     category_id?: number
     branch_id?: number
     active_only?: boolean
+    no_manage_stock_only?: boolean
     page?: number
     per_page?: number
     stock_less_than?: number
@@ -250,6 +276,7 @@ export const productsService = {
           stock_less_than: params.stock_less_than,
           preparation_area: params.preparation_area,
           restaurant_only: true,
+          no_manage_stock_only: params.no_manage_stock_only ? 'true' : undefined,
           report: true,
         },
       })

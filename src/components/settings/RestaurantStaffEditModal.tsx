@@ -34,26 +34,29 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
   if (!row) return null
 
   const hasPinCurrently = row.has_pin
+  const roleLocked = row.role_edit_locked === true
+  const activeEmployeeType = roleLocked ? (row.employee_type ?? 'admin') : employeeType
 
   const handleSave = async () => {
     const pinDigits = pin.replace(/\D/g, '')
-    if (employeeType && !clearPin && pinDigits && (pinDigits.length < 4 || pinDigits.length > 6)) {
+    const effectiveEmployeeType = activeEmployeeType
+    if (effectiveEmployeeType && !clearPin && pinDigits && (pinDigits.length < 4 || pinDigits.length > 6)) {
       toast.error('PIN de acceso: 4 a 6 dígitos')
       return
     }
-    if (employeeType && branchIds.length === 0) {
+    if (effectiveEmployeeType && branchIds.length === 0) {
       toast.error('Seleccione al menos una sucursal')
       return
     }
     setSaving(true)
     try {
       await restaurantService.setUserStaff(row.user_id, {
-        employee_type: employeeType,
+        employee_type: effectiveEmployeeType,
         ...(pinDigits ? { pin: pinDigits } : {}),
         ...(clearPin ? { clear_pin: true } : {}),
-        ...(employeeType && branchIds.length > 0 ? { branch_ids: branchIds } : {}),
+        ...(effectiveEmployeeType && branchIds.length > 0 ? { branch_ids: branchIds } : {}),
       })
-      toast.success(employeeType ? 'Perfil guardado' : 'Acceso al restaurante quitado')
+      toast.success(effectiveEmployeeType ? 'Perfil guardado' : 'Acceso al restaurante quitado')
       onSaved()
       onClose()
     } catch (e: unknown) {
@@ -83,8 +86,9 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
           <div>
             <label className="block text-xs font-medium text-stone-600 mb-1">Rol en restaurante</label>
             <select
-              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-100 disabled:text-stone-500"
               value={employeeType}
+              disabled={roleLocked}
               onChange={(e) => setEmployeeType(e.target.value)}
             >
               {RESTAURANT_EMPLOYEE_TYPES.map((r) => (
@@ -93,12 +97,18 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
                 </option>
               ))}
             </select>
+            {roleLocked ? (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mt-1.5">
+                El rol del usuario principal del sistema no puede modificarse. Otros administradores sí pueden cambiar su rol.
+              </p>
+            ) : (
             <p className="text-[11px] text-stone-500 mt-1">
               Define qué puede hacer en Tukichef (POS, mesas, cocina, caja, etc.). No usa roles del panel tenant.
             </p>
+            )}
           </div>
 
-          {employeeType ? (
+          {activeEmployeeType ? (
             <>
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Sucursales</label>

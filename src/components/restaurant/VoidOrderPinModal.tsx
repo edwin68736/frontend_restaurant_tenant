@@ -7,11 +7,22 @@ type Props = {
   title: string
   description?: string
   orderLabel?: string
+  confirmLabel?: string
+  pinHint?: string
   onClose: () => void
   onConfirm: (reason: string, pin: string) => Promise<void>
 }
 
-export function VoidOrderPinModal({ open, title, description, orderLabel, onClose, onConfirm }: Props) {
+export function VoidOrderPinModal({
+  open,
+  title,
+  description,
+  orderLabel,
+  confirmLabel = 'Anular pedido',
+  pinHint = 'Mismo PIN configurado en Ajustes del restaurante. El pedido y sus comandas se eliminarán de la base de datos.',
+  onClose,
+  onConfirm,
+}: Props) {
   const [reason, setReason] = useState('')
   const [pin, setPin] = useState('')
   const [loading, setLoading] = useState(false)
@@ -66,9 +77,7 @@ export function VoidOrderPinModal({ open, title, description, orderLabel, onClos
           className="w-full border border-stone-200 rounded-xl p-2 text-sm"
           autoComplete="off"
         />
-        <p className="text-xs text-stone-500">
-          Mismo PIN configurado en Ajustes del restaurante. El pedido y sus comandas se eliminarán de la base de datos.
-        </p>
+        <p className="text-xs text-stone-500">{pinHint}</p>
         <div className="flex gap-2 pt-1">
           <button
             type="button"
@@ -84,7 +93,7 @@ export function VoidOrderPinModal({ open, title, description, orderLabel, onClos
             onClick={() => void handleConfirm()}
             className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
           >
-            {loading ? 'Anulando...' : 'Anular pedido'}
+            {loading ? 'Anulando...' : confirmLabel}
           </button>
         </div>
       </div>

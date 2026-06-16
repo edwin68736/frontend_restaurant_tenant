@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import type { Category } from '@/services/products.service'
+import { useBranch } from '@/contexts/BranchContext'
 import {
   downloadRestaurantProductTemplate,
   importProgressPercent,
@@ -33,7 +34,9 @@ type Props = {
 type Step = 'select' | 'validated' | 'importing' | 'done'
 
 export function ProductImportModal({ open, onClose, categories, onImported }: Props) {
+  const { activeBranchId, activeBranch, allowedBranches, canSwitchBranch } = useBranch()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [selectedBranchId, setSelectedBranchId] = useState(activeBranchId)
   const [step, setStep] = useState<Step>('select')
   const [fileName, setFileName] = useState('')
   const [validating, setValidating] = useState(false)
@@ -48,6 +51,26 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
+
+  const branchOptions = useMemo(() => {
+    if (activeBranchId <= 0) return []
+    if (!canSwitchBranch) {
+      if (activeBranch) return [activeBranch]
+      return [{ id: activeBranchId, name: 'Sucursal actual', is_main: false }]
+    }
+    if (allowedBranches.length > 0) return allowedBranches
+    if (activeBranch) return [activeBranch]
+    return [{ id: activeBranchId, name: 'Sucursal actual', is_main: false }]
+  }, [canSwitchBranch, allowedBranches, activeBranchId, activeBranch])
+
+  const selectedBranchName =
+    branchOptions.find((b) => b.id === selectedBranchId)?.name ?? '—'
+
+  useEffect(() => {
+    if (open) {
+      setSelectedBranchId(activeBranchId)
+    }
+  }, [open, activeBranchId])
 
   const reset = () => {
     setStep('select')
@@ -98,13 +121,22 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
 
   const handleImport = async () => {
     if (!validation || validation.errors.length > 0 || validation.rows.length === 0) return
+    if (selectedBranchId <= 0) {
+      toast.error('Seleccione una sucursal destino para importar')
+      return
+    }
     const total = validation.rows.length
     flushSync(() => {
       setStep('importing')
       setImportProgress({ done: 0, total, current: 'Iniciando…' })
     })
     try {
-      const result = await importRestaurantProducts(validation.rows, categories, reportImportProgress)
+      const result = await importRestaurantProducts(
+        validation.rows,
+        selectedBranchId,
+        categories,
+        reportImportProgress,
+      )
       setImportResult(result)
       setStep('done')
       if (result.created > 0 || result.updated > 0) {
@@ -128,7 +160,11 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
   }
 
   const canImport =
-    validation != null && validation.errors.length === 0 && validation.rows.length > 0 && step === 'validated'
+    validation != null &&
+    validation.errors.length === 0 &&
+    validation.rows.length > 0 &&
+    selectedBranchId > 0 &&
+    step === 'validated'
   const isImporting = step === 'importing'
   const importPct = importProgressPercent(importProgress.done, importProgress.total)
 
@@ -156,9 +192,37 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
         <div className="relative p-4 sm:p-5 overflow-y-auto min-h-0 space-y-4">
           <p className="text-sm text-stone-600">
             Descarga la plantilla, completa los datos y súbela. La columna{' '}
-            <strong>stock_inicial</strong> registra entrada en kardex (sucursal activa). Si hay cantidad,
-            se activa control de stock automáticamente.
+            <strong>stock_inicial</strong> solo aplica si <strong>control_stock</strong> es{' '}
+            <em>si</em>; el kardex se registra en la sucursal seleccionada.
           </p>
+
+          <div className="rounded-xl border border-stone-200 bg-stone-50/80 p-3 space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-stone-500">
+              Sucursal destino
+            </label>
+            {branchOptions.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                No hay sucursal disponible. Seleccione una sucursal en el menú antes de importar.
+              </p>
+            ) : (
+              <select
+                value={selectedBranchId || ''}
+                onChange={(e) => setSelectedBranchId(Number(e.target.value))}
+                disabled={branchOptions.length <= 1 || step === 'importing'}
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {branchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+            {validation && validation.rows.length > 0 && selectedBranchId > 0 && (
+              <p className="text-sm text-stone-700">
+                Se importarán <strong>{validation.rows.length}</strong> producto(s) a:{' '}
+                <strong>{selectedBranchName}</strong>
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -389,6 +453,7 @@ function PreviewTable({ rows }: { rows: ParsedImportRow[] }) {
             <th className="text-right px-2 py-2 font-semibold text-stone-600">Precio</th>
             <th className="text-left px-2 py-2 font-semibold text-stone-600">Categoría</th>
             <th className="text-left px-2 py-2 font-semibold text-stone-600">Área</th>
+            <th className="text-center px-2 py-2 font-semibold text-stone-600">Control stock</th>
             <th className="text-right px-2 py-2 font-semibold text-stone-600">Stock ini.</th>
           </tr>
         </thead>
@@ -401,6 +466,7 @@ function PreviewTable({ rows }: { rows: ParsedImportRow[] }) {
               <td className="px-2 py-1.5 text-right">{r.precio_venta.toFixed(2)}</td>
               <td className="px-2 py-1.5">{r.categoria || '—'}</td>
               <td className="px-2 py-1.5">{r.area_preparacion || '—'}</td>
+              <td className="px-2 py-1.5 text-center">{r.control_stock ? 'Sí' : 'No'}</td>
               <td className="px-2 py-1.5 text-right">{r.stock_inicial > 0 ? r.stock_inicial : '—'}</td>
             </tr>
           ))}

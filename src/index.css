@@ -64,8 +64,8 @@ html.platform-capacitor body {
 
   /** Espacio bajo el contenido para no quedar detrás del menú inferior móvil (h-14 + safe area). */
   .pb-mobile-nav {
-    padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom) + 0.5rem);
-    scroll-padding-bottom: calc(var(--mobile-bottom-nav-height) + var(--safe-bottom) + 0.5rem);
+    padding-bottom: calc(var(--app-bottom-nav-offset) + 0.5rem);
+    scroll-padding-bottom: calc(var(--app-bottom-nav-offset) + 0.5rem);
   }
 
   @media (min-width: 1024px) {
