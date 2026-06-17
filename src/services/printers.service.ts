@@ -288,6 +288,15 @@ function escposQr(data: string, opts?: { moduleSize?: number; ecc?: 'L' | 'M' | 
   return out
 }
 
+function formatComandaPrintDateTime(d = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function escposPushTextLine(out: number[], line: string) {
+  out.push(...Array.from(textBytes(`${line}\n`)))
+}
+
 export function buildComandaEscPos(input: {
   tableName?: string | null
   orderNumber?: number | null
@@ -309,21 +318,26 @@ export function buildComandaEscPos(input: {
   out.push(...escposAlign('center'))
   out.push(...escposBold(true))
   out.push(...escposSize(2, 2))
-  out.push(...Array.from(textBytes(`COMANDA\n`)))
+  escposPushTextLine(out, 'COMANDA')
   out.push(...escposBold(false))
   out.push(...escposSize(1, 1))
+  escposPushTextLine(out, formatComandaPrintDateTime())
 
   out.push(...escposAlign('left'))
-  out.push(...Array.from(textBytes(`${'-'.repeat(cols)}\n`)))
+  escposPushTextLine(out, '-'.repeat(cols))
 
   out.push(...escposBold(true))
   out.push(...escposSize(2, 2))
-  if (input.tableName) out.push(...Array.from(textBytes(`${wrapText(`MESA: ${input.tableName}`, bigCols).join('\n')}\n`)))
-  if (input.orderNumber != null) out.push(...Array.from(textBytes(`PEDIDO: #${input.orderNumber}\n`)))
-  if (input.waiterName) out.push(...Array.from(textBytes(`${wrapText(`MOZO: ${input.waiterName}`, bigCols).join('\n')}\n`)))
+  if (input.tableName) {
+    for (const line of wrapText(`MESA: ${input.tableName}`, bigCols)) escposPushTextLine(out, line)
+  }
+  if (input.orderNumber != null) escposPushTextLine(out, `PEDIDO: #${input.orderNumber}`)
+  if (input.waiterName) {
+    for (const line of wrapText(`MOZO: ${input.waiterName}`, bigCols)) escposPushTextLine(out, line)
+  }
   out.push(...escposBold(false))
   out.push(...escposSize(1, 1))
-  out.push(...Array.from(textBytes(`${'-'.repeat(cols)}\n`)))
+  escposPushTextLine(out, '-'.repeat(cols))
 
   for (const it of input.items) {
     const qty = String(it.quantity ?? 0).replace(/\.0+$/, '')
@@ -332,25 +346,27 @@ export function buildComandaEscPos(input: {
 
     out.push(...escposBold(true))
     out.push(...escposSize(2, 2))
-    out.push(...Array.from(textBytes(`${head}${wrapped[0] ?? ''}\n`)))
-    for (const w of wrapped.slice(1)) out.push(...Array.from(textBytes(`${' '.repeat(head.length)}${w}\n`)))
+    escposPushTextLine(out, `${head}${wrapped[0] ?? ''}`)
+    for (const w of wrapped.slice(1)) escposPushTextLine(out, `${' '.repeat(head.length)}${w}`)
     out.push(...escposBold(false))
     out.push(...escposSize(1, 1))
 
     for (const mod of it.modifierLines ?? []) {
       const line = String(mod).trim()
       if (!line) continue
-      for (const w of wrapText(line, cols - 4)) out.push(...Array.from(textBytes(`  * ${w}\n`)))
+      for (const w of wrapText(line, cols - 4)) escposPushTextLine(out, `  * ${w}`)
     }
 
     const note = String(it.notes ?? '').trim()
     if (note) {
-      for (const w of wrapText(`Obs: ${note}`, cols - 4)) out.push(...Array.from(textBytes(`  > ${w}\n`)))
+      for (const w of wrapText(`Obs: ${note}`, cols - 4)) escposPushTextLine(out, `  > ${w}`)
     }
-    out.push(...Array.from(textBytes(`\n`)))
+    escposPushTextLine(out, '')
   }
 
-  out.push(...Array.from(textBytes(`${'-'.repeat(cols)}\n\n\n`)))
+  escposPushTextLine(out, '-'.repeat(cols))
+  escposPushTextLine(out, '')
+  escposPushTextLine(out, '')
   out.push(...escposCutPartial())
   return new Uint8Array(out)
 }

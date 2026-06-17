@@ -147,14 +147,14 @@ export function posComandaPrintLabels(
     ]
       .map((s) => String(s ?? '').trim())
       .filter(Boolean)
-      .join(' · ')
+      .join(' - ')
     return { tableName: `Delivery ${code}`, waiterName: extra || null }
   }
   if (detail.order_type === 'takeaway') {
     const extra = [detail.customer_name, detail.customer_phone, detail.notes]
       .map((s) => String(s ?? '').trim())
       .filter(Boolean)
-      .join(' · ')
+      .join(' - ')
     return { tableName: `Para llevar ${code}`, waiterName: extra || null }
   }
   return { tableName: code || null, waiterName: detail.waiter_name ?? null }

@@ -45,7 +45,7 @@ export function comandasToPrintLines(comandas: Comanda[]): KitchenPrintLine[] {
 
 function areaTicketLabel(baseTableName: string, areaKey: string): string {
   if (!areaKey || areaKey === '__default__') return baseTableName
-  return `${baseTableName} · ${areaKey.toUpperCase()}`
+  return `${baseTableName} - ${areaKey.toUpperCase()}`
 }
 
 /**
