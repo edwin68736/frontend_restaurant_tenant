@@ -81,6 +81,7 @@ import {
   toContactDocCode,
 } from '@/utils/contactDocTypes'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import {
   applyCheckoutDiscountToLines,
   buildRestaurantBillDiscount,
@@ -154,6 +155,7 @@ export default function MesaPage() {
     { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number } | null
   >(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
   const [clientQuickAdd, setClientQuickAdd] = useState({ doc_type: '6', doc_number: '', business_name: '', address: '' })
@@ -751,7 +753,7 @@ export default function MesaPage() {
     setCheckoutDiscountValue(0)
     setPayments([
       {
-        method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+        method: defaultOperationalPaymentCode(paymentMethods),
         amount: totalToPay,
         reference: '',
       },
@@ -1311,7 +1313,7 @@ export default function MesaPage() {
           const variosId = pickVariosContactId(contacts)
           if (variosId) setContactId(variosId)
         }}
-        paymentMethods={paymentMethods}
+        paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
         allowDiscount={allowCheckoutDiscount}

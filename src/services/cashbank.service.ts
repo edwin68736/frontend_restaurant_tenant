@@ -77,7 +77,9 @@ export interface PaymentMethodRecord {
   id: number
   name: string
   code: string
-  destination_type: 'cash' | 'bank_account'
+  /** payment_method | payment_condition | internal */
+  kind?: string
+  destination_type: 'cash' | 'bank_account' | 'detraction' | 'receivable'
   bank_account_id: number | null
   is_system: boolean
   sort_order: number
@@ -347,9 +349,14 @@ export const cashbankService = {
 
   listPaymentMethods: (all?: boolean): Promise<PaymentMethodRecord[]> =>
     api
-      .get('/api/cashbank/payment-methods', { params: all ? { all: '1' } : {} })
+      .get('/api/payment-methods', { params: all ? { all: '1' } : {} })
       .then((r) => r.data.data ?? [])
-      .catch(() => []),
+      .catch(() =>
+        api
+          .get('/api/cashbank/payment-methods', { params: all ? { all: '1' } : {} })
+          .then((r) => r.data.data ?? [])
+          .catch(() => []),
+      ),
 
   getPaymentMethod: (id: number): Promise<PaymentMethodRecord> =>
     api.get(`/api/cashbank/payment-methods/${id}`).then((r) => r.data.data ?? r.data),

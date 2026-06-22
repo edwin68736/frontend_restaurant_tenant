@@ -29,15 +29,22 @@ export function PortalModal({
   return createPortal(
     <div
       className={clsx(
-        `fixed inset-0 ${zLayer} flex justify-center bg-black/50 p-3 sm:p-4`,
-        overlayClassName?.includes('items-') ? null : 'items-center',
+        `fixed inset-0 ${zLayer} flex justify-center overflow-y-auto overscroll-contain bg-black/50 p-3 sm:p-4`,
+        overlayClassName?.includes('items-') ? null : 'items-start sm:items-center min-h-full',
         overlayClassName,
       )}
       onMouseDown={(e: MouseEvent<HTMLDivElement>) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className={`w-full max-h-[min(92dvh,900px)] ${className}`}>{children}</div>
+      <div
+        className={clsx(
+          'my-auto flex w-full min-h-0 max-h-[min(92dvh,900px)] flex-col',
+          className,
+        )}
+      >
+        {children}
+      </div>
     </div>,
     document.body,
   )

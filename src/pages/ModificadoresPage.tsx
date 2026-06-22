@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, UtensilsCrossed } from 'lucide-react'
 import { productsService, type ModifierGroup } from '@/services/products.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { PageShell } from '@/components/layout/PageShell'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
 import {
@@ -118,15 +119,11 @@ export default function ModificadoresPage() {
   }
 
   return (
-    <div className="w-full flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-3 shrink-0">
-        <div>
-          <h2 className="text-lg font-bold text-stone-800">Grupos de extras</h2>
-          <p className="text-sm text-stone-500">
-            Extras reutilizables entre productos (queso, tocino…). Las presentaciones se configuran en cada
-            producto en <strong>Productos</strong>.
-          </p>
-        </div>
+    <PageShell
+      className="flex-1 min-h-0"
+      title="Grupos de extras"
+      subtitle="Extras reutilizables entre productos (queso, tocino…). Las presentaciones se configuran en cada producto en Productos."
+      actions={
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           {canAccess('productos') && (
             <button
@@ -145,9 +142,9 @@ export default function ModificadoresPage() {
             <Plus size={16} /> Nuevo grupo
           </button>
         </div>
-      </div>
-
-      <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-950">
+      }
+    >
+      <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-950 shrink-0">
         <p className="font-bold">Solo extras globales</p>
         <p className="mt-0.5">
           Cada opción <strong>suma</strong> al precio. Para tamaños o envases por producto (Coca 500 ml, Pizza
@@ -160,8 +157,8 @@ export default function ModificadoresPage() {
           <div className="w-8 h-8 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="flex-1 min-h-0 flex flex-col bg-white rounded-2xl border border-stone-200 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-stone-50 border-b border-stone-200">
                 <tr>
@@ -220,7 +217,7 @@ export default function ModificadoresPage() {
             </table>
           </div>
           {groups.length === 0 && (
-            <div className="text-center py-12 text-stone-400 text-sm">
+            <div className="text-center py-12 text-stone-400 text-sm shrink-0 border-t border-stone-100">
               No hay grupos. Crea el primero con el botón «Nuevo grupo».
             </div>
           )}
@@ -253,46 +250,50 @@ export default function ModificadoresPage() {
       />
 
       <PortalModal open={modal != null} onClose={() => setModal(null)} className="max-w-lg">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(90dvh,900px)] flex flex-col min-h-0 overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-stone-200 shrink-0">
             <h3 className="font-bold text-stone-800 text-lg">
               {modal === 'edit' ? 'Editar grupo de extras' : 'Nuevo grupo de extras'}
             </h3>
           </div>
 
-          <div className="p-4 overflow-y-auto flex-1 min-h-0 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">Nombre del grupo *</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ej. Extras, Adicionales"
-                className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm"
-              />
+          <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden gap-4">
+            <div className="shrink-0 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Nombre del grupo *</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ej. Extras, Adicionales"
+                  className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="rounded-xl border border-stone-200 p-3 space-y-2 bg-white">
+                <label className="flex items-center gap-2 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={multiSelect}
+                    onChange={(e) => setMultiSelect(e.target.checked)}
+                    className="rounded border-stone-300"
+                  />
+                  Permitir elegir varios extras
+                </label>
+                <label className="flex items-center gap-2 text-sm text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={required}
+                    onChange={(e) => setRequired(e.target.checked)}
+                    className="rounded border-stone-300"
+                  />
+                  Obligatorio en el POS (al menos uno)
+                </label>
+              </div>
             </div>
 
-            <div className="rounded-xl border border-stone-200 p-3 space-y-2 bg-white">
-              <label className="flex items-center gap-2 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={multiSelect}
-                  onChange={(e) => setMultiSelect(e.target.checked)}
-                  className="rounded border-stone-300"
-                />
-                Permitir elegir varios extras
-              </label>
-              <label className="flex items-center gap-2 text-sm text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={required}
-                  onChange={(e) => setRequired(e.target.checked)}
-                  className="rounded border-stone-300"
-                />
-                Obligatorio en el POS (al menos uno)
-              </label>
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <ModifierOptionsEditor options={optionDrafts} onChange={setOptionDrafts} />
             </div>
-
-            <ModifierOptionsEditor options={optionDrafts} onChange={setOptionDrafts} />
           </div>
 
           <div className="flex gap-2 p-4 border-t border-stone-200 shrink-0">
@@ -314,6 +315,6 @@ export default function ModificadoresPage() {
           </div>
         </div>
       </PortalModal>
-    </div>
+    </PageShell>
   )
 }

@@ -33,11 +33,11 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded }
     <div
       className={
         embedded
-          ? 'space-y-2'
+          ? 'flex flex-col flex-1 min-h-0 space-y-2'
           : 'space-y-2 rounded-lg border border-sky-200 bg-sky-50/50 p-2.5'
       }
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 shrink-0">
         <p className="text-xs font-bold text-sky-900">Presentaciones de este producto</p>
         <button
           type="button"
@@ -47,10 +47,16 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded }
           <Plus size={14} /> Agregar
         </button>
       </div>
-      <p className="text-[11px] text-sky-800/90 leading-relaxed">
+      <p className="text-[11px] text-sky-800/90 leading-relaxed shrink-0">
         Cada fila es un tamaño o envase propio (ej. 500 ml, Familiar). El precio reemplaza el precio base en mesa/POS.
       </p>
-      <div className="space-y-2 max-h-[min(36vh,280px)] overflow-y-auto">
+      <div
+        className={
+          embedded
+            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-1 min-h-[120px] max-h-[min(55dvh,520px)]'
+            : 'space-y-2 max-h-[min(50vh,420px)] overflow-y-auto overscroll-contain touch-pan-y pr-1'
+        }
+      >
         {rows.map((row, index) => (
           <div
             key={index}

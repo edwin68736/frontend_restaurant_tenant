@@ -45,6 +45,7 @@ import {
   printPrecuentaAuto,
 } from '@/services/printers.service'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, type DeliveryDriver, type PrecuentaPayload, type RestaurantOrderSummary } from '@/types/restaurantOrder'
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
@@ -155,6 +156,7 @@ export default function POSPage() {
   const [contactId, setContactId] = useState<number | null>(null)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [payments, setPayments] = useState<{ method: string; amount: number; reference?: string }[]>([
     { method: 'cash', amount: 0, reference: '' },
@@ -1243,7 +1245,7 @@ export default function POSPage() {
     setCheckoutDiscountValue(0)
     setPayments([
       {
-        method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+        method: defaultOperationalPaymentCode(paymentMethods),
         amount: total,
         reference: '',
       },
@@ -1375,7 +1377,7 @@ export default function POSPage() {
       setCheckoutOpen(false)
       setPayments([
         {
-          method: paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash',
+          method: defaultOperationalPaymentCode(paymentMethods),
           amount: 0,
           reference: '',
         },
@@ -1856,7 +1858,7 @@ export default function POSPage() {
           const variosId = pickVariosContactId(contacts)
           if (variosId) setContactId(variosId)
         }}
-        paymentMethods={paymentMethods}
+        paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
         onConfirm={doCheckout}

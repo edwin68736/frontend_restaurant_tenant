@@ -20,6 +20,15 @@ export interface Sale {
   created_at: string
   /** NV con FE emitida */
   electronic_issue_sale_id?: number | null
+  electronic_issue_doc_type?: string | null
+  electronic_issue_series?: string | null
+  electronic_issue_number?: string | null
+  /** registrado | convertida | anulada */
+  nv_status?: string | null
+  display_sale_id?: number | null
+  display_doc_type?: string | null
+  display_series?: string | null
+  display_number?: string | null
   original_sale_id?: number | null
   /** Método principal (legacy); si hay `payments`, preferir esa lista. */
   payment_method?: string

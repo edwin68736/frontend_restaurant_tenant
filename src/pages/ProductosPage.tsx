@@ -945,14 +945,14 @@ export default function ProductosPage() {
 
       {/* Modal crear / editar */}
       <PortalModal open={!!modal} onClose={closeProductModal} className="max-w-3xl">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-4 border-b border-stone-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(90dvh,900px)] overflow-hidden flex flex-col min-h-0">
+            <div className="flex items-center justify-between p-4 border-b border-stone-200 shrink-0">
               <h3 className="font-bold text-stone-800">{modal === 'create' ? 'Agregar producto' : 'Editar producto'}</h3>
               <button onClick={closeProductModal} className="p-2 rounded-lg hover:bg-stone-100">
                 <X size={20} />
               </button>
             </div>
-            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto min-h-0">
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto overscroll-contain touch-pan-y flex-1 min-h-0">
               {/* Imagen */}
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-2">Imagen del producto</label>
@@ -1330,7 +1330,7 @@ export default function ProductosPage() {
                     . Se suman al precio del producto o presentación.
                   </p>
                   {modifierGroups.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="space-y-2 max-h-[min(45dvh,480px)] overflow-y-auto overscroll-contain touch-pan-y pr-1 rounded-lg">
                       {modifierGroups.map((g) => (
                         <label
                           key={g.id}
@@ -1385,7 +1385,7 @@ export default function ProductosPage() {
                 </div>
               )}
             </div>
-            <div className="flex gap-2 p-4 border-t border-stone-200">
+            <div className="flex gap-2 p-4 border-t border-stone-200 shrink-0">
               <button
                 onClick={closeProductModal}
                 className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium"

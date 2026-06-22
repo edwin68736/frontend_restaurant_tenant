@@ -40,14 +40,14 @@ export function ProductPresentationsModal({
 
   return (
     <PortalModal open={open} onClose={onClose} className="max-w-lg">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(90dvh,900px)] flex flex-col min-h-0 overflow-hidden">
         <div className="p-4 border-b border-stone-200 shrink-0">
           <h3 className="font-bold text-stone-900 text-lg">Presentaciones</h3>
           {productName ? (
             <p className="text-sm text-stone-500 mt-0.5 truncate">{productName}</p>
           ) : null}
         </div>
-        <div className="p-4 overflow-y-auto flex-1 min-h-0">
+        <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
           <ProductPresentationsEditor presentations={draft} onChange={setDraft} embedded />
         </div>
         <div className="p-4 border-t border-stone-200 flex gap-2 shrink-0">

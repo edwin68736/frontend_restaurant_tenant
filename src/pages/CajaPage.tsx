@@ -164,6 +164,13 @@ function formatReportSessionSelectLabel(s: CashSession, style: 'current' | 'hist
   return `${base} - ${short}`
 }
 
+/** El modal de métodos solo permite caja o cuenta; normaliza tipos internos del sistema. */
+function editablePaymentMethodDestination(
+  destinationType: PaymentMethodRecord['destination_type'],
+): 'cash' | 'bank_account' {
+  return destinationType === 'bank_account' ? 'bank_account' : 'cash'
+}
+
 export default function CajaPage() {
   const { user, restaurantPermissions, employeeType } = useAuth()
   const canManageCashConfig = canManageCashSettings(restaurantPermissions, employeeType)
@@ -414,7 +421,7 @@ export default function CajaPage() {
     setPaymentMethodForm({
       name: pm.name || '',
       code: pm.code || '',
-      destination_type: pm.destination_type || 'cash',
+      destination_type: editablePaymentMethodDestination(pm.destination_type),
       bank_account_id: pm.bank_account_id ?? '',
       active: !!pm.active,
     })

@@ -25,6 +25,14 @@ import {
   Printer,
   MoreVertical,
 } from 'lucide-react'
+import {
+  formatElectronicIssueDocument,
+  nvStatusBadgeClass,
+  nvStatusEmoji,
+  nvStatusKey,
+  nvStatusLabel,
+  pdfTargetSaleId,
+} from '@/utils/saleDisplayDocument'
 import { salesService, formatSaleDocumentNumber, emptySaleListSummary, type Sale, type SaleDetail, type SaleItem, type SaleListSummary } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
@@ -201,8 +209,6 @@ export default function VentasPage() {
   const from = total === 0 ? 0 : (page - 1) * perPage + 1
   const to = Math.min(page * perPage, total)
   const summaryDocCount = listSummary.count_active + listSummary.count_cancelled
-  const tableTrailingColSpan = tab === 'facturacion' ? 4 : tab === 'credit_notes' ? 3 : 2
-
   const {
     inputValue: searchInput,
     setInputValue: setSearchInput,
@@ -1441,6 +1447,9 @@ export default function VentasPage() {
                       >
                         Imprimir
                       </th>
+                      {tab === 'notas' && (
+                        <th className="hidden sm:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Estado</th>
+                      )}
                       {tab === 'facturacion' && (
                         <>
                           <th className="hidden lg:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Estado SUNAT</th>
@@ -1520,6 +1529,19 @@ export default function VentasPage() {
                         >
                           {renderThermalPrintButton(s.id)}
                         </td>
+                        {tab === 'notas' && (
+                          <td className="hidden sm:table-cell px-2 sm:px-4 py-1.5 sm:py-3 align-top">
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${nvStatusBadgeClass(nvStatusKey(s))}`}>
+                              <span aria-hidden>{nvStatusEmoji(nvStatusKey(s))}</span>
+                              {nvStatusLabel(nvStatusKey(s))}
+                            </span>
+                            {formatElectronicIssueDocument(s) && (
+                              <p className="mt-1 font-mono text-[10px] sm:text-xs font-semibold text-rest-700 leading-tight">
+                                {formatElectronicIssueDocument(s)}
+                              </p>
+                            )}
+                          </td>
+                        )}
                         {tab === 'facturacion' && (
                           <>
                             <td className="hidden lg:table-cell px-2 sm:px-4 py-1.5 sm:py-3">
@@ -1600,7 +1622,7 @@ export default function VentasPage() {
                                 >
                                   <Eye size={14} />
                                 </button>
-                                {renderLocalPdfActions(s.id, 'nota')}
+                                {renderLocalPdfActions(pdfTargetSaleId(s), 'nota')}
                                 {s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
                                   <button
                                     type="button"
@@ -1631,32 +1653,22 @@ export default function VentasPage() {
                   {summaryDocCount > 0 && (
                     <tfoot className="sticky bottom-0 z-[5] bg-stone-100 border-t-2 border-stone-300 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)]">
                       <tr>
-                        <td colSpan={3} className="px-2 sm:px-4 py-1.5 sm:py-2.5 text-right text-[10px] sm:text-xs font-semibold text-stone-600">
-                          <span className="sm:hidden">
-                            Total ({summaryDocCount})
-                          </span>
-                          <span className="hidden sm:inline">
+                        <td colSpan={20} className="px-2 sm:px-4 py-2.5 sm:py-3 text-center">
+                          <p className="text-[10px] sm:text-xs font-semibold text-stone-600">
                             Total del período ({summaryDocCount} comprobante{summaryDocCount === 1 ? '' : 's'})
-                          </span>
+                          </p>
+                          <p className="mt-0.5 text-base sm:text-lg font-bold text-rest-700 tabular-nums">
+                            {formatSoles(listSummary.sum_active)}
+                          </p>
                           {listSummary.count_cancelled > 0 && (
-                            <span className="block font-normal text-stone-500 mt-0.5">
-                              <span className="sm:hidden">
-                                {formatSoles(listSummary.sum_active)}
-                                {listSummary.sum_cancelled > 0 && <> · {formatSoles(listSummary.sum_cancelled)} anul.</>}
-                              </span>
-                              <span className="hidden sm:inline">
-                                Activas: {formatSoles(listSummary.sum_active)}
-                                {listSummary.sum_cancelled > 0 && (
-                                  <> · Anuladas: {formatSoles(listSummary.sum_cancelled)}</>
-                                )}
-                              </span>
-                            </span>
+                            <p className="mt-1 text-[10px] sm:text-xs font-normal text-stone-500">
+                              Activas: {formatSoles(listSummary.sum_active)}
+                              {listSummary.sum_cancelled > 0 && (
+                                <> · Anuladas: {formatSoles(listSummary.sum_cancelled)}</>
+                              )}
+                            </p>
                           )}
                         </td>
-                        <td className="px-2 sm:px-4 py-1.5 sm:py-2.5 font-bold text-rest-700 text-sm sm:text-base tabular-nums whitespace-nowrap">
-                          {formatSoles(listSummary.sum_active)}
-                        </td>
-                        <td colSpan={tableTrailingColSpan} />
                       </tr>
                     </tfoot>
                   )}

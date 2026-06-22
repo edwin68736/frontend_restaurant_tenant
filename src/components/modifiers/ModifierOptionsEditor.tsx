@@ -27,8 +27,8 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-col flex-1 min-h-0 space-y-2">
+      <div className="flex items-center justify-between gap-2 shrink-0">
         <label className="text-sm font-medium text-stone-700">Opciones de extra *</label>
         <button
           type="button"
@@ -38,11 +38,11 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
           <Plus size={14} /> Agregar
         </button>
       </div>
-      <p className="text-[11px] text-stone-500 leading-relaxed">
+      <p className="text-[11px] text-stone-500 leading-relaxed shrink-0">
         Cada fila es un extra reutilizable. El precio se suma al producto en mesa/POS.
       </p>
 
-      <div className="space-y-2 max-h-[min(40vh,320px)] overflow-y-auto pr-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-1 min-h-[120px] max-h-[min(55dvh,520px)]">
         {rows.map((row, index) => (
           <div
             key={index}
@@ -96,7 +96,7 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
       <button
         type="button"
         onClick={addRow}
-        className="w-full min-h-[44px] flex items-center justify-center gap-2 border-2 border-dashed border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:border-rest-400 hover:text-rest-700 hover:bg-rest-50/50"
+        className="w-full min-h-[44px] flex items-center justify-center gap-2 border-2 border-dashed border-stone-200 rounded-xl text-sm font-medium text-stone-600 hover:border-rest-400 hover:text-rest-700 hover:bg-rest-50/50 shrink-0"
       >
         <Plus size={18} /> Agregar otra opción
       </button>
