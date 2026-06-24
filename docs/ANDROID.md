@@ -17,7 +17,7 @@ Package ID: `com.tukifac.tukichef` (igual que Tauri).
 - Node.js 20+
 - Android Studio (Ladybug o superior)
 - JDK 17
-- Android SDK 35, **minSdk 30** (Android 11+)
+- Android SDK 35, **minSdk 29** (Android 10+)
 
 ## Configuración API
 
