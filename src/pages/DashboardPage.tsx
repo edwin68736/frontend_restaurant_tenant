@@ -20,10 +20,19 @@ import {
 } from '@/services/restaurantDashboard.service'
 import { getTodayPeru } from '@/utils/datesPeru'
 import { reportInputClass } from '@/components/reports/ReportFilterCard'
+import { useAuth } from '@/contexts/AuthContext'
 
 const today = () => getTodayPeru()
 
+function isDashboardBranchView(employeeType: string, permissions: string[]): boolean {
+  if (permissions.includes('s.m')) return true
+  const et = employeeType.toLowerCase()
+  return et === 'admin' || et === 'supervisor'
+}
+
 export default function DashboardPage() {
+  const { employeeType, restaurantPermissions } = useAuth()
+  const branchView = isDashboardBranchView(employeeType, restaurantPermissions)
   const [startDate, setStartDate] = useState(today())
   const [endDate, setEndDate] = useState(today())
   const [appliedRange, setAppliedRange] = useState({ start: today(), end: today() })
@@ -70,7 +79,11 @@ export default function DashboardPage() {
   return (
     <PageShell
       title="Dashboard"
-      subtitle="Métricas operativas y ventas del restaurante"
+      subtitle={
+        data?.scoped_to_user || (!branchView && !data)
+          ? 'Tus ventas y pedidos en el periodo seleccionado'
+          : 'Métricas operativas y ventas de la sucursal'
+      }
       actions={
         <button
           type="button"
@@ -120,6 +133,11 @@ export default function DashboardPage() {
           </button>
           <p className="text-xs text-stone-500 ml-auto">
             Periodo activo: {appliedRange.start} → {appliedRange.end}
+            {(data?.scoped_to_user || !branchView) && (
+              <span className="block sm:inline sm:ml-2 text-rest-700 font-medium">
+                · Solo tus operaciones
+              </span>
+            )}
           </p>
         </div>
 

@@ -10,11 +10,14 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ArrowUpDown,
+  ChevronUp,
   X,
   RefreshCw,
   SlidersHorizontal,
   FileSpreadsheet,
   Layers,
+  ChefHat,
   ImagePlus,
   ScanBarcode,
 } from 'lucide-react'
@@ -30,20 +33,28 @@ import {
   type Product,
   type ModifierGroup,
   type Category,
+  type PreparationArea,
   type CreateProductInput,
   type BulkDeleteRestaurantResult,
+  type ProductSortField,
+  type ProductSortDir,
 } from '@/services/products.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
+import { ProductCategoriesPanel } from '@/components/products/ProductCategoriesPanel'
+import { ProductPreparationAreasPanel } from '@/components/products/ProductPreparationAreasPanel'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { isCapacitorNative } from '@/lib/app'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useInventoryAccess } from '@/hooks/useInventoryAccess'
+import { sortCategories } from '@/utils/sortCategories'
+import { sortPreparationAreas } from '@/utils/sortPreparationAreas'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+type ProductosTab = 'products' | 'categories' | 'prep_areas'
 
 /** 2 columnas desde sm (tablets / celular grande); 1 columna solo en pantallas muy estrechas. */
 const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-4'
@@ -53,14 +64,17 @@ const BTN_ACTION_EDIT =
 const BTN_ACTION_DELETE =
   'inline-flex items-center justify-center p-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 shrink-0'
 
-const PREPARATION_AREAS = [
-  { value: '', label: 'Sin área' },
-  { value: 'cocina', label: 'Cocina' },
-  { value: 'bar', label: 'Bar' },
-  { value: 'barra', label: 'Barra' },
-  { value: 'postres', label: 'Postres' },
-  { value: 'otro', label: 'Otro' },
-]
+function prepAreaDisplayName(areas: PreparationArea[], p: Product): string {
+  if (p.preparation_area_id) {
+    const byId = areas.find((a) => a.id === p.preparation_area_id)
+    if (byId) return byId.name
+  }
+  if (p.preparation_area) {
+    const bySlug = areas.find((a) => a.slug === p.preparation_area)
+    return bySlug?.name ?? p.preparation_area
+  }
+  return '—'
+}
 
 const IGV_AFFECTATION_OPTIONS = [
   { code: '10', label: '10 - Gravado IGV' },
@@ -72,6 +86,60 @@ const IGV_AFFECTATION_OPTIONS = [
 function isGravadoIgv(code: string): boolean {
   const c = String(code || '').trim()
   return !['20', '21', '30', '31', '32', '33', '34', '35', '36', '40'].includes(c)
+}
+
+const DEFAULT_PRODUCT_SORT: { sortBy: ProductSortField; sortDir: ProductSortDir } = {
+  sortBy: 'id',
+  sortDir: 'desc',
+}
+
+function defaultSortDirForField(field: ProductSortField): ProductSortDir {
+  if (field === 'price' || field === 'stock') return 'desc'
+  return 'asc'
+}
+
+function SortableTh({
+  label,
+  field,
+  sortBy,
+  sortDir,
+  onSort,
+  className,
+  align = 'left',
+}: {
+  label: string
+  field: ProductSortField
+  sortBy: ProductSortField
+  sortDir: ProductSortDir
+  onSort: (field: ProductSortField) => void
+  className?: string
+  align?: 'left' | 'right'
+}) {
+  const active = sortBy === field
+  return (
+    <th className={className}>
+      <button
+        type="button"
+        onClick={() => onSort(field)}
+        className={clsx(
+          'inline-flex items-center gap-0.5 max-w-full font-semibold hover:text-stone-900 transition-colors',
+          align === 'right' ? 'ml-auto flex-row-reverse' : 'text-left',
+          active ? 'text-stone-900' : 'text-stone-700',
+        )}
+      >
+        <span>{label}</span>
+        {active ? (
+          sortDir === 'asc' ? (
+            <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          )
+        ) : (
+          <ArrowUpDown className="w-3 h-3 shrink-0 opacity-35" aria-hidden />
+        )}
+      </button>
+    </th>
+  )
 }
 
 function generateEan13(): string {
@@ -97,7 +165,7 @@ const emptyForm = (): CreateProductInput => ({
   modifier_group_ids: [],
   presentations: [],
   category_id: null,
-  preparation_area: '',
+  preparation_area_id: null,
   manage_stock: false,
   initial_stock: undefined,
   igv_affectation_type: '10',
@@ -112,15 +180,18 @@ export default function ProductosPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('')
-  const [areaFilter, setAreaFilter] = useState<string>('')
+  const [areaFilter, setAreaFilter] = useState<number | ''>('')
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
+  const [sortBy, setSortBy] = useState<ProductSortField>(DEFAULT_PRODUCT_SORT.sortBy)
+  const [sortDir, setSortDir] = useState<ProductSortDir>(DEFAULT_PRODUCT_SORT.sortDir)
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<CreateProductInput>(emptyForm())
   const [saving, setSaving] = useState(false)
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [prepAreas, setPrepAreas] = useState<PreparationArea[]>([])
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [imageBustByProductId, setImageBustByProductId] = useState<Record<number, number>>({})
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -140,6 +211,7 @@ export default function ProductosPage() {
   const [productBarcodeScannerOpen, setProductBarcodeScannerOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<ProductosTab>('products')
   const useCameraBarcodeScanner = isCapacitorNative()
 
   const revokeImagePreview = useCallback(() => {
@@ -176,7 +248,17 @@ export default function ProductosPage() {
   }
 
   const catId = categoryFilter === '' ? undefined : categoryFilter
-  const area = areaFilter === '' ? undefined : areaFilter
+  const areaId = areaFilter === '' ? undefined : areaFilter
+
+  const handleSort = (field: ProductSortField) => {
+    setPage(1)
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortBy(field)
+    setSortDir(defaultSortDirForField(field))
+  }
 
   const {
     inputValue: searchInput,
@@ -186,7 +268,7 @@ export default function ProductosPage() {
     refresh,
   } = useDebouncedApiSearch<{ data: Product[]; total: number }>({
     cacheScope: 'restaurant-productos',
-    deps: [page, perPage, categoryFilter, areaFilter, activeBranchId, showInactiveOnly],
+    deps: [page, perPage, categoryFilter, areaFilter, activeBranchId, showInactiveOnly, sortBy, sortDir],
     enabled: activeBranchId > 0,
     fetcher: (query, signal) =>
       productsService.list(
@@ -195,11 +277,11 @@ export default function ProductosPage() {
         page,
         perPage,
         catId,
-        area,
+        areaId,
         activeBranchId,
         !showInactiveOnly,
         showInactiveOnly,
-        { signal },
+        { signal, sortBy, sortDir },
       ),
     onSuccess: ({ data, total: t }) => {
       setProducts(data)
@@ -230,12 +312,25 @@ export default function ProductosPage() {
   }
 
   const loadCategories = () => {
-    productsService.listCategories().then(setCategories).catch(() => [])
+    productsService
+      .listCategories()
+      .then((rows) => setCategories(sortCategories(rows)))
+      .catch(() => setCategories([]))
+  }
+
+  const loadPrepAreas = () => {
+    productsService
+      .listPreparationAreas()
+      .then((rows) => setPrepAreas(sortPreparationAreas(rows)))
+      .catch(() => setPrepAreas([]))
   }
 
   useEffect(() => () => revokeImagePreview(), [revokeImagePreview])
 
-  useEffect(() => { loadCategories() }, [])
+  useEffect(() => {
+    loadCategories()
+    loadPrepAreas()
+  }, [])
 
   useOnBranchChange(() => {
     setPage(1)
@@ -243,6 +338,8 @@ export default function ProductosPage() {
     setAreaFilter('')
     setShowInactiveOnly(false)
     setSelectedIds(new Set())
+    setSortBy(DEFAULT_PRODUCT_SORT.sortBy)
+    setSortDir(DEFAULT_PRODUCT_SORT.sortDir)
     refresh()
   })
 
@@ -298,7 +395,10 @@ export default function ProductosPage() {
           })),
           modifier_group_ids: ids,
           category_id: data.category_id ?? null,
-          preparation_area: (data as Product & { preparation_area?: string }).preparation_area ?? '',
+          preparation_area_id:
+            data.preparation_area_id ??
+            prepAreas.find((a) => a.slug === data.preparation_area)?.id ??
+            null,
           manage_stock: data.manage_stock ?? false,
           initial_stock: undefined,
           igv_affectation_type: data.igv_affectation_type ?? '10',
@@ -337,7 +437,7 @@ export default function ProductosPage() {
     setAddingCategory(true)
     try {
       const cat = await productsService.createCategory(newCategoryName.trim())
-      setCategories((c) => [...c, cat])
+      setCategories((c) => sortCategories([...c, cat]))
       setForm((f) => ({ ...f, category_id: cat.id }))
       setNewCategoryName('')
       setCategoryModalOpen(false)
@@ -392,7 +492,7 @@ export default function ProductosPage() {
           has_variants: form.has_variants && presentationsPayload.length > 0,
           presentations: presentationsPayload,
           category_id: form.category_id ?? null,
-          preparation_area: form.preparation_area ?? '',
+          preparation_area_id: form.preparation_area_id ?? null,
           manage_stock: form.manage_stock ?? false,
           initial_stock:
             form.manage_stock && form.initial_stock != null && form.initial_stock > 0
@@ -434,7 +534,7 @@ export default function ProductosPage() {
           modifier_group_ids: form.modifier_group_ids,
           image_url: form.image_url ?? '',
           category_id: form.category_id ?? null,
-          preparation_area: form.preparation_area ?? '',
+          preparation_area_id: form.preparation_area_id ?? null,
           manage_stock: form.manage_stock ?? false,
           is_restaurant: true,
           igv_affectation_type: form.igv_affectation_type ?? '10',
@@ -547,47 +647,87 @@ export default function ProductosPage() {
   return (
     <PageShell
       className="flex-1 min-h-0"
-      title="Productos"
+      title={
+        activeTab === 'categories'
+          ? 'Categorías'
+          : activeTab === 'prep_areas'
+            ? 'Áreas de preparación'
+            : 'Productos'
+      }
       subtitle={
-        activeBranch
-          ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
-          : 'Seleccione una sucursal activa para administrar el catálogo.'
+        activeTab === 'categories'
+          ? 'Gestiona el orden y las categorías del catálogo (compartidas entre sucursales).'
+          : activeTab === 'prep_areas'
+            ? 'Define áreas para comandas, cocina e impresoras por estación.'
+            : activeBranch
+              ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
+              : 'Seleccione una sucursal activa para administrar el catálogo.'
       }
       subtitleClassName="hidden sm:block"
       actions={
-        <div className="grid grid-cols-2 gap-1.5 w-full sm:flex sm:flex-wrap sm:gap-2 lg:w-auto">
+        activeTab === 'categories' || activeTab === 'prep_areas' ? (
           <button
             type="button"
-            onClick={() => setImportModalOpen(true)}
-            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
+            onClick={() => setActiveTab('products')}
+            className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50"
           >
-            <FileSpreadsheet size={15} className="shrink-0" />
-            <span className="truncate">Importar</span>
+            <ChevronLeft size={15} className="shrink-0" />
+            <span>Productos</span>
           </button>
-          {canAccess('modificadores') && (
+        ) : (
+          <div className="grid grid-cols-2 gap-1.5 w-full sm:flex sm:flex-wrap sm:gap-2 lg:w-auto">
             <button
               type="button"
-              onClick={() => navigate('/modificadores')}
+              onClick={() => setImportModalOpen(true)}
               className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
             >
-              <SlidersHorizontal size={15} className="shrink-0" />
-              <span className="truncate">Modificadores</span>
+              <FileSpreadsheet size={15} className="shrink-0" />
+              <span className="truncate">Importar</span>
             </button>
-          )}
-          <button
-            type="button"
-            onClick={openCreate}
-            className={clsx(
-              'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-rest-600 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium hover:bg-rest-700 shadow-sm min-w-0',
-              canAccess('modificadores') ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1',
+            {canAccess('modificadores') && (
+              <button
+                type="button"
+                onClick={() => navigate('/modificadores')}
+                className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
+              >
+                <SlidersHorizontal size={15} className="shrink-0" />
+                <span className="truncate">Modificadores</span>
+              </button>
             )}
-          >
-            <Plus size={15} className="shrink-0" />
-            <span className="truncate">Agregar producto</span>
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('categories')}
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
+            >
+              <Layers size={15} className="shrink-0" />
+              <span className="truncate">Categorías</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('prep_areas')}
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
+            >
+              <ChefHat size={15} className="shrink-0" />
+              <span className="truncate">Áreas</span>
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-rest-600 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium hover:bg-rest-700 shadow-sm min-w-0 col-span-2 sm:col-span-1"
+            >
+              <Plus size={15} className="shrink-0" />
+              <span className="truncate">Agregar producto</span>
+            </button>
+          </div>
+        )
       }
     >
+        {activeTab === 'categories' ? (
+          <ProductCategoriesPanel onCategoriesChange={loadCategories} />
+        ) : activeTab === 'prep_areas' ? (
+          <ProductPreparationAreasPanel onAreasChange={loadPrepAreas} />
+        ) : (
+        <>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 shrink-0 mb-2 sm:mb-4 lg:mb-5">
           <SearchInput
             value={searchInput}
@@ -621,15 +761,15 @@ export default function ProductosPage() {
               <SearchableSelect
                 value={areaFilter}
                 onChange={(v) => {
-                  setAreaFilter(String(v ?? ''))
+                  setAreaFilter(v == null || String(v) === '' ? '' : Number(v))
                   setPage(1)
                 }}
                 options={[
                   { value: '', label: 'Todas las áreas' },
-                  ...PREPARATION_AREAS.filter((a) => a.value).map((a) => ({ value: a.value, label: a.label })),
+                  ...prepAreas.map((a) => ({ value: a.id, label: a.name })),
                 ]}
                 placeholder="Áreas"
-                searchable={PREPARATION_AREAS.length > 8}
+                searchable={prepAreas.length > 8}
                 className="w-full min-w-0 border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white text-left flex items-center justify-between gap-1"
               />
             </div>
@@ -712,13 +852,50 @@ export default function ProductosPage() {
                     />
                   </th>
                   <th className="text-left px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-stone-700 w-11 sm:w-14">Imagen</th>
-                  <th className="hidden sm:table-cell text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Código</th>
-                  <th className="text-left px-2 sm:px-3 py-2 text-xs font-semibold text-stone-700">Nombre</th>
+                  <SortableTh
+                    label="Código"
+                    field="code"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    className="hidden sm:table-cell text-left px-2 sm:px-3 py-2 text-xs"
+                  />
+                  <SortableTh
+                    label="Nombre"
+                    field="name"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    className="text-left px-2 sm:px-3 py-2 text-xs"
+                  />
                   <th className="hidden md:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700 min-w-[8rem]">Descripción</th>
-                  <th className="hidden md:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Categoría</th>
+                  <SortableTh
+                    label="Categoría"
+                    field="category"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    className="hidden md:table-cell text-left px-3 py-2 text-xs"
+                  />
                   <th className="hidden lg:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Área</th>
-                  <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Precio</th>
-                  <th className="hidden lg:table-cell text-right px-3 py-2 text-xs font-semibold text-stone-700">Stock</th>
+                  <SortableTh
+                    label="Precio"
+                    field="price"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    align="right"
+                    className="text-right px-3 py-2 text-xs"
+                  />
+                  <SortableTh
+                    label="Stock"
+                    field="stock"
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSort={handleSort}
+                    align="right"
+                    className="hidden lg:table-cell text-right px-3 py-2 text-xs"
+                  />
                   <th className="hidden lg:table-cell text-left px-3 py-2 text-xs font-semibold text-stone-700">Modificadores</th>
                   <th className="text-right px-3 py-2 text-xs font-semibold text-stone-700">Acciones</th>
                 </tr>
@@ -782,9 +959,7 @@ export default function ProductosPage() {
                     </td>
                     <td className="hidden md:table-cell px-3 py-2 text-stone-600">{p.category_id ? (categoryMap[p.category_id] ?? '—') : '—'}</td>
                     <td className="hidden lg:table-cell px-3 py-2 text-stone-600">
-                      {p.preparation_area
-                        ? PREPARATION_AREAS.find((a) => a.value === p.preparation_area)?.label ?? p.preparation_area
-                        : '—'}
+                      {prepAreaDisplayName(prepAreas, p)}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold text-rest-700 whitespace-nowrap">S/ {Number(p.sale_price).toFixed(2)}</td>
                     <td className="hidden lg:table-cell px-3 py-2 text-right">
@@ -942,6 +1117,8 @@ export default function ProductosPage() {
           </div>
         )}
       </div>
+        </>
+        )}
 
       {/* Modal crear / editar */}
       <PortalModal open={!!modal} onClose={closeProductModal} className="max-w-3xl">
@@ -1091,10 +1268,16 @@ export default function ProductosPage() {
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">Área de preparación</label>
                   <SearchableSelect
-                    value={form.preparation_area ?? ''}
-                    onChange={(v) => setForm((f) => ({ ...f, preparation_area: String(v ?? '') || null }))}
-                    options={PREPARATION_AREAS.map((a) => ({ value: a.value, label: a.label }))}
-                    searchable={PREPARATION_AREAS.length > 8}
+                    value={form.preparation_area_id == null ? '' : form.preparation_area_id}
+                    onChange={(v) => {
+                      const vv = v == null || String(v) === '' ? null : Number(v)
+                      setForm((f) => ({ ...f, preparation_area_id: vv }))
+                    }}
+                    options={[
+                      { value: '', label: 'Sin área (usa impresora por defecto)' },
+                      ...prepAreas.map((a) => ({ value: a.id, label: a.name })),
+                    ]}
+                    searchable={prepAreas.length > 8}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
                   />
                 </div>

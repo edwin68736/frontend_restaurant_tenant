@@ -12,6 +12,7 @@ import { restaurantService, type SessionDetail, type Comanda } from '@/services/
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
+import { sortCategories } from '@/utils/sortCategories'
 import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
 import { resolveTaxRatePercent } from '@/constants/tax'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -183,7 +184,7 @@ export default function MesaPage() {
 
   const loadMesaMeta = useCallback(() => {
     if (!activeBranchId) return
-    productsService.listCategories().then(setCategories).catch(() => [])
+    productsService.listCategories().then((rows) => setCategories(sortCategories(rows))).catch(() => [])
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
     contactsService
       .list('', 'customer')

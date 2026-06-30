@@ -6,11 +6,11 @@ export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
 }
 
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 280 : 360
+  return paperWidthMm === 58 ? 320 : 420
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 72 : 96
+  return paperWidthMm === 58 ? 96 : 120
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {

@@ -14,6 +14,7 @@ export interface Product {
   category_id?: number | null
   category_name?: string
   is_restaurant: boolean
+  preparation_area_id?: number | null
   preparation_area?: string | null
   has_modifiers?: boolean
   has_variants?: boolean
@@ -50,7 +51,24 @@ export interface Category {
   name: string
   description?: string
   parent_id?: number | null
+  sort_order?: number
   active?: boolean
+}
+
+export interface CategoryWithCount extends Category {
+  product_count?: number
+}
+
+export interface PreparationArea {
+  id: number
+  name: string
+  slug: string
+  sort_order?: number
+  active?: boolean
+}
+
+export interface PreparationAreaWithCount extends PreparationArea {
+  product_count?: number
 }
 
 /** Fila enriquecida cuando GET /api/products se llama con report=1 */
@@ -116,11 +134,15 @@ export interface CreateProductInput {
   has_modifiers?: boolean
   has_variants?: boolean
   is_restaurant?: boolean
+  preparation_area_id?: number | null
   preparation_area?: string | null
   modifier_group_ids?: number[]
   presentations?: ProductPresentation[]
   active?: boolean
 }
+
+export type ProductSortField = 'id' | 'code' | 'name' | 'category' | 'price' | 'stock'
+export type ProductSortDir = 'asc' | 'desc'
 
 /** Lista con paginación. restaurant_only=true y active_only=true por defecto. category_id y preparation_area opcionales. */
 export const productsService = {
@@ -130,11 +152,11 @@ export const productsService = {
     page = 1,
     perPage = 10,
     categoryId?: number | null,
-    preparationArea?: string | null,
+    preparationArea?: number | string | null,
     branchId?: number | null,
     activeOnly = true,
     inactiveOnly = false,
-    options?: ApiRequestOptions,
+    options?: ApiRequestOptions & { sortBy?: ProductSortField; sortDir?: ProductSortDir },
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -146,8 +168,15 @@ export const productsService = {
           page,
           per_page: perPage,
           category_id: categoryId ?? undefined,
-          preparation_area: preparationArea ?? undefined,
+          preparation_area_id:
+            typeof preparationArea === 'number' ? preparationArea : undefined,
+          preparation_area:
+            typeof preparationArea === 'string' && preparationArea.trim()
+              ? preparationArea.trim()
+              : undefined,
           branch_id: branchId && branchId > 0 ? branchId : undefined,
+          sort_by: options?.sortBy,
+          sort_dir: options?.sortDir,
         },
         signal: options?.signal,
       })
@@ -219,6 +248,7 @@ export const productsService = {
       purchase_price:
         data.purchase_price != null && data.purchase_price > 0 ? data.purchase_price : 0,
       category_id: data.category_id ?? null,
+      preparation_area_id: data.preparation_area_id ?? null,
       preparation_area: data.preparation_area ?? '',
       igv_affectation_type: data.igv_affectation_type ?? '10',
       price_includes_igv: data.price_includes_igv ?? true,
@@ -288,8 +318,52 @@ export const productsService = {
   listCategories: () =>
     api.get<{ data: Category[] }>('/api/categories').then((r) => r.data.data ?? []),
 
-  createCategory: (name: string, description?: string) =>
-    api.post<{ data: Category }>('/api/categories', { name, description: description ?? '' }).then((r) => r.data.data!),
+  listCategoriesWithCounts: () =>
+    api
+      .get<{ data: CategoryWithCount[] }>('/api/categories', { params: { with_counts: 'true' } })
+      .then((r) => r.data.data ?? []),
+
+  createCategory: (name: string, description?: string, sortOrder?: number) =>
+    api
+      .post<{ data: Category }>('/api/categories', {
+        name,
+        description: description ?? '',
+        sort_order: sortOrder,
+      })
+      .then((r) => r.data.data!),
+
+  updateCategory: (
+    id: number,
+    data: { name: string; description?: string; sort_order: number },
+  ) =>
+    api.put<{ data: Category }>(`/api/categories/${id}`, data).then((r) => r.data.data!),
+
+  deleteCategory: (id: number) => api.delete(`/api/categories/${id}`).then((r) => r.data),
+
+  listPreparationAreas: () =>
+    api.get<{ data: PreparationArea[] }>('/api/preparation-areas').then((r) => r.data.data ?? []),
+
+  listPreparationAreasWithCounts: () =>
+    api
+      .get<{ data: PreparationAreaWithCount[] }>('/api/preparation-areas', {
+        params: { with_counts: 'true' },
+      })
+      .then((r) => r.data.data ?? []),
+
+  createPreparationArea: (name: string, slug?: string, sortOrder?: number) =>
+    api
+      .post<{ data: PreparationArea }>('/api/preparation-areas', {
+        name,
+        slug: slug ?? '',
+        sort_order: sortOrder,
+      })
+      .then((r) => r.data.data!),
+
+  updatePreparationArea: (id: number, data: { name: string; sort_order: number }) =>
+    api.put<{ data: PreparationArea }>(`/api/preparation-areas/${id}`, data).then((r) => r.data.data!),
+
+  deletePreparationArea: (id: number) =>
+    api.delete(`/api/preparation-areas/${id}`).then((r) => r.data),
 
   /** Stock total por producto (suma sucursales). Requiere módulo inventario. */
   getStockSummary: (productIds: number[]) =>

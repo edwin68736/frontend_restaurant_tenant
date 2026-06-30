@@ -66,6 +66,8 @@ export interface RestaurantDashboardData {
   sales_last_30_days: DashboardDayRow[]
   sales_by_hour: DashboardHourRow[]
   tables_summary: DashboardTablesSummary
+  /** true cuando el backend filtra métricas al cajero autenticado */
+  scoped_to_user?: boolean
 }
 
 export type DashboardQuery = {

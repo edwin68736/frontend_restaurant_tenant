@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChefHat, ChevronDown, ChevronUp, Printer } from 'lucide-react'
 import { clsx } from 'clsx'
 import {
-  PREPARATION_AREAS_WITH_VALUE,
   preparationAreaLabel,
   normalizePreparationAreaKey,
 } from '@/constants/preparationAreas'
@@ -56,6 +55,28 @@ export function ComandasPrinterSettings({
   const [areasSectionOpen, setAreasSectionOpen] = useState(false)
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>({})
   const [productAreaKeys, setProductAreaKeys] = useState<string[]>([])
+  const [catalogAreaKeys, setCatalogAreaKeys] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    productsService
+      .listPreparationAreas()
+      .then((areas) => {
+        if (cancelled) return
+        setCatalogAreaKeys(
+          (areas ?? [])
+            .map((a) => normalizePreparationAreaKey(a.slug))
+            .filter(Boolean)
+            .sort(),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogAreaKeys([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -80,13 +101,11 @@ export function ComandasPrinterSettings({
 
   const areaKeys = useMemo(() => {
     const keys = new Set<string>()
-    for (const a of PREPARATION_AREAS_WITH_VALUE) {
-      if (a.value) keys.add(a.value)
-    }
+    for (const k of catalogAreaKeys) keys.add(k)
     for (const k of productAreaKeys) keys.add(k)
     for (const k of Object.keys(comandasByArea)) keys.add(k)
     return [...keys].sort()
-  }, [productAreaKeys, comandasByArea])
+  }, [catalogAreaKeys, productAreaKeys, comandasByArea])
 
   const configuredAreasCount = useMemo(
     () => areaKeys.filter((k) => Boolean(comandasByArea[k])).length,

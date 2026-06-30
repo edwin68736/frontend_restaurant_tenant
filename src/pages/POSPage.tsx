@@ -24,6 +24,7 @@ import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
+import { sortCategories } from '@/utils/sortCategories'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
 import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
@@ -319,7 +320,7 @@ export default function POSPage() {
 
   const loadPosMeta = useCallback(() => {
     if (!activeBranchId) return
-    productsService.listCategories().then(setCategories)
+    productsService.listCategories().then((rows) => setCategories(sortCategories(rows)))
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
     contactsService
       .list('', 'customer')
@@ -439,9 +440,7 @@ export default function POSPage() {
     if (variosId) setContactId(variosId)
   }, [checkoutSeries, contacts])
 
-  const categoriesWithProducts = useMemo(() => {
-    return categories
-  }, [categories])
+  const categoriesWithProducts = useMemo(() => sortCategories(categories), [categories])
 
   const preparationAreas = useMemo(() => {
     const areas = new Set(products.map((p) => p.preparation_area || '').filter(Boolean))
