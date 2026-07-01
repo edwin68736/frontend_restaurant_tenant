@@ -299,7 +299,10 @@ export function ticketPaySunatLayout(paperWidthMm: 58 | 80): {
 }
 
 function wrapCanvasLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
-  const t = String(text ?? '').trim()
+  const t = String(text ?? '')
+    .trim()
+    .replace(/S\/\s+/g, 'S/')
+    .replace(/\$\s+/g, '$')
   if (!t) return ['']
   if (ctx.measureText(t).width <= maxWidth) return [t]
   const words = t.split(/\s+/)

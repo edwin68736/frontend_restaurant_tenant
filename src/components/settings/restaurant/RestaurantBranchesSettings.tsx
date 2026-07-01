@@ -3,6 +3,7 @@ import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SAFE } from '@/utils/safeAreaClasses'
 
 const empty = (): Partial<BranchRow> => ({ name: '', address: '', phone: '', fiscal_domicile_code: '', is_main: false })
 
@@ -170,7 +171,7 @@ export function RestaurantBranchesSettings() {
       </div>
 
       {modalOpen && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3 shadow-xl">
             <h3 className="font-bold text-stone-800">{editing ? 'Editar sucursal' : 'Nueva sucursal'}</h3>
             {(

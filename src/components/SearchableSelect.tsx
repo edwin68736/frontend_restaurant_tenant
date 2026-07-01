@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, Search, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { REST_DROPDOWN_Z_INDEX } from '@/utils/restaurantUiLayers'
+import { readSafeInsets } from '@/utils/safeAreaInsets'
 
 export type SearchableSelectOption = {
   value: string | number
@@ -64,23 +65,45 @@ export function SearchableSelect({
     const el = rootRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP
-    const spaceAbove = rect.top - MENU_GAP
-    const openUp = spaceBelow < 180 && spaceAbove > spaceBelow
+    const { top: safeTop, bottom: safeBottom, left: safeLeft, right: safeRight } = readSafeInsets()
+    const viewportH = window.visualViewport?.height ?? window.innerHeight
+
+    const rowHeight = 42
+    const listHeight = Math.max(showSearch ? 80 : rowHeight * 2, filtered.length * rowHeight + 8)
+    const naturalHeight = (showSearch ? 52 : 0) + listHeight
+
+    const spaceBelow = viewportH - rect.bottom - MENU_GAP - safeBottom
+    const spaceAbove = rect.top - MENU_GAP - safeTop
+    const openUp = spaceBelow < naturalHeight && spaceAbove > spaceBelow
     const maxHeight = Math.max(
       MENU_MIN_HEIGHT,
       Math.min(MENU_MAX_HEIGHT, openUp ? spaceAbove - 12 : spaceBelow - 12),
     )
+    const menuHeight = Math.min(naturalHeight, maxHeight)
 
-    const top = openUp ? Math.max(MENU_GAP, rect.top - MENU_GAP - maxHeight) : rect.bottom + MENU_GAP
+    const top = openUp
+      ? Math.max(MENU_GAP + safeTop, rect.top - MENU_GAP - menuHeight)
+      : rect.bottom + MENU_GAP
+
+    const edge = 8
+    let width = Math.max(rect.width, showSearch ? 200 : rect.width)
+    let left = rect.left
+    const maxRight = window.innerWidth - safeRight - edge
+    if (left + width > maxRight) {
+      left = Math.max(safeLeft + edge, maxRight - width)
+    }
+    if (left < safeLeft + edge) {
+      left = safeLeft + edge
+      width = Math.min(width, maxRight - left)
+    }
 
     setMenuPos({
       top,
-      left: rect.left,
-      width: Math.max(rect.width, 200),
+      left,
+      width,
       maxHeight,
     })
-  }, [])
+  }, [filtered.length, showSearch])
 
   useLayoutEffect(() => {
     if (!open) {
@@ -99,9 +122,13 @@ export function SearchableSelect({
     }
     window.addEventListener('resize', onScrollOrResize)
     window.addEventListener('scroll', onScrollOrResize, true)
+    window.visualViewport?.addEventListener('resize', onScrollOrResize)
+    window.visualViewport?.addEventListener('scroll', onScrollOrResize)
     return () => {
       window.removeEventListener('resize', onScrollOrResize)
       window.removeEventListener('scroll', onScrollOrResize, true)
+      window.visualViewport?.removeEventListener('resize', onScrollOrResize)
+      window.visualViewport?.removeEventListener('scroll', onScrollOrResize)
     }
   }, [open, updateMenuPosition])
 

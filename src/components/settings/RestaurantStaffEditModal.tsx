@@ -8,6 +8,7 @@ import {
 } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SAFE } from '@/utils/safeAreaClasses'
 import { StaffBranchMultiSelect } from './StaffBranchMultiSelect'
 
 type Props = {
@@ -70,7 +71,7 @@ export function RestaurantStaffEditModal({ row, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+    <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
       <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
         <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
           <div className="min-w-0">

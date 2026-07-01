@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { clsx } from 'clsx'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import {
   getProductImageUrl,
   productsService,
@@ -345,7 +347,7 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
           )}
         </div>
 
-        <div className="p-4 border-t border-stone-200 flex gap-2 shrink-0">
+        <div className={clsx('p-4 border-t border-stone-200 flex gap-2 shrink-0', MODAL_FOOTER_SAFE)}>
           <button
             type="button"
             onClick={onClose}

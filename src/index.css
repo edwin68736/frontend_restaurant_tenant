@@ -64,8 +64,8 @@ html.platform-capacitor body {
 
   /** Espacio bajo el contenido para no quedar detrás del menú inferior móvil (h-14 + safe area). */
   .pb-mobile-nav {
-    padding-bottom: calc(var(--app-bottom-nav-offset) + 0.5rem);
-    scroll-padding-bottom: calc(var(--app-bottom-nav-offset) + 0.5rem);
+    padding-bottom: var(--app-bottom-nav-offset);
+    scroll-padding-bottom: var(--app-bottom-nav-offset);
   }
 
   @media (min-width: 1024px) {
@@ -73,6 +73,186 @@ html.platform-capacitor body {
       padding-bottom: 0;
       scroll-padding-bottom: 0;
     }
+
+    /** Capacitor: en lg el bottom nav desaparece pero la barra del sistema sigue activa. */
+    html.platform-capacitor .pb-mobile-nav {
+      padding-bottom: var(--safe-bottom);
+      scroll-padding-bottom: var(--safe-bottom);
+    }
+  }
+
+  /**
+   * Shell autenticado: top safe siempre en Capacitor; en web/Tauri se quita en lg (desktop).
+   * Evita que landscape en tablet elimine pt-safe al cruzar el breakpoint lg.
+   */
+  .shell-safe-top {
+    padding-top: var(--safe-top);
+  }
+
+  /**
+   * Capacitor: franja superior (safe area) en verde marca (rest-600), resto stone-50.
+   */
+  .shell-safe-top-rest {
+    padding-top: var(--safe-top);
+    background: linear-gradient(
+      to bottom,
+      rgb(22 163 74) 0,
+      rgb(22 163 74) var(--safe-top),
+      rgb(250 250 249) var(--safe-top)
+    );
+  }
+
+  @media (min-width: 1024px) {
+    html:not(.platform-capacitor) .shell-safe-top {
+      padding-top: 0;
+    }
+  }
+
+  /**
+   * Overlays fixed (modales portaled): padding = max(gutter original, safe-area).
+   * Sustituye p-3 sm:p-4 md:p-6 en overlays sin cambiar el gutter en web/desktop.
+   */
+  .fixed-overlay-safe {
+    padding-top: max(0.75rem, var(--safe-top));
+    padding-bottom: max(0.75rem, var(--safe-bottom));
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+
+  @media (min-width: 640px) {
+    .fixed-overlay-safe {
+      padding-top: max(1rem, var(--safe-top));
+      padding-bottom: max(1rem, var(--safe-bottom));
+      padding-left: max(1rem, var(--safe-left));
+      padding-right: max(1rem, var(--safe-right));
+    }
+  }
+
+  @media (min-width: 768px) {
+    .fixed-overlay-safe {
+      padding-top: max(1.5rem, var(--safe-top));
+      padding-bottom: max(1.5rem, var(--safe-bottom));
+      padding-left: max(1.5rem, var(--safe-left));
+      padding-right: max(1.5rem, var(--safe-right));
+    }
+  }
+
+  /** Bottom sheets: safe area en todos los bordes (sin depender del breakpoint sm). */
+  .fixed-overlay-sheet {
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+
+  @media (min-width: 640px) {
+    .fixed-overlay-sheet {
+      padding-top: max(1rem, var(--safe-top));
+      padding-bottom: max(1rem, var(--safe-bottom));
+      padding-left: max(1rem, var(--safe-left));
+      padding-right: max(1rem, var(--safe-right));
+    }
+  }
+
+  /** Footer anclado al borde inferior de un panel modal/sheet */
+  .modal-footer-safe {
+    padding-bottom: max(0.75rem, var(--safe-bottom));
+  }
+
+  /** Drawer inferior (carrito móvil): conserva pb-3 / pb-4 + safe bottom */
+  .pb-drawer-bottom {
+    padding-bottom: max(0.75rem, var(--safe-bottom));
+  }
+
+  .pb-drawer-bottom-lg {
+    padding-bottom: max(1rem, var(--safe-bottom));
+  }
+
+  /** Posicionamiento fixed con gutter + safe area (auth, FAB, etc.) */
+  .top-safe-gutter {
+    top: max(0.75rem, var(--safe-top));
+  }
+
+  .left-safe-gutter {
+    left: max(0.75rem, var(--safe-left));
+  }
+
+  .right-safe-gutter {
+    right: max(1rem, var(--safe-right));
+  }
+
+  /** Wrapper inferior de drawer carrito (fixed): gutter horizontal + safe left/right */
+  .drawer-bottom-wrap-x {
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+
+  .drawer-bottom-wrap-x-lg {
+    padding-left: max(1rem, var(--safe-left));
+    padding-right: max(1rem, var(--safe-right));
+  }
+
+  .drawer-bottom-wrap-x-responsive {
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+
+  @media (min-width: 640px) {
+    .drawer-bottom-wrap-x-responsive {
+      padding-left: max(1rem, var(--safe-left));
+      padding-right: max(1rem, var(--safe-right));
+    }
+  }
+
+  /** Nav inferior fixed: respeta insets laterales (ignora padding del body). */
+  .fixed-bottom-nav-safe {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+
+  /** Drawer lateral móvil fixed: inset izquierdo con safe area */
+  .fixed-drawer-left-safe {
+    padding-left: var(--safe-left);
+  }
+
+  /** Drawer lateral derecho fixed: inset derecho con safe area */
+  .fixed-drawer-right-safe {
+    padding-right: var(--safe-right);
+  }
+
+  .auth-screen-padding-y {
+    padding-top: max(3rem, calc(var(--safe-top) + 2.5rem));
+    padding-bottom: max(1rem, var(--safe-bottom));
+  }
+
+  /** Altura máxima de paneles modales descontando safe areas */
+  .max-h-modal-panel {
+    max-height: min(92dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom)));
+  }
+
+  .max-h-sheet-panel {
+    max-height: min(96dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom)));
+  }
+
+  .max-h-panel-85 {
+    max-height: min(85dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom)));
+  }
+
+  .max-h-panel-80 {
+    max-height: min(80dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom)));
+  }
+
+  .max-h-checkout-panel {
+    max-height: min(720px, 92dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom)));
+  }
+
+  .max-h-cart-drawer-panel {
+    max-height: min(88dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 4.5rem));
+  }
+
+  /** FAB carrito móvil: sobre bottom nav + safe bottom */
+  .fab-cart-bottom {
+    bottom: calc(3.5rem + 0.625rem + var(--safe-bottom));
   }
 }
 

@@ -2,6 +2,15 @@ import type { ReactNode } from 'react'
 import { ShoppingCart, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
+import { useTabletMobileViewport } from '@/hooks/useTabletMobileViewport'
+import {
+  DRAWER_BOTTOM_SAFE,
+  DRAWER_BOTTOM_SAFE_LG,
+  DRAWER_BOTTOM_WRAP_X_LG,
+  DRAWER_BOTTOM_WRAP_X_RESP,
+  MAX_H_CART_DRAWER_PANEL,
+  MAX_H_SHEET_PANEL,
+} from '@/utils/safeAreaClasses'
 
 type Props = {
   open: boolean
@@ -15,7 +24,7 @@ type Props = {
   onClearCart?: () => void
 }
 
-/** Panel carrito móvil (POS / Mesa). En Android: más compacto, márgenes y rounded-xl. */
+/** Panel carrito móvil (POS / Mesa). Teléfono Android: compacto; tablet: panel más ancho y alto. */
 export function MobileCartDrawer({
   open,
   onClose,
@@ -26,9 +35,10 @@ export function MobileCartDrawer({
   pendingCartCount = 0,
   onClearCart,
 }: Props) {
-  if (!open) return null
+  const tablet = useTabletMobileViewport()
+  const androidPhone = isCapacitorAndroid() && !tablet
 
-  const android = isCapacitorAndroid()
+  if (!open) return null
 
   return (
     <div className="lg:hidden fixed inset-0 z-[115]">
@@ -36,21 +46,37 @@ export function MobileCartDrawer({
       <div
         className={clsx(
           'absolute inset-x-0 bottom-0 flex justify-center',
-          android ? 'px-4 pb-4' : 'p-3 sm:p-4',
+          androidPhone
+            ? clsx(DRAWER_BOTTOM_WRAP_X_LG, DRAWER_BOTTOM_SAFE_LG)
+            : tablet
+              ? clsx(DRAWER_BOTTOM_WRAP_X_LG, DRAWER_BOTTOM_SAFE_LG)
+              : clsx('pt-3 sm:pt-4', DRAWER_BOTTOM_WRAP_X_RESP, DRAWER_BOTTOM_SAFE, 'sm:pb-drawer-bottom-lg'),
         )}
       >
         <div
           className={clsx(
             'bg-white shadow-xl overflow-hidden flex flex-col w-full',
-            android ? 'max-w-[23rem] rounded-xl max-h-[88vh]' : 'rounded-2xl max-h-[85vh]',
+            androidPhone && clsx('max-w-[23rem] rounded-xl', MAX_H_CART_DRAWER_PANEL),
+            tablet && clsx('max-w-[min(94vw,40rem)] rounded-2xl', MAX_H_SHEET_PANEL),
+            !androidPhone && !tablet && clsx('rounded-2xl', MAX_H_CART_DRAWER_PANEL),
           )}
         >
-          <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2 shrink-0">
+          <div
+            className={clsx(
+              'border-b border-stone-200 flex items-center justify-between gap-2 shrink-0',
+              tablet ? 'p-5' : 'p-4',
+            )}
+          >
             <div className="flex items-center gap-2 min-w-0">
-              <ShoppingCart size={18} className="text-stone-700 shrink-0" />
-              <h3 className="font-bold text-stone-800 truncate">{title}</h3>
+              <ShoppingCart size={tablet ? 22 : 18} className="text-stone-700 shrink-0" />
+              <h3 className={clsx('font-bold text-stone-800 truncate', tablet && 'text-lg')}>{title}</h3>
               {quantity > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold tabular-nums">
+                <span
+                  className={clsx(
+                    'inline-flex items-center justify-center rounded-full bg-red-600 text-white font-bold tabular-nums',
+                    tablet ? 'min-w-[26px] h-6 px-2 text-xs' : 'min-w-[22px] h-5 px-1.5 text-[11px]',
+                  )}
+                >
                   {quantity > 99 ? '99+' : quantity}
                 </span>
               )}
@@ -60,7 +86,10 @@ export function MobileCartDrawer({
                 <button
                   type="button"
                   onClick={onClearCart}
-                  className="px-2 py-1 rounded-lg text-[11px] font-semibold text-red-700 border border-red-200 bg-red-50 hover:bg-red-100"
+                  className={clsx(
+                    'rounded-lg font-semibold text-red-700 border border-red-200 bg-red-50 hover:bg-red-100',
+                    tablet ? 'px-3 py-1.5 text-xs' : 'px-2 py-1 text-[11px]',
+                  )}
                 >
                   Vaciar
                 </button>
@@ -71,7 +100,7 @@ export function MobileCartDrawer({
                 className="p-2 rounded-xl hover:bg-stone-100 text-stone-600"
                 aria-label="Cerrar carrito"
               >
-                <X size={18} />
+                <X size={tablet ? 22 : 18} />
               </button>
             </div>
           </div>

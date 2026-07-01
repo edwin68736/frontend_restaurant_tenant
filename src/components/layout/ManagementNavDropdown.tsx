@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { NavItem } from '@/config/restaurantNav'
+import { readSafeInsets } from '@/utils/safeAreaInsets'
 
 type Props = {
   items: NavItem[]
@@ -23,8 +24,9 @@ export default function ManagementNavDropdown({ items, compact }: Props) {
     if (!el) return
     const rect = el.getBoundingClientRect()
     const menuWidth = 208
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8))
-    setMenuPos({ top: rect.bottom + 8, left })
+    const { left: safeLeft, right: safeRight, top: safeTop } = readSafeInsets()
+    const left = Math.max(safeLeft + 8, Math.min(rect.left, window.innerWidth - menuWidth - safeRight - 8))
+    setMenuPos({ top: Math.max(rect.bottom + 8, safeTop + 8), left })
   }
 
   useLayoutEffect(() => {

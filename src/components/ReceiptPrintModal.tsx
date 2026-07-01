@@ -5,6 +5,7 @@ import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { MAX_H_CHECKOUT_PANEL, MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import { formatMoney } from '@/utils/format'
 import { receiptChangeAmount } from '@/utils/receiptChange'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -214,9 +215,9 @@ export function ReceiptPrintModal({
       open={open}
       onClose={handleClose}
       className="max-w-5xl"
-      overlayClassName="items-center bg-black/40 backdrop-blur-sm p-3 sm:p-4 md:p-6"
+      overlayClassName="items-center bg-black/40 backdrop-blur-sm"
     >
-      <div className="relative flex max-h-[min(92dvh,720px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className={clsx('relative flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl', MAX_H_CHECKOUT_PANEL)}>
         <button
           type="button"
           onClick={handleClose}
@@ -315,7 +316,7 @@ export function ReceiptPrintModal({
                       ) : (
                         <Printer className={ACTION_ICON} strokeWidth={2.25} />
                       )}
-                      <span className={ACTION_LABEL}>Imprimir</span>
+                      <span className={ACTION_LABEL}>Reimprimir</span>
                     </button>
                   )}
 
@@ -511,7 +512,7 @@ export function ReceiptPrintModal({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-stone-50/80 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6">
+        <div className={clsx('flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-stone-50/80 px-4 py-3 md:px-6', MODAL_FOOTER_SAFE)}>
           <p className="hidden text-xs text-green-700 sm:block">
             <span className="font-medium">✓</span> Venta registrada · {displayNumber}
           </p>

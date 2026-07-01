@@ -16,6 +16,7 @@ import {
   subscribeTenantBinding,
 } from '@/lib/tenantBinding/store'
 import { toStoredTenant, type TenantBinding } from '@/lib/tenantBinding/types'
+import { LOADING_SCREEN_SAFE } from '@/utils/safeAreaClasses'
 import type { StoredTenant } from '@/services/public.service'
 
 type TenantBindingContextValue = {
@@ -76,7 +77,7 @@ export function TenantBindingProvider({ children }: { children: ReactNode }) {
 
   if (!isReady) {
     return (
-      <div className="flex min-h-[100dvh] items-center justify-center bg-stone-50">
+      <div className={`flex ${LOADING_SCREEN_SAFE} items-center justify-center bg-stone-50`}>
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-rest-500 border-t-transparent" />
       </div>
     )

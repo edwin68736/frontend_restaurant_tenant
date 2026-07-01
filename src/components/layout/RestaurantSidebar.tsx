@@ -9,6 +9,7 @@ import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import { BRAND_LOGO } from '@/config/branding'
 import BrandWordmark from './BrandWordmark'
 import { isTauriDesktop } from '@/lib/platform/detect'
+import { DRAWER_BOTTOM_SAFE, MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import SubscriptionSidebarCard from './SubscriptionSidebarCard'
 import SidebarTutorialsLink from './SidebarTutorialsLink'
 
@@ -138,8 +139,8 @@ export default function RestaurantSidebar({
   const showPlanInSidebar = !embedded && !isTauriDesktop()
 
   const sidebarClass = clsx(
-    'flex h-full min-h-0 flex-col shadow-lg',
-    isDesktop ? 'rounded-2xl border' : 'border-r border-stone-200 bg-white w-full h-full',
+    'flex min-h-0 flex-col shadow-lg',
+    isDesktop ? 'h-full rounded-2xl border' : 'flex-1 border-r border-stone-200 bg-white w-full pl-safe pr-safe',
     isMini ? 'bg-rest-600 border-rest-700/40' : isDesktop ? 'bg-white border-stone-200' : 'bg-white',
   )
 
@@ -167,7 +168,7 @@ export default function RestaurantSidebar({
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-stone-500 hover:bg-stone-100 touch-manipulation z-10"
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2 text-stone-500 hover:bg-stone-100 touch-manipulation z-10"
             aria-label="Cerrar menú"
           >
             <X size={18} />
@@ -208,9 +209,9 @@ export default function RestaurantSidebar({
       {showSettings ? (
         <div
           className={clsx(
-            'shrink-0 px-2 py-3',
+            'shrink-0 py-3',
+            isDesktop ? 'px-2' : clsx('px-1', MODAL_FOOTER_SAFE, DRAWER_BOTTOM_SAFE),
             isMini ? 'border-t border-white/15' : 'border-t border-stone-100',
-            !isDesktop && 'pb-1',
           )}
         >
           {!isCollapsed ? (

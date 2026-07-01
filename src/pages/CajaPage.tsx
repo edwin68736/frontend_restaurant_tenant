@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download } from 'lucide-react'
 import {
@@ -28,6 +29,7 @@ import { CajaSessionReportsModal } from '@/components/cash/CajaSessionReportsMod
 import { CajaSessionReportView } from '@/components/cash/CajaSessionReportView'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { MAX_H_SHEET_PANEL } from '@/utils/safeAreaClasses'
 import { paymentMethodDisplayLabel } from '@/utils/paymentMethodLabels'
 
 const INCOME_CATEGORIES = [
@@ -1709,8 +1711,8 @@ export default function CajaPage() {
         )}
       </PortalModal>
 
-      <PortalModal open={openModal} onClose={() => setOpenModal(false)} className="max-w-md" overlayClassName="items-end sm:items-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 max-h-[96dvh] overflow-y-auto">
+      <PortalModal open={openModal} onClose={() => setOpenModal(false)} className="max-w-md" overlayClassName="items-end sm:items-center">
+          <div className={clsx('bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 overflow-y-auto', MAX_H_SHEET_PANEL)}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-stone-800 text-lg">Abrir caja</h3>
               <button type="button" onClick={() => setOpenModal(false)} className="p-2 rounded-xl hover:bg-stone-100 touch-manipulation">

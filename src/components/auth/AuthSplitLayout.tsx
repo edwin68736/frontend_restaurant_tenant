@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { BRAND_BG, BRAND_LOGO_H } from '@/config/branding'
 import { pickAuthQuote } from '@/config/authQuotes'
 import type { ReactNode } from 'react'
+import { AUTH_SCREEN_PADDING_Y, LEFT_SAFE_GUTTER, TOP_SAFE_GUTTER } from '@/utils/safeAreaClasses'
 
 type Props = {
   children: ReactNode
@@ -36,7 +37,7 @@ export function AuthSplitLayout({
 
   return (
     <div
-      className="relative min-h-[100dvh] w-full overflow-y-auto pt-safe pb-safe"
+      className="relative min-h-[100dvh] w-full overflow-y-auto"
       style={{
         backgroundImage: `url(${BRAND_BG})`,
         backgroundSize: 'cover',
@@ -48,14 +49,14 @@ export function AuthSplitLayout({
       {backTo && (
         <Link
           to={backTo}
-          className="fixed z-30 inline-flex items-center gap-1 font-bold text-md text-white/90 hover:text-white drop-shadow top-[max(0.75rem,env(safe-area-inset-top))] left-[max(0.75rem,env(safe-area-inset-left))]"
+          className={`fixed z-30 inline-flex items-center gap-1 font-bold text-md text-white/90 hover:text-white drop-shadow ${TOP_SAFE_GUTTER} ${LEFT_SAFE_GUTTER}`}
         >
           <ArrowLeft size={16} />
           {backLabel}
         </Link>
       )}
 
-      <div className="relative z-10 flex min-h-[100dvh] w-full items-center justify-center px-3 sm:px-4 md:px-6 py-[max(3rem,calc(env(safe-area-inset-top)+2.5rem))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className={`relative z-10 flex min-h-[100dvh] w-full items-center justify-center px-3 sm:px-4 md:px-6 ${AUTH_SCREEN_PADDING_Y}`}>
         <div
           className={`relative w-full mx-auto overflow-visible max-w-5xl ${
             compactMobile ? 'max-md:max-w-[min(100%,26rem)]' : ''

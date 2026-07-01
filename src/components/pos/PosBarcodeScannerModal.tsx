@@ -5,6 +5,7 @@ import { clsx } from 'clsx'
 import { ScanBarcode, X, Loader2 } from 'lucide-react'
 import { requestCameraPermission } from '@/lib/camera/requestCameraPermission'
 import { REST_CAMERA_SCANNER_Z } from '@/utils/restaurantUiLayers'
+import { DRAWER_BOTTOM_WRAP_X_LG } from '@/utils/safeAreaClasses'
 
 const BARCODE_FORMATS = [
   Html5QrcodeSupportedFormats.EAN_13,
@@ -151,7 +152,7 @@ export function PosBarcodeScannerModal({
     >
       <div className="absolute inset-0 bg-stone-950" aria-hidden />
 
-      <div className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+      <div className={clsx('relative z-10 flex items-center justify-between gap-3 pt-safe pb-3', DRAWER_BOTTOM_WRAP_X_LG)}>
         <div className="flex items-center gap-2 text-white min-w-0">
           <ScanBarcode size={22} className="shrink-0 text-rest-300" aria-hidden />
           <div className="min-w-0">
@@ -169,7 +170,7 @@ export function PosBarcodeScannerModal({
         </button>
       </div>
 
-      <div className="relative flex-1 min-h-0 flex flex-col items-center justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className={clsx('relative flex-1 min-h-0 flex flex-col items-center justify-center pb-safe', DRAWER_BOTTOM_WRAP_X_LG)}>
         <div className="relative w-full max-w-lg aspect-[4/3] rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
           <div id={regionId} className="absolute inset-0 w-full h-full [&_video]:object-cover [&_canvas]:hidden" />
 

@@ -124,7 +124,7 @@ export function PrintersSettingsTab() {
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-3xl pb-[max(2rem,calc(var(--app-bottom-nav-offset)+1rem))] lg:pb-[max(2rem,calc(var(--safe-bottom)+1.5rem))]">
       <div className="rounded-2xl border border-stone-200 bg-stone-50/90 px-4 py-3 text-sm text-stone-700">
         <p className="font-semibold text-stone-900">Configuración local</p>
         <p className="text-xs text-stone-500 mt-1">

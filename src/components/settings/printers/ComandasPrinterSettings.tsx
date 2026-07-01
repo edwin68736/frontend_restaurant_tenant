@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChefHat, ChevronDown, ChevronUp, Printer } from 'lucide-react'
+import { ChefHat, Printer } from 'lucide-react'
 import { clsx } from 'clsx'
 import {
   preparationAreaLabel,
@@ -10,6 +10,7 @@ import { isPrinterConfigReady } from '@/services/printers.service'
 import { productsService } from '@/services/products.service'
 import type { SearchableSelectOption } from '@/components/SearchableSelect'
 import { PrinterConfigEditor } from './PrinterConfigEditor'
+import { PrinterSettingsSection } from './PrinterSettingsSection'
 import { emptyPrinterSettings, normalizeSlot } from '@/services/printers.service'
 
 type Props = {
@@ -52,7 +53,6 @@ export function ComandasPrinterSettings({
   testingDefault,
   testingArea,
 }: Props) {
-  const [areasSectionOpen, setAreasSectionOpen] = useState(false)
   const [expandedAreas, setExpandedAreas] = useState<Record<string, boolean>>({})
   const [productAreaKeys, setProductAreaKeys] = useState<string[]>([])
   const [catalogAreaKeys, setCatalogAreaKeys] = useState<string[]>([])
@@ -112,6 +112,8 @@ export function ComandasPrinterSettings({
     [areaKeys, comandasByArea],
   )
 
+  const defaultReady = isPrinterConfigReady(comandasDefault)
+
   const toggleArea = (key: string) => {
     setExpandedAreas((prev) => ({ ...prev, [key]: !prev[key] }))
   }
@@ -120,42 +122,54 @@ export function ComandasPrinterSettings({
     if (!comandasByArea[key]) {
       onAreaChange(key, emptyAreaSlot(comandasDefault))
     }
-    setAreasSectionOpen(true)
     setExpandedAreas((prev) => ({ ...prev, [key]: true }))
   }
 
   return (
-    <section className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm space-y-5">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-rest-50 text-rest-700 flex items-center justify-center shrink-0">
-            <ChefHat size={18} />
-          </div>
-          <div>
-            <h2 className="font-bold text-stone-900">Impresoras de comandas</h2>
-            <p className="text-sm text-stone-600">
-              Por defecto y por área de preparación (cocina, bar, etc.). Sin área o sin impresora de área → se usa la
-              por defecto.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border-2 border-rest-200 bg-rest-50/40 p-4 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <p className="text-sm font-bold text-stone-900">Impresora de comandas por defecto</p>
-            <p className="text-xs text-stone-500">Productos sin área o áreas sin impresora dedicada.</p>
-          </div>
+    <PrinterSettingsSection
+      title="Impresoras de comandas"
+      subtitle="Por defecto y por área de preparación (cocina, bar, etc.). Sin área dedicada → impresora por defecto."
+      icon={<ChefHat size={18} />}
+      defaultOpen={false}
+      badge={
+        defaultReady ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+            Por defecto lista
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-stone-200 text-stone-600">
+            Configurar
+          </span>
+        )
+      }
+    >
+      <PrinterSettingsSection
+        nested
+        title="Impresora por defecto"
+        subtitle="Productos sin área o áreas sin impresora dedicada."
+        icon={<Printer size={16} />}
+        defaultOpen={false}
+        badge={
+          defaultReady ? (
+            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+              Lista
+            </span>
+          ) : null
+        }
+        actions={
           <button
             type="button"
-            onClick={onTestDefault}
-            disabled={testingDefault || !isPrinterConfigReady(comandasDefault)}
-            className="px-3 py-2 rounded-xl text-sm font-semibold bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-50 shrink-0"
+            onClick={(e) => {
+              e.stopPropagation()
+              onTestDefault()
+            }}
+            disabled={testingDefault || !defaultReady}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-50"
           >
             {testingDefault ? 'Probando…' : 'Probar'}
           </button>
-        </div>
+        }
+      >
         <PrinterConfigEditor
           cfg={comandasDefault}
           printerOptions={printerOptions}
@@ -165,136 +179,119 @@ export function ComandasPrinterSettings({
           onChange={onDefaultChange}
           showAutoPrint
         />
-      </div>
+      </PrinterSettingsSection>
 
-      <div className="rounded-xl border border-stone-200 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setAreasSectionOpen((open) => !open)}
-          className="w-full flex items-center gap-2 px-4 py-3 bg-stone-50 hover:bg-stone-100/80 text-left transition-colors"
-        >
-          <Printer size={16} className="text-stone-500 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-stone-900">Impresión por área de preparación</p>
-            <p className="text-xs text-stone-500 truncate">
-              {configuredAreasCount > 0
-                ? `${configuredAreasCount} área(s) con impresora dedicada · ${areaKeys.length} disponible(s)`
-                : 'Opcional — al desplegar configura cocina, bar y otras áreas'}
-            </p>
-          </div>
-          {areasSectionOpen ? (
-            <ChevronUp size={18} className="text-stone-400 shrink-0" />
-          ) : (
-            <ChevronDown size={18} className="text-stone-400 shrink-0" />
-          )}
-        </button>
+      <PrinterSettingsSection
+        nested
+        title="Impresión por área de preparación"
+        subtitle={
+          configuredAreasCount > 0
+            ? `${configuredAreasCount} área(s) con impresora dedicada · ${areaKeys.length} disponible(s)`
+            : 'Opcional — cocina, bar y otras áreas'
+        }
+        icon={<Printer size={16} />}
+        defaultOpen={false}
+      >
+        <p className="text-xs text-stone-500">
+          Si no configuras un área, sus comandas salen por la impresora por defecto.
+        </p>
 
-        {areasSectionOpen && (
-          <div className="p-4 space-y-3 border-t border-stone-100">
-            <p className="text-xs text-stone-500">
-              Si no configuras un área, sus comandas salen por la impresora por defecto.
-            </p>
+        {areaKeys.length === 0 && (
+          <p className="text-xs text-stone-500 rounded-lg border border-dashed border-stone-200 px-3 py-4 text-center">
+            No hay áreas definidas en productos. Usa solo la impresora por defecto.
+          </p>
+        )}
 
-            {areaKeys.length === 0 && (
-              <p className="text-xs text-stone-500 rounded-lg border border-dashed border-stone-200 px-3 py-4 text-center">
-                No hay áreas definidas en productos. Usa solo la impresora por defecto.
-              </p>
-            )}
+        <div className="space-y-2">
+          {areaKeys.map((areaKey) => {
+            const dedicated = Boolean(comandasByArea[areaKey])
+            const areaCfg = dedicated
+              ? normalizeSlot(comandasByArea[areaKey])
+              : emptyAreaSlot(comandasDefault)
+            const expanded = expandedAreas[areaKey] ?? false
+            const ready = dedicated && isPrinterConfigReady(areaCfg)
 
-            {areaKeys.map((areaKey) => {
-              const dedicated = Boolean(comandasByArea[areaKey])
-              const areaCfg = dedicated
-                ? normalizeSlot(comandasByArea[areaKey])
-                : emptyAreaSlot(comandasDefault)
-              const expanded = expandedAreas[areaKey] ?? false
-              const ready = dedicated && isPrinterConfigReady(areaCfg)
-
-              return (
-                <div key={areaKey} className="rounded-xl border border-stone-200">
-                  <div className="flex items-center gap-2 px-3 py-2.5 bg-stone-50 border-b border-stone-100 rounded-t-xl">
+            return (
+              <div key={areaKey} className="rounded-xl border border-stone-200 overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-stone-50">
+                  <button
+                    type="button"
+                    onClick={() => (dedicated ? toggleArea(areaKey) : enableArea(areaKey))}
+                    className="flex-1 flex items-center gap-2 text-left min-w-0 touch-manipulation"
+                    aria-expanded={expanded}
+                  >
+                    <span className="font-semibold text-sm text-stone-900 truncate">
+                      {preparationAreaLabel(areaKey)}
+                    </span>
+                    <span
+                      className={clsx(
+                        'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0',
+                        ready
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : dedicated
+                            ? 'bg-amber-100 text-amber-900'
+                            : 'bg-stone-200 text-stone-600',
+                      )}
+                    >
+                      {ready ? 'Lista' : dedicated ? 'Incompleta' : 'Por defecto'}
+                    </span>
+                  </button>
+                  {dedicated && (
                     <button
                       type="button"
-                      onClick={() => (dedicated ? toggleArea(areaKey) : enableArea(areaKey))}
-                      className="flex-1 flex items-center gap-2 text-left min-w-0"
+                      onClick={() => onAreaClear(areaKey)}
+                      className="text-xs text-stone-500 hover:text-red-600 px-2 py-1 shrink-0"
                     >
-                      <span className="font-semibold text-sm text-stone-900 truncate">
-                        {preparationAreaLabel(areaKey)}
-                      </span>
-                      <span
-                        className={clsx(
-                          'text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0',
-                          ready
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : dedicated
-                              ? 'bg-amber-100 text-amber-900'
-                              : 'bg-stone-200 text-stone-600',
-                        )}
-                      >
-                        {ready ? 'Lista' : dedicated ? 'Incompleta' : 'Por defecto'}
-                      </span>
-                      {expanded ? (
-                        <ChevronUp size={16} className="ml-auto shrink-0" />
-                      ) : (
-                        <ChevronDown size={16} className="ml-auto shrink-0" />
-                      )}
+                      Quitar
                     </button>
-                    {dedicated && (
-                      <button
-                        type="button"
-                        onClick={() => onAreaClear(areaKey)}
-                        className="text-xs text-stone-500 hover:text-red-600 px-2 py-1 shrink-0"
-                      >
-                        Quitar
-                      </button>
-                    )}
-                  </div>
-
-                  {expanded && dedicated && (
-                    <div className="p-4 space-y-3 overflow-visible">
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => onTestArea(areaKey)}
-                          disabled={testingArea === areaKey || !isPrinterConfigReady(areaCfg)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 text-white hover:bg-stone-900 disabled:opacity-50"
-                        >
-                          {testingArea === areaKey ? 'Probando…' : 'Probar área'}
-                        </button>
-                      </div>
-                      <PrinterConfigEditor
-                        cfg={areaCfg}
-                        printerOptions={printerOptions}
-                        paperOptions={paperOptions}
-                        loadingPrinters={loadingPrinters}
-                        onRefreshPrinters={onRefreshPrinters}
-                        onChange={(patch) => onAreaChange(areaKey, patch)}
-                        showAutoPrint={false}
-                        compact
-                      />
-                    </div>
-                  )}
-
-                  {expanded && !dedicated && (
-                    <div className="p-4">
-                      <p className="text-xs text-stone-600 mb-3">
-                        Las comandas de <strong>{preparationAreaLabel(areaKey)}</strong> se imprimen en la impresora por
-                        defecto.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => enableArea(areaKey)}
-                        className="text-sm font-semibold text-rest-700 hover:text-rest-800"
-                      >
-                        + Configurar impresora dedicada
-                      </button>
-                    </div>
                   )}
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-    </section>
+
+                {expanded && dedicated && (
+                  <div className="p-3 sm:p-4 space-y-3 border-t border-stone-100">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => onTestArea(areaKey)}
+                        disabled={testingArea === areaKey || !isPrinterConfigReady(areaCfg)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-stone-800 text-white hover:bg-stone-900 disabled:opacity-50"
+                      >
+                        {testingArea === areaKey ? 'Probando…' : 'Probar área'}
+                      </button>
+                    </div>
+                    <PrinterConfigEditor
+                      cfg={areaCfg}
+                      printerOptions={printerOptions}
+                      paperOptions={paperOptions}
+                      loadingPrinters={loadingPrinters}
+                      onRefreshPrinters={onRefreshPrinters}
+                      onChange={(patch) => onAreaChange(areaKey, patch)}
+                      showAutoPrint={false}
+                      compact
+                    />
+                  </div>
+                )}
+
+                {expanded && !dedicated && (
+                  <div className="p-3 sm:p-4 border-t border-stone-100">
+                    <p className="text-xs text-stone-600 mb-3">
+                      Las comandas de <strong>{preparationAreaLabel(areaKey)}</strong> se imprimen en la impresora por
+                      defecto.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => enableArea(areaKey)}
+                      className="text-sm font-semibold text-rest-700 hover:text-rest-800"
+                    >
+                      + Configurar impresora dedicada
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </PrinterSettingsSection>
+    </PrinterSettingsSection>
   )
 }

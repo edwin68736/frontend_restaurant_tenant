@@ -2,6 +2,8 @@ import { forwardRef } from 'react'
 import { ShoppingCart } from 'lucide-react'
 import { clsx } from 'clsx'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
+import { useTabletMobileViewport } from '@/hooks/useTabletMobileViewport'
+import { FAB_CART_BOTTOM, RIGHT_SAFE_GUTTER } from '@/utils/safeAreaClasses'
 
 type Props = {
   quantity: number
@@ -18,6 +20,15 @@ export const FloatingCartButton = forwardRef<HTMLButtonElement, Props>(function 
 ) {
   const label = quantity === 1 ? '1 artículo' : `${quantity} artículos`
   const android = isCapacitorAndroid()
+  const tablet = useTabletMobileViewport()
+
+  const sizeClass = tablet
+    ? 'h-16 w-16'
+    : android
+      ? 'h-14 w-14'
+      : 'h-[3.25rem] w-[3.25rem]'
+
+  const iconSize = tablet ? 32 : android ? 28 : 26
 
   return (
     <button
@@ -26,18 +37,22 @@ export const FloatingCartButton = forwardRef<HTMLButtonElement, Props>(function 
       onClick={onClick}
       aria-label={quantity > 0 ? `Abrir carrito, ${label}` : 'Abrir carrito'}
       className={clsx(
-        'lg:hidden fixed right-4 z-[105] flex items-center justify-center rounded-full',
+        'lg:hidden fixed z-[105] flex items-center justify-center rounded-full',
+        RIGHT_SAFE_GUTTER,
         'bg-rest-600 text-white shadow-lg shadow-rest-900/30 ring-4 ring-white',
         'hover:bg-rest-700 active:scale-95 transition-transform touch-manipulation',
-        android ? 'h-14 w-14' : 'h-[3.25rem] w-[3.25rem]',
+        FAB_CART_BOTTOM,
+        sizeClass,
         className,
       )}
-      style={{ bottom: 'calc(3.5rem + 0.625rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      <ShoppingCart size={android ? 28 : 26} strokeWidth={2.25} aria-hidden />
+      <ShoppingCart size={iconSize} strokeWidth={2.25} aria-hidden />
       {quantity > 0 && (
         <span
-          className="absolute -top-0.5 -right-0.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white tabular-nums ring-2 ring-white"
+          className={clsx(
+            'absolute -top-0.5 -right-0.5 flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 font-bold leading-none text-white tabular-nums ring-2 ring-white',
+            tablet ? 'h-6 text-[11px]' : 'h-5 text-[10px]',
+          )}
           aria-hidden
         >
           {quantity > 99 ? '99+' : quantity}

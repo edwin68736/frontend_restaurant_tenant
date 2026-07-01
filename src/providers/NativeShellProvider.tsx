@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { bootstrapCapacitor, teardownCapacitor } from '@/lib/platform/capacitorBootstrap'
 import { clearLegacyLocalStorageBinding } from '@/lib/tenantBinding/persist'
+import { LOADING_SCREEN_SAFE } from '@/utils/safeAreaClasses'
 import { isCapacitorNative, isTauriDesktop } from '@/lib/platform/detect'
 
 type Props = { children: ReactNode }
@@ -36,7 +37,7 @@ export function NativeShellProvider({ children }: Props) {
 
   if (!ready) {
     return (
-      <div className="native-shell-loading flex min-h-[100dvh] items-center justify-center bg-stone-50">
+      <div className={`native-shell-loading flex ${LOADING_SCREEN_SAFE} items-center justify-center bg-stone-50`}>
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-rest-500 border-t-transparent" />
       </div>
     )

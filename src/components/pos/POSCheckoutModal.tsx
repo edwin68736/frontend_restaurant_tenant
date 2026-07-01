@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { X, Wallet, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { MAX_H_CHECKOUT_PANEL, MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import { PaymentMethodIcon } from '@/components/pos/PaymentMethodIcon'
 import type { PaymentMethodRecord } from '@/services/cashbank.service'
 import type { SeriesRow } from '@/services/company.service'
@@ -268,9 +269,9 @@ export function POSCheckoutModal({
         open={open}
         onClose={loading ? () => {} : onClose}
         className="max-w-lg"
-        overlayClassName="items-center p-3 sm:p-4"
+        overlayClassName="items-center"
       >
-        <div className="flex max-h-[min(92dvh,720px)] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+        <div className={clsx('flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-xl', MAX_H_CHECKOUT_PANEL)}>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200 px-4 py-3">
             <h3 className="flex items-center gap-2 text-sm font-bold text-stone-800">
               <Wallet size={18} className="shrink-0 text-rest-600" aria-hidden />
@@ -548,7 +549,7 @@ export function POSCheckoutModal({
             )}
           </div>
 
-          <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-stone-50/50 p-3">
+          <div className={clsx('flex shrink-0 gap-2 border-t border-stone-200 bg-stone-50/50 p-3', MODAL_FOOTER_SAFE)}>
             <button
               type="button"
               onClick={onClose}
@@ -583,7 +584,7 @@ export function POSCheckoutModal({
         open={methodPickerIndex !== null}
         onClose={() => setMethodPickerIndex(null)}
         className="max-w-sm"
-        overlayClassName="items-center p-3 sm:p-4"
+        overlayClassName="items-center"
       >
         <div className="w-full rounded-2xl bg-white p-4 shadow-xl">
           <div className="mb-3 flex items-center justify-between">

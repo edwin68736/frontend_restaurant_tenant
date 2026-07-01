@@ -29,6 +29,9 @@ import ReportRunnerPage from '@/pages/reportes/ReportRunnerPage'
 import DashboardPage from '@/pages/DashboardPage'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
 import { DEFAULT_REPORT_PATH } from '@/reports/registry'
+import { LOADING_SCREEN_SAFE } from '@/utils/safeAreaClasses'
+import SafeAreaDebugPanel from '@/components/debug/SafeAreaDebugPanel'
+import { isSafeAreaDebugEnabled } from '@/utils/safeAreaDebugEnabled'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isBound } = useTenantBinding()
@@ -36,7 +39,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isBound) return <Navigate to="/ruc" replace />
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-100">
+      <div className={`${LOADING_SCREEN_SAFE} flex items-center justify-center bg-stone-100`}>
         <div className="w-10 h-10 border-2 border-rest-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -85,10 +88,18 @@ function RequireTenant({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+const showSafeAreaDebug = isSafeAreaDebugEnabled()
+
 export default function App() {
   return (
     <>
-      <Toaster position="top-right" richColors closeButton />
+      {showSafeAreaDebug ? <SafeAreaDebugPanel /> : null}
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+        toastOptions={{ style: { marginTop: 'var(--safe-top)' } }}
+      />
       <Routes>
         <Route path="/" element={<DefaultEntryRedirect />} />
         <Route path="/ruc" element={<RucPage />} />

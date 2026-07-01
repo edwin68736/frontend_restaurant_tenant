@@ -33,16 +33,16 @@ export function navPillClasses(path: string, isActive: boolean, compact?: boolea
 }
 
 const NAV_BOTTOM_ACTIVE: Record<string, string> = {
-  '/pos': 'text-green-700 bg-green-50',
-  '/comandas': 'text-orange-800 bg-orange-50',
-  '/salas': 'text-teal-800 bg-teal-50',
+  '/pos': 'text-white bg-green-600',
+  '/comandas': 'text-white bg-orange-600',
+  '/salas': 'text-white bg-teal-600',
 }
 
 /** Pestaña inferior móvil (POS / Comandas / Mesas). */
 export function navBottomTabClasses(path: string, isActive: boolean): string {
   return clsx(
     'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg mx-0.5 px-1 py-1.5 text-[10px] font-semibold leading-tight transition-colors touch-manipulation',
-    isActive ? (NAV_BOTTOM_ACTIVE[path] ?? 'text-stone-800 bg-stone-100') : 'text-stone-500 hover:text-stone-700 active:bg-stone-50',
+    isActive ? (NAV_BOTTOM_ACTIVE[path] ?? 'text-white bg-stone-800') : 'text-stone-500 hover:text-stone-700 active:bg-stone-50',
   )
 }
 

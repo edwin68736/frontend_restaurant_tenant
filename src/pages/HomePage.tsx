@@ -42,7 +42,7 @@ export default function HomePage() {
 
   return (
     <div
-      className="relative min-h-[100dvh] w-full overflow-y-auto flex flex-col"
+      className="relative min-h-[100dvh] w-full overflow-y-auto flex flex-col pt-safe pb-safe"
       style={{
         backgroundImage: `url(${BRAND_BG})`,
         backgroundSize: 'cover',
@@ -52,7 +52,7 @@ export default function HomePage() {
     >
 <div className="absolute inset-0 bg-gradient-to-b from-stone-950/15 via-stone-900/10 to-stone-950/20 pointer-events-none" aria-hidden />
 
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center w-full max-w-2xl mx-auto px-[clamp(0.75rem,4vw,2.5rem)] py-[max(1.25rem,env(safe-area-inset-top))] pb-4 min-h-0">
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center w-full max-w-2xl mx-auto px-[clamp(0.75rem,4vw,2.5rem)] py-[clamp(1.25rem,4vw,2.5rem)] min-h-0">
         <div className="w-full text-center bg-slate-700/50 p-2 rounded-2xl mb-[clamp(1rem,4vw,2rem)] shrink-0">
           {/*<img
             src={BRAND_LOGO}

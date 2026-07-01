@@ -5,6 +5,7 @@ import { useBackendConnectivity } from '@/contexts/BackendConnectivityContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { CashOpenSessionForm } from '@/components/cash/CashOpenSessionForm'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SHEET, MAX_H_SHEET_PANEL } from '@/utils/safeAreaClasses'
 
 export function CashSessionOpenModal() {
   const { openModal, setOpenModal, openMySession } = useCashSession()
@@ -20,8 +21,8 @@ export function CashSessionOpenModal() {
   }
 
   return (
-    <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4`}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl p-5 w-full max-w-md space-y-2 shadow-xl max-h-[96dvh] overflow-y-auto">
+    <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-end sm:items-center justify-center bg-black/50 ${FIXED_OVERLAY_SHEET}`}>
+      <div className={`bg-white rounded-t-3xl sm:rounded-2xl p-5 w-full max-w-md space-y-2 shadow-xl ${MAX_H_SHEET_PANEL} overflow-y-auto`}>
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-bold text-stone-800 text-lg">Abrir mi caja</h3>

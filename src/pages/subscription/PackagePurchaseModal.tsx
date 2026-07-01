@@ -55,7 +55,7 @@ export default function PackagePurchaseModal({ open, onClose, pkg, cfg, onSucces
   }
 
   return (
-    <PortalModal open={open} onClose={onClose} className="flex items-end sm:items-center justify-center" stacked>
+    <PortalModal open={open} onClose={onClose} className="max-w-lg" overlayClassName="items-end sm:items-center" stacked>
       <div className="w-full max-w-lg max-h-[min(92dvh,900px)] overflow-y-auto rounded-2xl bg-white shadow-xl border border-stone-100">
         <div className="sticky top-0 flex items-center justify-between border-b border-stone-100 px-4 py-3 bg-white rounded-t-2xl">
           <div>

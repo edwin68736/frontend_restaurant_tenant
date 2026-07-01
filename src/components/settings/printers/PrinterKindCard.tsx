@@ -1,9 +1,9 @@
-import { useEffect } from 'react'
 import { Printer } from 'lucide-react'
 import type { PrinterConfig, PrinterConnectionMode, PrinterKind } from '@/services/printers.service'
 import {
   availableConnectionModes,
   effectiveConnection,
+  isPrinterConfigReady,
 } from '@/services/printers.service'
 import type { SearchableSelectOption } from '@/components/SearchableSelect'
 import { ConnectionMethodPicker } from './ConnectionMethodPicker'
@@ -11,7 +11,9 @@ import { NetworkPrinterFields } from './NetworkPrinterFields'
 import { WindowsPrinterFields } from './WindowsPrinterFields'
 import { BluetoothPrinterFields } from './BluetoothPrinterFields'
 import { TicketGeneralFields } from './TicketGeneralFields'
+import { PrinterSettingsSection } from './PrinterSettingsSection'
 import { printerConfigReady, printerKindSubtitle, printerKindTitle } from './helpers'
+import { useEffect } from 'react'
 
 type Props = {
   kind: PrinterKind
@@ -38,6 +40,7 @@ export function PrinterKindCard({
 }: Props) {
   const modes = availableConnectionModes()
   const resolvedConnection = effectiveConnection(cfg)
+  const ready = printerConfigReady({ ...cfg, connection: resolvedConnection })
 
   useEffect(() => {
     if (cfg.connection !== resolvedConnection) {
@@ -50,44 +53,57 @@ export function PrinterKindCard({
   }
 
   return (
-    <section className="bg-white border border-stone-200 rounded-2xl p-5 shadow-sm">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-rest-50 text-rest-700 flex items-center justify-center shrink-0">
-            <Printer size={18} />
-          </div>
-          <div>
-            <h2 className="font-bold text-stone-900">{printerKindTitle(kind)}</h2>
-            <p className="text-sm text-stone-600">{printerKindSubtitle(kind)}</p>
-          </div>
-        </div>
+    <PrinterSettingsSection
+      title={printerKindTitle(kind)}
+      subtitle={printerKindSubtitle(kind)}
+      icon={<Printer size={18} />}
+      defaultOpen={false}
+      badge={
+        ready ? (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+            Lista
+          </span>
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-stone-200 text-stone-600">
+            Sin configurar
+          </span>
+        )
+      }
+      actions={
         <button
           type="button"
-          onClick={onTest}
-          disabled={testing || !printerConfigReady({ ...cfg, connection: resolvedConnection })}
-          className="px-4 py-2 rounded-xl text-sm font-semibold bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-50 shrink-0 self-start"
+          onClick={(e) => {
+            e.stopPropagation()
+            onTest()
+          }}
+          disabled={testing || !ready}
+          className="px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-50 whitespace-nowrap"
         >
-          {testing ? 'Probando…' : 'Probar impresión'}
+          {testing ? 'Probando…' : 'Probar'}
         </button>
-      </div>
+      }
+    >
+      <ConnectionMethodPicker modes={modes} value={resolvedConnection} onChange={setConnection} />
 
-      <div className="mt-5 space-y-4">
-        <ConnectionMethodPicker modes={modes} value={resolvedConnection} onChange={setConnection} />
+      {resolvedConnection === 'windows' && (
+        <WindowsPrinterFields
+          cfg={cfg}
+          printerOptions={printerOptions}
+          loadingPrinters={loadingPrinters}
+          onRefreshPrinters={onRefreshPrinters}
+          onChange={onChange}
+        />
+      )}
+      {resolvedConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
+      {resolvedConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
 
-        {resolvedConnection === 'windows' && (
-          <WindowsPrinterFields
-            cfg={cfg}
-            printerOptions={printerOptions}
-            loadingPrinters={loadingPrinters}
-            onRefreshPrinters={onRefreshPrinters}
-            onChange={onChange}
-          />
-        )}
-        {resolvedConnection === 'network' && <NetworkPrinterFields cfg={cfg} onChange={onChange} />}
-        {resolvedConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
+      <TicketGeneralFields cfg={cfg} paperOptions={paperOptions} onChange={onChange} />
 
-        <TicketGeneralFields cfg={cfg} paperOptions={paperOptions} onChange={onChange} />
-      </div>
-    </section>
+      {!isPrinterConfigReady({ ...cfg, connection: resolvedConnection }) && (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          Completa los datos de conexión para poder imprimir con esta configuración.
+        </p>
+      )}
+    </PrinterSettingsSection>
   )
 }

@@ -7,7 +7,7 @@ export default function NoAccessPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-6">
+    <div className="min-h-[100dvh] pt-safe pb-safe bg-stone-50 flex flex-col items-center justify-center p-6">
       <div className="w-16 h-16 rounded-2xl bg-rest-100 flex items-center justify-center mb-4">
         <UtensilsCrossed className="w-8 h-8 text-rest-600" />
       </div>

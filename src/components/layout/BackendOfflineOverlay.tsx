@@ -7,6 +7,7 @@ import { getDisplayedTenantApiUrl } from '@/services/api'
 import { isDevelopmentMode } from '@/lib/runtime/environment'
 import type { ConnectivityFailureKind } from '@/lib/connectivity/types'
 import { REST_OFFLINE_OVERLAY_Z } from '@/utils/restaurantUiLayers'
+import { DRAWER_BOTTOM_WRAP_X_RESP } from '@/utils/safeAreaClasses'
 
 function titleForKind(kind: ConnectivityFailureKind): string {
   switch (kind) {
@@ -77,7 +78,7 @@ export function BackendOfflineOverlay() {
   if (showDegradedBar && !showOfflineBar) {
     return (
       <div
-        className={`fixed top-0 left-0 right-0 ${REST_OFFLINE_OVERLAY_Z} px-3 pt-safe pointer-events-none`}
+        className={`fixed top-0 left-0 right-0 ${REST_OFFLINE_OVERLAY_Z} pt-safe ${DRAWER_BOTTOM_WRAP_X_RESP} pointer-events-none`}
         role="status"
         aria-live="polite"
       >
@@ -101,7 +102,7 @@ export function BackendOfflineOverlay() {
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 ${REST_OFFLINE_OVERLAY_Z} px-3 pt-safe pointer-events-none`}
+      className={`fixed top-0 left-0 right-0 ${REST_OFFLINE_OVERLAY_Z} pt-safe ${DRAWER_BOTTOM_WRAP_X_RESP} pointer-events-none`}
       role="alert"
       aria-live="assertive"
     >

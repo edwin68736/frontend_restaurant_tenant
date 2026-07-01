@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
 import type { ReactNode, MouseEvent } from 'react'
 import { REST_PORTAL_MODAL_STACK_Z, REST_PORTAL_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SAFE, FIXED_OVERLAY_SHEET, MAX_H_MODAL_PANEL } from '@/utils/safeAreaClasses'
 
 type Props = {
   open: boolean
@@ -25,11 +26,14 @@ export function PortalModal({
   if (!open || typeof document === 'undefined') return null
 
   const zLayer = stacked ? REST_PORTAL_MODAL_STACK_Z : REST_PORTAL_MODAL_Z
+  const isSheet = /\bitems-end\b/.test(overlayClassName)
+  const overlayPaddingClass = isSheet ? FIXED_OVERLAY_SHEET : FIXED_OVERLAY_SAFE
 
   return createPortal(
     <div
       className={clsx(
-        `fixed inset-0 ${zLayer} flex justify-center overflow-y-auto overscroll-contain bg-black/50 p-3 sm:p-4`,
+        `fixed inset-0 ${zLayer} flex justify-center overflow-y-auto overscroll-contain bg-black/50`,
+        overlayPaddingClass,
         overlayClassName?.includes('items-') ? null : 'items-start sm:items-center min-h-full',
         overlayClassName,
       )}
@@ -39,7 +43,8 @@ export function PortalModal({
     >
       <div
         className={clsx(
-          'my-auto flex w-full min-h-0 max-h-[min(92dvh,900px)] flex-col',
+          'my-auto flex w-full min-h-0 flex-col',
+          MAX_H_MODAL_PANEL,
           className,
         )}
       >

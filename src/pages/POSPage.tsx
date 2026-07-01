@@ -22,6 +22,7 @@ import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { restaurantService, type Comanda, type SessionDetail } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { MAX_H_PANEL_80, MAX_H_PANEL_85 } from '@/utils/safeAreaClasses'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
 import { sortCategories } from '@/utils/sortCategories'
@@ -2012,7 +2013,7 @@ export default function POSPage() {
       </PortalModal>
 
       <PortalModal open={ordersOpen} onClose={() => setOrdersOpen(false)} className="max-w-lg" overlayClassName="items-end sm:items-center">
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[80vh] flex flex-col">
+          <div className={clsx('relative bg-white rounded-2xl shadow-xl w-full flex flex-col', MAX_H_PANEL_80)}>
             <div className="p-4 border-b border-stone-200 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-stone-800">Pedidos</h3>
@@ -2163,7 +2164,7 @@ export default function POSPage() {
 
       <PortalModal open={!!comandaModal} onClose={() => setComandaModal(null)} className="max-w-md">
         {comandaModal && (
-          <div className="bg-white rounded-2xl shadow-xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+          <div className={clsx('bg-white rounded-2xl shadow-xl w-full flex flex-col overflow-hidden', MAX_H_PANEL_85)}>
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="font-bold text-stone-800">Comanda · Ronda #{comandaModal.orderNumber}</h3>
               <button type="button" onClick={() => setComandaModal(null)} className="p-1 rounded-lg hover:bg-stone-100">
@@ -2211,7 +2212,7 @@ export default function POSPage() {
 
       <PortalModal open={precuentaOpen && !!precuentaData} onClose={() => setPrecuentaOpen(false)} className="max-w-md">
         {precuentaData && (
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-h-[85vh] overflow-y-auto p-5">
+          <div className={clsx('relative bg-white rounded-2xl shadow-xl w-full overflow-y-auto p-5', MAX_H_PANEL_85)}>
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-bold text-stone-800">Precuenta</h3>

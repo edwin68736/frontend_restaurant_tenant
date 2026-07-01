@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ChevronDown,
@@ -15,13 +16,17 @@ import {
   openExternalUrl,
 } from '@/utils/supportWhatsApp'
 import { canAccessAppSettings, EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
+import { readSafeInsets } from '@/utils/safeAreaInsets'
 import { BranchSelectorMenu } from './RestaurantBranchBadge'
 import { AppVersionBadge } from './AppVersionBadge'
+
+const MENU_WIDTH = 224
 
 export default function UserDropdown() {
   const { user, logout, employeeType, restaurantPermissions } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [supportHref, setSupportHref] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const isAdmin = employeeType === 'admin' || employeeType === 'supervisor'
@@ -34,13 +39,43 @@ export default function UserDropdown() {
       .catch(() => setSupportHref(null))
   }, [])
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null)
+      return
+    }
+    const update = () => {
+      const el = ref.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const { left: safeLeft, right: safeRight } = readSafeInsets()
+      const edge = 8
+      const left = Math.max(
+        safeLeft + edge,
+        Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - safeRight - edge),
+      )
+      setMenuPos({ top: rect.bottom + 8, left })
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [open])
+
   useEffect(() => {
+    if (!open) return
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as HTMLElement
+      if (ref.current?.contains(target)) return
+      if (target.closest('[data-user-dropdown-menu]')) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
-  }, [])
+  }, [open])
 
   const initials = user?.name
     ?.split(' ')
@@ -50,6 +85,86 @@ export default function UserDropdown() {
     .toUpperCase() || '?'
 
   const roleLabel = EMPLOYEE_TYPE_LABELS[employeeType] ?? employeeType
+
+  const menu =
+    open && menuPos
+      ? createPortal(
+          <div
+            data-user-dropdown-menu
+            className="fixed z-[200] w-56 rounded-xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 py-1.5"
+            style={{ top: menuPos.top, left: menuPos.left }}
+            role="menu"
+          >
+            <div className="px-3 py-2.5 border-b border-stone-100 md:hidden">
+              <p className="text-sm font-semibold text-stone-800 truncate">{user?.name}</p>
+              <p className="text-xs text-stone-500">{roleLabel}</p>
+            </div>
+            <BranchSelectorMenu onSelected={() => setOpen(false)} />
+            {isAdmin && (
+              <Link
+                to="/suscripcion"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-stone-700 hover:bg-rest-50 hover:text-rest-800"
+                role="menuitem"
+              >
+                <CreditCard size={16} className="text-rest-600" />
+                Suscripción y pagos
+              </Link>
+            )}
+            {showSettings && (
+              <Link
+                to="/ajustes"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
+                role="menuitem"
+              >
+                <Settings size={16} className="text-stone-500" />
+                {employeeType === 'waiter' || employeeType === 'mozo' ? 'Impresoras' : 'Ajustes'}
+              </Link>
+            )}
+            <a
+              href={supportHref ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => {
+                if (!supportHref) {
+                  e.preventDefault()
+                  return
+                }
+                e.preventDefault()
+                setOpen(false)
+                void openExternalUrl(supportHref)
+              }}
+              className={`flex items-center gap-2.5 px-3 py-2.5 text-sm ${
+                supportHref ? 'text-stone-700 hover:bg-stone-50' : 'text-stone-400 pointer-events-none'
+              }`}
+              role="menuitem"
+              aria-disabled={!supportHref}
+            >
+              <Headphones size={16} className="text-stone-500" />
+              Soporte
+            </a>
+            <div className="px-3 py-2 border-t border-stone-100">
+              <AppVersionBadge compact />
+            </div>
+            <div className="my-1 border-t border-stone-100" />
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false)
+                logout()
+                navigate('/home')
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
+              role="menuitem"
+            >
+              <LogOut size={16} />
+              Cerrar sesión
+            </button>
+          </div>,
+          document.body,
+        )
+      : null
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -72,80 +187,7 @@ export default function UserDropdown() {
           className={`hidden md:block lg:hidden xl:block text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
-
-      {open && (
-        <div
-          className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-stone-200 bg-white shadow-xl ring-1 ring-black/5 py-1.5 z-[100]"
-          role="menu"
-        >
-          <div className="px-3 py-2.5 border-b border-stone-100 md:hidden">
-            <p className="text-sm font-semibold text-stone-800 truncate">{user?.name}</p>
-            <p className="text-xs text-stone-500">{roleLabel}</p>
-          </div>
-          <BranchSelectorMenu onSelected={() => setOpen(false)} />
-          {isAdmin && (
-            <Link
-              to="/suscripcion"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-stone-700 hover:bg-rest-50 hover:text-rest-800"
-              role="menuitem"
-            >
-              <CreditCard size={16} className="text-rest-600" />
-              Suscripción y pagos
-            </Link>
-          )}
-          {showSettings && (
-            <Link
-              to="/ajustes"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-50"
-              role="menuitem"
-            >
-              <Settings size={16} className="text-stone-500" />
-              {employeeType === 'waiter' || employeeType === 'mozo' ? 'Impresoras' : 'Ajustes'}
-            </Link>
-          )}
-          <a
-            href={supportHref ?? undefined}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => {
-              if (!supportHref) {
-                e.preventDefault()
-                return
-              }
-              e.preventDefault()
-              setOpen(false)
-              void openExternalUrl(supportHref)
-            }}
-            className={`flex items-center gap-2.5 px-3 py-2.5 text-sm ${
-              supportHref ? 'text-stone-700 hover:bg-stone-50' : 'text-stone-400 pointer-events-none'
-            }`}
-            role="menuitem"
-            aria-disabled={!supportHref}
-          >
-            <Headphones size={16} className="text-stone-500" />
-            Soporte
-          </a>
-          <div className="px-3 py-2 border-t border-stone-100">
-            <AppVersionBadge compact />
-          </div>
-          <div className="my-1 border-t border-stone-100" />
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false)
-              logout()
-              navigate('/home')
-            }}
-            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
-            role="menuitem"
-          >
-            <LogOut size={16} />
-            Cerrar sesión
-          </button>
-        </div>
-      )}
+      {menu}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { readSafeInsets } from '@/utils/safeAreaInsets'
 
 type Props = {
   menuId: string
@@ -39,10 +40,15 @@ export function AnchoredDropdown({
       const el = ref.current
       if (!el) return
       const rect = el.getBoundingClientRect()
+      const { left: safeLeft, right: safeRight } = readSafeInsets()
+      const edge = 8
       const left =
         align === 'right'
-          ? Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8))
-          : Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8))
+          ? Math.max(
+              safeLeft + edge,
+              Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - safeRight - edge),
+            )
+          : Math.max(safeLeft + edge, Math.min(rect.left, window.innerWidth - menuWidth - safeRight - edge))
       setMenuPos({ top: rect.bottom + 4, left })
     }
     update()

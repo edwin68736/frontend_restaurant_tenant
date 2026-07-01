@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink } from 'react-router-dom'
+import { clsx } from 'clsx'
 import { Settings, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import type { NavGroup, NavItem } from '@/config/restaurantNav'
 import { navSheetLinkClasses } from '@/utils/restaurantUiColors'
+import { FIXED_DRAWER_RIGHT_SAFE } from '@/utils/safeAreaClasses'
 import SubscriptionSidebarCard from './SubscriptionSidebarCard'
 
 type Props = {
@@ -51,7 +53,7 @@ export default function ResponsiveMenu({ open, onClose, groups }: Props) {
         aria-hidden
       />
       <aside
-        className="fixed inset-y-0 right-0 z-[301] flex w-[min(100%,320px)] flex-col bg-white shadow-2xl lg:hidden"
+        className={clsx('fixed inset-y-0 right-0 z-[301] flex w-[min(100%,320px)] flex-col bg-white shadow-2xl lg:hidden pt-safe pb-safe', FIXED_DRAWER_RIGHT_SAFE)}
         role="dialog"
         aria-modal="true"
         aria-label="Menú de navegación"

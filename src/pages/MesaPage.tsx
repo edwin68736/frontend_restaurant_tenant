@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
+import { clsx } from 'clsx'
 import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
@@ -94,7 +95,9 @@ import { canApplyCheckoutDiscount, canCancelComanda } from '@/utils/restaurantPe
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
 import { PortalModal } from '@/components/ui/PortalModal'
-import { REST_PAGE_MODAL_Z, useFlyToCart } from '@/hooks/useFlyToCart'
+import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SAFE, MAX_H_PANEL_85 } from '@/utils/safeAreaClasses'
+import { useFlyToCart } from '@/hooks/useFlyToCart'
 
 export default function MesaPage() {
   const { canAccess, employeeType, restaurantPermissions } = useAuth()
@@ -1125,10 +1128,10 @@ export default function MesaPage() {
       </MobileCartDrawer>
 
       {ordersModalOpen && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z}`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} ${FIXED_OVERLAY_SAFE} overflow-y-auto`}>
           <div className="absolute inset-0 bg-black/40" onClick={() => setOrdersModalOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-x-0 top-0 p-4 sm:p-6 flex justify-center">
-            <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="relative flex justify-center">
+            <div className={clsx('w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col', MAX_H_PANEL_85)}>
               <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <h3 className="font-bold text-stone-800">Pedidos en mesa</h3>
@@ -1325,7 +1328,7 @@ export default function MesaPage() {
 
       {/* Modal Precuenta */}
       {precuentaOpen && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">Precuenta</h3>
@@ -1425,7 +1428,7 @@ export default function MesaPage() {
 
       {/* Modal Comanda */}
       {comandaModal && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-stone-200">
               <h3 className="text-lg font-bold text-stone-800">Comanda</h3>
@@ -1541,7 +1544,7 @@ export default function MesaPage() {
 
       {/* Modal Anular comanda */}
       {anulComanda && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-bold text-stone-800 mb-2">Anular comanda</h3>
             <p className="text-sm text-stone-600 mb-4">

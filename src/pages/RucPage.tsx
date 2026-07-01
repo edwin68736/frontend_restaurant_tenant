@@ -57,7 +57,7 @@ export default function RucPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rest-900 via-rest-800 to-rest-900 flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] pt-safe pb-safe bg-gradient-to-br from-rest-900 via-rest-800 to-rest-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white/95 backdrop-blur rounded-2xl shadow-xl p-8">
         <div className="flex justify-center mb-3">
           <img src={BRAND_LOGO_H} alt="Tukichef" className="h-16 w-auto object-contain" />

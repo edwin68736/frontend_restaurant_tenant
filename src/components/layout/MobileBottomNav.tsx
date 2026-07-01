@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
+import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
 import { NAV_GROUPS } from '@/config/restaurantNav'
 import { navBottomTabClasses } from '@/utils/restaurantUiColors'
+import { FIXED_BOTTOM_NAV_SAFE } from '@/utils/safeAreaClasses'
 
 /** Navegación inferior móvil: POS, Comandas, Mesas (operaciones diarias). */
 export default function MobileBottomNav() {
@@ -17,7 +19,10 @@ export default function MobileBottomNav() {
 
   return (
     <nav
-      className="lg:hidden fixed inset-x-0 bottom-0 z-[110] border-t border-stone-200/90 bg-white/95 backdrop-blur-md shadow-[0_-4px_16px_rgba(15,23,42,0.06)] pb-safe"
+      className={clsx(
+        'lg:hidden fixed inset-x-0 bottom-0 z-[110] border-t border-stone-200 bg-white shadow-[0_-4px_16px_rgba(15,23,42,0.06)]',
+        FIXED_BOTTOM_NAV_SAFE,
+      )}
       aria-label="Navegación principal"
     >
       <div
@@ -43,6 +48,7 @@ export default function MobileBottomNav() {
           )
         })}
       </div>
+      <div className="bg-white pb-safe" aria-hidden />
     </nav>
   )
 }

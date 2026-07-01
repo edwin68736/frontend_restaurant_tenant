@@ -39,6 +39,23 @@ export interface BranchRow {
   active?: boolean
 }
 
+export interface SeriesDocumentType {
+  id: string
+  doc_type: string
+  label: string
+  document_code: string
+  category: string
+  category_label: string
+  series_prefix_hint: string
+  electronic: boolean
+  sunat_numbering: boolean
+}
+
+export interface SeriesDocumentTypesResponse {
+  types: SeriesDocumentType[]
+  categoryLabels: Record<string, string>
+}
+
 export interface SeriesRow {
   id: number
   branch_id: number
@@ -51,8 +68,10 @@ export interface SeriesRow {
   active?: boolean
   sunat_code?: string
   locked?: boolean
-  sales_count?: number
   can_delete?: boolean
+  usage_table?: string
+  usage_count?: number
+  usage_reason?: string
 }
 
 export const companyService = {
@@ -102,13 +121,18 @@ export const companyService = {
   listSeries: (params?: { branch_id?: number; category?: string }) =>
     api.get<{ data: SeriesRow[] }>('/api/company/series', { params }).then((r) => r.data.data ?? []),
 
-  createSeries: (data: {
-    branch_id: number
-    doc_type: string
-    series: string
-    category: string
-    sunat_code: string
-  }) => api.post('/api/company/series', data).then((r) => r.data),
+  listSeriesDocumentTypes: (): Promise<SeriesDocumentTypesResponse> =>
+    api
+      .get<{ data: SeriesDocumentType[]; category_labels: Record<string, string> }>('/api/company/series/document-types', {
+        params: { context: 'restaurant' },
+      })
+      .then((r) => ({
+        types: r.data.data ?? [],
+        categoryLabels: r.data.category_labels ?? {},
+      })),
+
+  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number }) =>
+    api.post('/api/company/series', data).then((r) => r.data),
 
   updateSeries: (
     id: number,
@@ -116,8 +140,6 @@ export const companyService = {
       series: string
       active: boolean
       doc_type: string
-      sunat_code: string
-      category: string
       correlative?: number
     },
   ) => api.put(`/api/company/series/${id}`, data).then((r) => r.data),

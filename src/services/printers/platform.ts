@@ -9,18 +9,19 @@ export function getPrinterPlatformCapabilities(): PrinterPlatformCapabilities {
   }
 }
 
-/** Conexiones válidas en la plataforma actual. */
+/** Conexiones válidas en la plataforma actual (Bluetooth primero en Android). */
 export function availableConnectionModes(): PrinterConnectionMode[] {
   const cap = getPrinterPlatformCapabilities()
   const modes: PrinterConnectionMode[] = []
-  if (cap.windowsUsb) modes.push('windows')
-  if (cap.network) modes.push('network')
   if (cap.bluetooth) modes.push('bluetooth')
+  if (cap.network) modes.push('network')
+  if (cap.windowsUsb) modes.push('windows')
   return modes
 }
 
 export function defaultConnectionForPlatform(): PrinterConnectionMode {
   const modes = availableConnectionModes()
+  if (modes.includes('bluetooth')) return 'bluetooth'
   if (modes.includes('windows')) return 'windows'
   if (modes.includes('network')) return 'network'
   return modes[0] ?? 'network'
@@ -28,7 +29,7 @@ export function defaultConnectionForPlatform(): PrinterConnectionMode {
 
 /**
  * Modo de conexión real según plataforma y datos guardados.
- * Evita usar "windows" en Android cuando la UI muestra Red (TCP/IP).
+ * En Android sin datos TCP/BT configurados → Bluetooth por defecto.
  */
 export function effectiveConnection(cfg: {
   connection: PrinterConnectionMode
@@ -36,9 +37,20 @@ export function effectiveConnection(cfg: {
   bluetoothMac?: string
 }): PrinterConnectionMode {
   const modes = availableConnectionModes()
+  const hasTcp = Boolean(cfg.tcpHost?.trim())
+  const hasBt = Boolean(cfg.bluetoothMac?.trim())
+
+  if (isCapacitorAndroid()) {
+    if (hasBt && modes.includes('bluetooth')) return 'bluetooth'
+    if (hasTcp && modes.includes('network')) return 'network'
+    if (modes.includes('bluetooth')) return 'bluetooth'
+    if (modes.includes('network')) return 'network'
+    return modes[0] ?? 'network'
+  }
+
   if (modes.includes(cfg.connection)) return cfg.connection
-  if (cfg.tcpHost?.trim() && modes.includes('network')) return 'network'
-  if (cfg.bluetoothMac?.trim() && modes.includes('bluetooth')) return 'bluetooth'
+  if (hasTcp && modes.includes('network')) return 'network'
+  if (hasBt && modes.includes('bluetooth')) return 'bluetooth'
   return defaultConnectionForPlatform()
 }
 

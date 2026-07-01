@@ -6,6 +6,12 @@ export function formatMoney(n: number, currency = 'PEN'): string {
   return `${sym} ${formatAmountDisplay(n)}`
 }
 
+/** Ticket térmico: sin espacio tras el símbolo (evita salto de línea en S/ | monto). */
+export function formatMoneyTicket(n: number, currency = 'PEN'): string {
+  const sym = currency === 'USD' ? '$' : 'S/'
+  return `${sym}${formatAmountDisplay(n)}`
+}
+
 /** Solo monto con símbolo soles (alias corto para UI POS/Mesas). */
 export function formatSoles(n: number): string {
   return `S/ ${formatAmountDisplay(n)}`

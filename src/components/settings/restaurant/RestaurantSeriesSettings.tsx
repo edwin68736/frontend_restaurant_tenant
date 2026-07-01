@@ -1,75 +1,29 @@
 import { useEffect, useState } from 'react'
 import { FileText, Pencil, Plus, Trash2, Lock } from 'lucide-react'
 import { toast } from 'sonner'
-import { companyService, type SeriesRow } from '@/services/company.service'
+import { companyService, type SeriesDocumentType, type SeriesRow } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
-
-const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision'] as const
-const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN']
-const SUNAT_CODES = [
-  { code: '00', label: '00 - Nota de venta (no SUNAT)' },
-  { code: '01', label: '01 - Factura' },
-  { code: '03', label: '03 - Boleta' },
-  { code: '07', label: '07 - Nota de Crédito' },
-  { code: '08', label: '08 - Nota de Débito' },
-  { code: '09', label: '09 - Guía de Remisión' },
-]
-
-const CATEGORY_LABELS: Record<string, string> = {
-  venta: 'Venta',
-  compra: 'Compra',
-  nota_credito: 'Nota crédito',
-  nota_debito: 'Nota débito',
-  guia_remision: 'Guía',
-}
-
-const NC_SERIES_HINT =
-  'Nota de crédito (SUNAT 07): serie FC## para anular facturas (ej. FC01) y BC## para anular boletas (ej. BC01).'
-
-function isValidNotaCreditoSeries(code: string): boolean {
-  return /^(FC|BC)\d{2}$/i.test(code.trim())
-}
-
-type FormState = {
-  branch_id: number
-  doc_type: string
-  series: string
-  current_number: number
-  category: string
-  sunat_code: string
-}
-
-const emptyForm = (branchId = 0): FormState => ({
-  branch_id: branchId,
-  doc_type: 'NOTA DE VENTA',
-  series: '',
-  current_number: 0,
-  category: 'venta',
-  sunat_code: '00',
-})
-
-function normalizeSeries(list: SeriesRow[], branches: { id: number; name: string }[]): SeriesRow[] {
-  return (list ?? []).map((s) => ({
-    ...s,
-    current_number: s.current_number ?? s.correlative ?? 0,
-    branch_name: s.branch_name ?? branches.find((b) => b.id === s.branch_id)?.name,
-    category: s.category ?? 'venta',
-    locked: s.locked ?? (Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
-    can_delete: s.can_delete ?? !(Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
-  }))
-}
-
-function groupSeriesByBranch(series: SeriesRow[], branches: { id: number; name: string }[]) {
-  return branches.map((b) => ({
-    branchId: b.id,
-    branchName: b.name,
-    items: series.filter((s) => s.branch_id === b.id),
-  }))
-}
+import { FIXED_OVERLAY_SAFE } from '@/utils/safeAreaClasses'
+import {
+  SERIES_FORM_COPY,
+  DOCUMENT_CODE_LABEL,
+  emptySeriesForm,
+  type SeriesFormState,
+  resolveSeriesDocumentTypeId,
+  isValidNotaCreditoSeries,
+  normalizeSeriesRows,
+  buildSeriesFilterCategories,
+  categoryLabel,
+  formatDocumentCode,
+  groupSeriesByBranch,
+  isInternalDocumentOnlySeries,
+} from '@/utils/seriesDocumentForm'
 
 export function RestaurantSeriesSettings() {
   const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
+  const [documentTypes, setDocumentTypes] = useState<SeriesDocumentType[]>([])
+  const [categoryLabels, setCategoryLabels] = useState<Record<string, string>>({})
   const [sunatEnabled, setSunatEnabled] = useState(false)
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
@@ -77,7 +31,7 @@ export function RestaurantSeriesSettings() {
   const [filterCategory, setFilterCategory] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<SeriesRow | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm())
+  const [form, setForm] = useState<SeriesFormState>(emptySeriesForm())
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [activeBranchId, setActiveBranchId] = useState<number>(0)
@@ -85,6 +39,9 @@ export function RestaurantSeriesSettings() {
   const grouped = groupSeriesByBranch(series, branches)
   const activeBranchGroup = grouped.find((g) => g.branchId === activeBranchId) ?? grouped[0]
   const editingLocked = editing?.locked ?? false
+  const selectedDocType = documentTypes.find((t) => t.id === form.doc_type_id) ?? null
+  const legacyDocType = editing && !selectedDocType
+  const allFilterCategories = buildSeriesFilterCategories(categoryLabels, series)
 
   useEffect(() => {
     if (branches.length === 0) return
@@ -98,12 +55,15 @@ export function RestaurantSeriesSettings() {
       companyService.listSeries({ category: filterCategory || undefined }),
       companyService.listBranches(),
       companyService.getSunat(),
+      companyService.listSeriesDocumentTypes(),
     ])
-      .then(([s, b, sunat]) => {
+      .then(([s, b, sunat, docTypesRes]) => {
         const branchList = b ?? []
         setBranches(branchList)
-        setSeries(normalizeSeries(s ?? [], branchList))
+        setSeries(normalizeSeriesRows(s ?? [], branchList))
         setSunatEnabled(sunat.sunat_enabled ?? false)
+        setDocumentTypes(docTypesRes.types ?? [])
+        setCategoryLabels(docTypesRes.categoryLabels ?? {})
       })
       .catch(() => toast.error('Error cargando series'))
       .finally(() => setLoading(false))
@@ -113,28 +73,26 @@ export function RestaurantSeriesSettings() {
     load()
   }, [filterCategory])
 
-  const sunatOptions = sunatEnabled ? SUNAT_CODES : SUNAT_CODES.filter((o) => o.code === '00')
-
   const openNew = () => {
     const branchId = activeBranchId || branches[0]?.id || 0
+    const defaultTypeId = documentTypes[0]?.id ?? 'nota_venta'
     setEditing(null)
-    setForm(sunatEnabled ? emptyForm(branchId) : { ...emptyForm(branchId), sunat_code: '00' })
+    setForm(emptySeriesForm(branchId, defaultTypeId))
     setModalOpen(true)
   }
 
   const openEdit = (s: SeriesRow) => {
-    if (!sunatEnabled && (s.sunat_code ?? '01') !== '00') {
-      toast.error('Solo puede editar series de nota de venta (00) sin facturación electrónica')
+    if (!sunatEnabled && !isInternalDocumentOnlySeries(s)) {
+      toast.error('Solo puede editar series de nota de venta sin facturación electrónica')
       return
     }
     setEditing(s)
     setForm({
       branch_id: s.branch_id,
-      doc_type: s.doc_type,
+      doc_type_id: resolveSeriesDocumentTypeId(documentTypes, s) ?? '',
       series: s.series,
       current_number: s.current_number ?? 0,
-      category: s.category,
-      sunat_code: (s.sunat_code ?? '01') === '00' || !sunatEnabled ? '00' : (s.sunat_code ?? '01'),
+      active: s.active ?? true,
     })
     setModalOpen(true)
   }
@@ -144,32 +102,39 @@ export function RestaurantSeriesSettings() {
       toast.error('Serie requerida')
       return
     }
-    if (form.category === 'nota_credito' && !isValidNotaCreditoSeries(form.series)) {
+    const docTypeDef = selectedDocType
+    if (!docTypeDef && !editing) {
+      toast.error('Seleccione un tipo de documento')
+      return
+    }
+    if (docTypeDef?.category === 'nota_credito' && !isValidNotaCreditoSeries(form.series)) {
       toast.error('Serie NC inválida: use FC01–FC99 para facturas o BC01–BC99 para boletas')
       return
     }
     if (!form.branch_id) {
-      toast.error('Selecciona una sucursal')
+      toast.error('Seleccione una sucursal')
+      return
+    }
+    if (form.current_number < 1) {
+      toast.error('El correlativo inicial debe ser al menos 1')
       return
     }
     setSaving(true)
     try {
+      const docType = docTypeDef?.doc_type ?? editing?.doc_type ?? ''
       if (editing) {
         await companyService.updateSeries(editing.id, {
           series: form.series,
-          active: editing.active ?? true,
-          doc_type: form.doc_type,
-          sunat_code: form.sunat_code || '01',
-          category: form.category,
+          active: form.active,
+          doc_type: docType,
           correlative: form.current_number,
         })
       } else {
         await companyService.createSeries({
           branch_id: form.branch_id,
-          doc_type: form.doc_type,
+          doc_type: docType,
           series: form.series,
-          category: form.category,
-          sunat_code: form.sunat_code || '01',
+          correlative: form.current_number,
         })
       }
       toast.success(editing ? 'Serie actualizada' : 'Serie creada')
@@ -186,7 +151,7 @@ export function RestaurantSeriesSettings() {
 
   const handleDelete = async (s: SeriesRow) => {
     if (!s.can_delete) {
-      toast.error('No se puede eliminar: la serie ya tiene documentos emitidos')
+      toast.error(s.usage_reason || 'No se puede eliminar: la serie ya está en uso')
       return
     }
     if (!confirm(`¿Eliminar la serie ${s.series}? Esta acción no se puede deshacer.`)) return
@@ -229,12 +194,12 @@ export function RestaurantSeriesSettings() {
 
       {!sunatEnabled && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-          Sin facturación electrónica: solo series con código SUNAT 00 (nota de venta).
+          {SERIES_FORM_COPY.noSunatBanner}
         </p>
       )}
 
       <div className="flex gap-2 flex-wrap">
-        {['', ...CATEGORIES].map((c) => (
+        {allFilterCategories.map((c) => (
           <button
             key={c || 'all'}
             type="button"
@@ -245,7 +210,7 @@ export function RestaurantSeriesSettings() {
                 : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
             }`}
           >
-            {c === '' ? 'Todas' : CATEGORY_LABELS[c] ?? c}
+            {c === '' ? 'Todas' : categoryLabel(categoryLabels, c)}
           </button>
         ))}
       </div>
@@ -310,10 +275,11 @@ export function RestaurantSeriesSettings() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-stone-50/50 text-left text-xs text-stone-500 uppercase">
+                        <th className="px-4 py-2.5">Categoría</th>
                         <th className="px-4 py-2.5">Tipo</th>
                         <th className="px-4 py-2.5">Serie</th>
-                        <th className="px-4 py-2.5">Número</th>
-                        <th className="px-4 py-2.5">SUNAT</th>
+                        <th className="px-4 py-2.5">N° actual</th>
+                        <th className="px-4 py-2.5">Cód. doc.</th>
                         <th className="px-4 py-2.5">Estado</th>
                         <th className="px-4 py-2.5 w-24" />
                       </tr>
@@ -321,10 +287,11 @@ export function RestaurantSeriesSettings() {
                     <tbody className="divide-y divide-stone-100">
                       {(activeBranchGroup?.items ?? []).map((s) => (
                         <tr key={s.id}>
+                          <td className="px-4 py-3 text-stone-600 text-xs">{categoryLabel(categoryLabels, s.category)}</td>
                           <td className="px-4 py-3 text-stone-700">{s.doc_type}</td>
                           <td className="px-4 py-3 font-mono font-medium text-stone-900">{s.series}</td>
                           <td className="px-4 py-3 tabular-nums text-stone-600">{s.current_number}</td>
-                          <td className="px-4 py-3 text-stone-600">{s.sunat_code ?? '—'}</td>
+                          <td className="px-4 py-3 font-mono text-stone-600">{formatDocumentCode(s)}</td>
                           <td className="px-4 py-3">
                             {s.locked ? (
                               <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
@@ -370,13 +337,12 @@ export function RestaurantSeriesSettings() {
       </div>
 
       {modalOpen && (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-center justify-center bg-black/50 ${FIXED_OVERLAY_SAFE}`}>
           <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-3 shadow-xl max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-stone-800">{editing ? 'Editar serie' : 'Nueva serie'}</h3>
             {editingLocked && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-                Esta serie ya tiene documentos emitidos o numeración iniciada. Solo puede cambiar si está activa o inactiva.
-                No se permiten cambios en serie, tipo, correlativo ni código SUNAT.
+                {editing?.usage_reason || SERIES_FORM_COPY.lockedFallback}
               </p>
             )}
             <div>
@@ -395,94 +361,80 @@ export function RestaurantSeriesSettings() {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Categoría</label>
-                <select
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
-                  value={form.category}
-                  onChange={(e) => {
-                    const category = e.target.value
-                    setForm((f) => ({
-                      ...f,
-                      category,
-                      ...(category === 'nota_credito'
-                        ? { sunat_code: '07', doc_type: 'NOTA DE CRÉDITO' }
-                        : {}),
-                    }))
-                  }}
-                  disabled={editingLocked}
-                >
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {CATEGORY_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Código SUNAT</label>
-                <select
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
-                  value={form.sunat_code}
-                  onChange={(e) => setForm((f) => ({ ...f, sunat_code: e.target.value }))}
-                  disabled={editingLocked}
-                >
-                  {sunatOptions.map((o) => (
-                    <option key={o.code} value={o.code}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
             <div>
-              <label className="block text-xs font-medium text-stone-600 mb-1">Tipo documento</label>
-              <select
-                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
-                value={form.doc_type}
-                onChange={(e) => setForm((f) => ({ ...f, doc_type: e.target.value }))}
-                disabled={editingLocked}
-              >
-                {DOC_TYPES.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+              <label className="block text-xs font-medium text-stone-600 mb-1">{SERIES_FORM_COPY.documentTypeLabel}</label>
+              {legacyDocType ? (
+                <div className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-stone-50 text-stone-700">
+                  {editing?.doc_type}
+                  <p className="text-xs text-stone-500 mt-1 font-mono">
+                    {DOCUMENT_CODE_LABEL}: {formatDocumentCode(editing!)}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
+                    value={form.doc_type_id}
+                    onChange={(e) => setForm((f) => ({ ...f, doc_type_id: e.target.value }))}
+                    disabled={editingLocked}
+                  >
+                    {documentTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedDocType && (
+                    <p className="text-xs text-stone-500 mt-1">
+                      {SERIES_FORM_COPY.documentCodeLabel}: <span className="font-mono">{selectedDocType.document_code}</span>
+                      {selectedDocType.series_prefix_hint ? (
+                        <> · {SERIES_FORM_COPY.prefixHint}: {selectedDocType.series_prefix_hint}</>
+                      ) : null}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
-            {form.category === 'nota_credito' && (
+            {selectedDocType?.category === 'nota_credito' && (
               <p className="text-xs text-violet-800 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                {NC_SERIES_HINT}
+                {SERIES_FORM_COPY.ncSeriesHint}
               </p>
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Serie *</label>
+                <label className="block text-xs font-medium text-stone-600 mb-1">{SERIES_FORM_COPY.seriesLabel} *</label>
                 <input
                   className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm font-mono uppercase disabled:bg-stone-50 disabled:text-stone-500"
                   value={form.series}
                   onChange={(e) => setForm((f) => ({ ...f, series: e.target.value.toUpperCase() }))}
                   disabled={editingLocked}
-                  placeholder={form.category === 'nota_credito' ? 'FC01 o BC01' : undefined}
+                  placeholder={selectedDocType?.category === 'nota_credito' ? 'FC01 o BC01' : undefined}
                 />
               </div>
-              {editing && (
-                <div>
-                  <label className="block text-xs font-medium text-stone-600 mb-1">Correlativo actual</label>
-                  <input
-                    type="number"
-                    min={0}
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
-                    value={form.current_number}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, current_number: Math.max(0, parseInt(e.target.value, 10) || 0) }))
-                    }
-                    disabled={editingLocked}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">{SERIES_FORM_COPY.correlativeLabel}</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm disabled:bg-stone-50 disabled:text-stone-500"
+                  value={form.current_number}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, current_number: Math.max(1, parseInt(e.target.value, 10) || 1) }))
+                  }
+                  disabled={editingLocked}
+                />
+              </div>
             </div>
+            {editing && (
+              <label className="flex items-center gap-2 text-sm text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+                />
+                {SERIES_FORM_COPY.activeLabel}
+              </label>
+            )}
             <div className="flex gap-2 pt-2">
               <button
                 type="button"

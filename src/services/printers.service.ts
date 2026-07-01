@@ -223,7 +223,11 @@ function textBytes(s: string): Uint8Array {
 }
 
 function wrapText(s: string, width: number): string[] {
-  const clean = normalizeTextForTicketPrint(String(s ?? '')).replace(/\s+/g, ' ').trim()
+  const clean = normalizeTextForTicketPrint(String(s ?? ''))
+    .replace(/S\/\s+/g, 'S/')
+    .replace(/\$\s+/g, '$')
+    .replace(/\s+/g, ' ')
+    .trim()
   if (!clean) return ['']
   const words = clean.split(' ')
   const out: string[] = []
@@ -600,7 +604,7 @@ export async function buildSaleDocumentEscPos(
   if (totals['30']?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(totals['30'].subtotal), cols))
   if (totals['40']?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(totals['40'].subtotal), cols))
   if (hasReceiptDiscount(printData)) {
-    totalLines.push(amountLine('Descuento:', `- ${money(receiptTotalDiscount(printData))}`, cols))
+    totalLines.push(amountLine('Descuento:', `-${money(receiptTotalDiscount(printData))}`, cols))
   }
   if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
   totalLines.push(amountLine('TOTAL A PAGAR:', money(printData.total), cols))
@@ -651,9 +655,14 @@ export async function buildSaleDocumentEscPos(
   if (hasPayBlock) {
     out.push(...Array.from(textBytes('\n')))
     const leftCol = Math.max(14, Math.floor(cols * 0.5))
+    const payTextCols = showQr ? leftCol : cols
     const leftLines: string[] = []
-    for (const raw of paymentConditionLeftLines(printData)) {
-      wrapText(raw, leftCol).forEach((l) => leftLines.push(l))
+    for (const raw of paymentConditionLeftLines(printData, { cols: payTextCols, ticketMoney: true })) {
+      if (raw.length <= payTextCols || raw.startsWith('Pagos detallados')) {
+        leftLines.push(raw)
+        continue
+      }
+      wrapText(raw, payTextCols).forEach((l) => leftLines.push(l))
     }
 
     if (showQr && printData.qr_data) {

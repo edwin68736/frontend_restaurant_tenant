@@ -41,3 +41,14 @@ export function getCapacitorPlatform(): CapacitorPlatform {
 export function isCapacitorAndroid(): boolean {
   return isCapacitorNative() && getCapacitorPlatform() === 'android'
 }
+
+/**
+ * Tablet en layout móvil (< lg): lado corto ≥ 600px (p. ej. portrait 768×1024).
+ * Excluye phones; incluye tablets antes del breakpoint desktop.
+ */
+export function isTabletMobileViewport(): boolean {
+  if (typeof window === 'undefined') return false
+  const w = window.innerWidth
+  if (w >= 1024) return false
+  return Math.min(w, window.innerHeight) >= 600
+}

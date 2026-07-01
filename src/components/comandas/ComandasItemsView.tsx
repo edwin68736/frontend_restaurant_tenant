@@ -6,6 +6,7 @@ import { restaurantService, type KitchenComanda } from '@/services/restaurant.se
 import { canCancelComanda } from '@/utils/restaurantPermissions'
 import type { ComandasKitchenProps } from '@/components/comandas/comandasKitchenProps'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
+import { FIXED_OVERLAY_SHEET } from '@/utils/safeAreaClasses'
 import {
   type ComandaStatus,
   COMANDA_STATUS_LABEL,
@@ -245,7 +246,7 @@ export function ComandasItemsView({ comandas, loading, onReload }: ComandasKitch
       )}
 
       {anullModal ? (
-        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4`}>
+        <div className={`fixed inset-0 ${REST_PAGE_MODAL_Z} flex items-end sm:items-center justify-center bg-black/50 ${FIXED_OVERLAY_SHEET}`}>
           <div className="bg-white rounded-t-2xl sm:rounded-2xl p-4 sm:p-5 w-full max-w-sm space-y-3">
             <h3 className="font-bold text-stone-900">Anular comanda</h3>
             <p className="text-sm text-stone-600">{anullModal.product_name}</p>
