@@ -80,6 +80,7 @@ export interface PrintItem {
   subtotal: number
   tax_amount: number
   total: number
+  igv_affectation_type?: string
   modifiers_json?: string
 }
 

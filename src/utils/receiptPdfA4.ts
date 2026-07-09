@@ -8,6 +8,12 @@ import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptP
 import { formatMoney } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
+import { sumAffectationByGroup } from '@/constants/igvAffectation'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
 
 const A4_WIDTH = 210
@@ -248,7 +254,7 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const rowCells: string[][] = []
 
   for (const it of data.items) {
-    const descLines = doc.splitTextToSize((it.description || '').trim() || '—', cols[3].w - 2) as string[]
+    const descLines = doc.splitTextToSize(receiptItemDisplayDescription(it), cols[3].w - 2) as string[]
     const rh = Math.max(LINE_H + 2, descLines.length * LINE_H + 2)
     rowHeights.push(rh)
     rowCells.push([
@@ -256,9 +262,9 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
       (it.unit || 'NIU').slice(0, 6),
       (it.code || '').slice(0, 10),
       descLines.join('\n'),
-      formatMoney(it.unit_price, data.currency),
+      receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency)),
       formatMoney(it.discount ?? 0, data.currency),
-      formatMoney(it.total, data.currency),
+      receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency)),
     ])
   }
 
@@ -297,25 +303,41 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const totalsX = A4_WIDTH - MARGIN
   doc.setFontSize(FONT_SM)
   const aff = data.totals_by_affectation || {}
-  if (aff['10']?.subtotal) {
+  const bonif = aff['15']
+  const gravadoAll = sumAffectationByGroup(aff, 'gravado')
+  const gravado =
+    bonif && gravadoAll
+      ? { ...gravadoAll, subtotal: Math.max(0, (gravadoAll.subtotal ?? 0) - (bonif.subtotal ?? 0)) }
+      : gravadoAll
+  const exonerado = sumAffectationByGroup(aff, 'exonerado')
+  const inafecto = sumAffectationByGroup(aff, 'inafecto')
+  const exportacion = sumAffectationByGroup(aff, 'exportacion')
+  if (gravado?.subtotal) {
     doc.setFont('helvetica', 'bold')
     doc.text('OP. GRAVADAS:', totalsX - 42, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
-    doc.text(formatMoney(aff['10'].subtotal, data.currency), totalsX, y, { align: 'right' })
+    doc.text(formatMoney(gravado.subtotal, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
-  if (aff['20']?.subtotal) {
+  if (exonerado?.subtotal) {
     doc.setFont('helvetica', 'bold')
     doc.text('OP. EXONERADAS:', totalsX - 42, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
-    doc.text(formatMoney(aff['20'].subtotal, data.currency), totalsX, y, { align: 'right' })
+    doc.text(formatMoney(exonerado.subtotal, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
-  if (aff['30']?.subtotal) {
+  if (inafecto?.subtotal) {
     doc.setFont('helvetica', 'bold')
     doc.text('OP. INAFECTAS:', totalsX - 42, y, { align: 'right' })
     doc.setFont('helvetica', 'normal')
-    doc.text(formatMoney(aff['30'].subtotal, data.currency), totalsX, y, { align: 'right' })
+    doc.text(formatMoney(inafecto.subtotal, data.currency), totalsX, y, { align: 'right' })
+    y += LINE_H + 1
+  }
+  if (bonif?.subtotal) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('BONIF. (REF.):', totalsX - 42, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(formatMoney(bonif.subtotal, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
   if (hasReceiptDiscount(data)) {

@@ -1,5 +1,11 @@
 import { jsPDF } from 'jspdf'
+import { sumAffectationByGroup } from '@/constants/igvAffectation'
 import type { PrintData } from '@/types/printData'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { formatMoney } from '@/utils/format'
 import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
@@ -55,10 +61,18 @@ function emitAffectTotals(
   emitRow: (label: string, amount: string, bold?: boolean) => void,
 ) {
   const aff = data.totals_by_affectation || {}
-  const gravado = aff['10']
-  const exonerado = aff['20']
-  const inafecto = aff['30']
-  const exportacion = aff['40']
+  const bonif = aff['15']
+  const gravadoAll = sumAffectationByGroup(aff, 'gravado')
+  const gravado =
+    bonif && gravadoAll
+      ? {
+          ...gravadoAll,
+          subtotal: Math.max(0, (gravadoAll.subtotal ?? 0) - (bonif.subtotal ?? 0)),
+        }
+      : gravadoAll
+  const exonerado = sumAffectationByGroup(aff, 'exonerado')
+  const inafecto = sumAffectationByGroup(aff, 'inafecto')
+  const exportacion = sumAffectationByGroup(aff, 'exportacion')
   if (gravado && gravado.subtotal > 0.000001) {
     emitRow('Op. Gravadas:', formatMoney(gravado.subtotal, data.currency))
   }
@@ -70,6 +84,9 @@ function emitAffectTotals(
   }
   if (exportacion && exportacion.subtotal > 0.000001) {
     emitRow('Op. Exportación:', formatMoney(exportacion.subtotal, data.currency))
+  }
+  if (bonif && bonif.subtotal > 0.000001) {
+    emitRow('Bonif. (ref.):', formatMoney(bonif.subtotal, data.currency))
   }
   if (hasReceiptDiscount(data)) {
     emitRow('Descuento:', `- ${formatMoney(receiptTotalDiscount(data), data.currency)}`)
@@ -284,9 +301,9 @@ export async function generateReceiptPdf(
     dash()
 
     for (const it of data.items) {
-      const desc = ticketText((it.description || '').trim() || '—')
-      const pu = formatMoney(it.unit_price, data.currency)
-      const imp = formatMoney(it.total, data.currency)
+      const desc = ticketText(receiptItemDisplayDescription(it))
+      const pu = receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency))
+      const imp = receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency))
       const descLines = doc.splitTextToSize(desc, lay.wDescFirst) as string[]
 
       setTicketDetailFont(false)

@@ -13,6 +13,12 @@ import { paymentWalletVisible, walletProviderLabel } from '@/utils/receiptPaymen
 import { resolvePublicAssetUrl } from '@/services/api'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { trimCompanyAdditionalNotes, wrapCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import { sumAffectationByGroup } from '@/constants/igvAffectation'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
@@ -590,19 +596,29 @@ export async function buildSaleDocumentEscPos(
     itemDetailRows(
       cols,
       qty,
-      String(it.description ?? '').trim(),
-      money(it.unit_price ?? 0),
-      money(it.total ?? 0),
+      receiptItemDisplayDescription(it),
+      receiptItemDisplayUnitPrice(it, money),
+      receiptItemDisplayTotal(it, money),
       narrow,
     ).forEach((r) => detailLines.push(r))
   }
 
   const totalLines: string[] = []
   const totals = printData.totals_by_affectation ?? {}
-  if (totals['10']?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(totals['10'].subtotal), cols))
-  if (totals['20']?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(totals['20'].subtotal), cols))
-  if (totals['30']?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(totals['30'].subtotal), cols))
-  if (totals['40']?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(totals['40'].subtotal), cols))
+  const bonif = totals['15']
+  const gravadoAll = sumAffectationByGroup(totals, 'gravado')
+  const gravado =
+    bonif && gravadoAll
+      ? { ...gravadoAll, subtotal: Math.max(0, (gravadoAll.subtotal ?? 0) - (bonif.subtotal ?? 0)) }
+      : gravadoAll
+  const exonerado = sumAffectationByGroup(totals, 'exonerado')
+  const inafecto = sumAffectationByGroup(totals, 'inafecto')
+  const exportacion = sumAffectationByGroup(totals, 'exportacion')
+  if (gravado?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(gravado.subtotal), cols))
+  if (exonerado?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(exonerado.subtotal), cols))
+  if (inafecto?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(inafecto.subtotal), cols))
+  if (exportacion?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(exportacion.subtotal), cols))
+  if (bonif?.subtotal) totalLines.push(amountLine('Bonif. (ref.):', money(bonif.subtotal), cols))
   if (hasReceiptDiscount(printData)) {
     totalLines.push(amountLine('Descuento:', `-${money(receiptTotalDiscount(printData))}`, cols))
   }

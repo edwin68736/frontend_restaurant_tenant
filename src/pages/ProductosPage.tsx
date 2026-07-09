@@ -52,6 +52,12 @@ import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useInventoryAccess } from '@/hooks/useInventoryAccess'
 import { sortCategories } from '@/utils/sortCategories'
 import { sortPreparationAreas } from '@/utils/sortPreparationAreas'
+import {
+  PRODUCT_IGV_AFFECTATION_OPTIONS,
+  isGravadoIgv,
+} from '@/constants/igvAffectation'
+
+const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 type ProductosTab = 'products' | 'categories' | 'prep_areas'
@@ -74,18 +80,6 @@ function prepAreaDisplayName(areas: PreparationArea[], p: Product): string {
     return bySlug?.name ?? p.preparation_area
   }
   return '—'
-}
-
-const IGV_AFFECTATION_OPTIONS = [
-  { code: '10', label: '10 - Gravado IGV' },
-  { code: '20', label: '20 - Exonerado' },
-  { code: '30', label: '30 - Inafecto' },
-  { code: '40', label: '40 - Exportación' },
-]
-
-function isGravadoIgv(code: string): boolean {
-  const c = String(code || '').trim()
-  return !['20', '21', '30', '31', '32', '33', '34', '35', '36', '40'].includes(c)
 }
 
 const DEFAULT_PRODUCT_SORT: { sortBy: ProductSortField; sortDir: ProductSortDir } = {
