@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { sumAffectationByGroup } from '@/constants/igvAffectation'
 import type { PrintData } from '@/types/printData'
+import { downloadBlob } from '@/utils/downloadBlob'
 import {
   receiptItemDisplayDescription,
   receiptItemDisplayTotal,
@@ -378,8 +379,8 @@ export async function downloadReceiptPdf(
   format: 'a4' | 'ticket' = 'a4',
   options?: ReceiptPdfOptions,
 ): Promise<void> {
-  const doc = await generateReceiptPdf(data, format, options)
-  doc.save(receiptPdfFileName(data, format))
+  const blob = await printDataToPdfBlob(data, format, options)
+  await downloadBlob(blob, receiptPdfFileName(data, format))
 }
 
 export async function openReceiptPdfInNewTab(

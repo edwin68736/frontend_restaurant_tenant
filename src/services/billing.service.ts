@@ -1,4 +1,5 @@
 import api from './api'
+import { downloadBlob } from '@/utils/downloadBlob'
 
 export interface InvoiceInfo {
   id: number
@@ -78,12 +79,7 @@ export const billingService = {
       const match = contentDisp.match(/filename\*?=(?:UTF-8'')?"?([^";\n]+)"?/i)
       if (match?.[1]) name = match[1].trim().replace(/^"|"$/g, '')
     }
-    const url = URL.createObjectURL(res.data as Blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = name
-    a.click()
-    URL.revokeObjectURL(url)
+    await downloadBlob(res.data as Blob, name)
   },
 
   viewPdf: async (saleId: number): Promise<void> => {

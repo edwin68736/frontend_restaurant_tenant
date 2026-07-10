@@ -333,6 +333,13 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     doc.text(formatMoney(inafecto.subtotal, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
+  if (exportacion?.subtotal) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('OP. EXPORTACIÓN:', totalsX - 42, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(formatMoney(exportacion.subtotal, data.currency), totalsX, y, { align: 'right' })
+    y += LINE_H + 1
+  }
   if (bonif?.subtotal) {
     doc.setFont('helvetica', 'bold')
     doc.text('BONIF. (REF.):', totalsX - 42, y, { align: 'right' })

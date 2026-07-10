@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import type { CashSessionReport } from '@/services/cashbank.service'
+import { downloadJsPdf } from '@/utils/downloadBlob'
 
 const PAGE_W = 210
 const MARGIN = 12
@@ -481,7 +482,7 @@ export function buildReportCajaPdfFilename(report: CashSessionReport): string {
   return `reporte-caja_${nombreCaja}_${fecha}_${hora}.pdf`
 }
 
-export function downloadCajaSessionReportPdf(report: CashSessionReport, opts?: { companyName?: string }): void {
+export async function downloadCajaSessionReportPdf(report: CashSessionReport, opts?: { companyName?: string }): Promise<void> {
   const doc = generateCajaSessionReportPdf(report, opts)
-  doc.save(buildReportCajaPdfFilename(report))
+  await downloadJsPdf(doc, buildReportCajaPdfFilename(report))
 }

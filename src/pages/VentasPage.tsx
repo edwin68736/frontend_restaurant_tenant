@@ -24,6 +24,7 @@ import {
   Receipt,
   Printer,
   MoreVertical,
+  MessageCircle,
 } from 'lucide-react'
 import {
   formatElectronicIssueDocument,
@@ -65,6 +66,7 @@ import {
   openReceiptPdfInNewTab,
   type ReceiptPdfOptions,
 } from '@/utils/receiptPdf'
+import { shareReceiptPdf } from '@/utils/receiptShare'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { formatSoles } from '@/utils/format'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
@@ -165,6 +167,7 @@ export default function VentasPage() {
   const [localPdfPreviewBusy, setLocalPdfPreviewBusy] = useState<{ saleId: number; format: 'a4' | 'ticket' } | null>(null)
   const [localTicketTabBusyId, setLocalTicketTabBusyId] = useState<number | null>(null)
   const [localPdfDownloadBusy, setLocalPdfDownloadBusy] = useState<{ saleId: number; format: 'a4' | 'ticket' } | null>(null)
+  const [localPdfShareBusy, setLocalPdfShareBusy] = useState<{ saleId: number; format: 'a4' | 'ticket' } | null>(null)
   const [thermalPrintBusyId, setThermalPrintBusyId] = useState<number | null>(null)
   const [xmlViewerOpen, setXmlViewerOpen] = useState(false)
   const [xmlViewerText, setXmlViewerText] = useState<string | null>(null)
@@ -703,6 +706,18 @@ export default function VentasPage() {
     }
   }
 
+  const shareLocalPdfWhatsapp = async (saleId: number, format: 'a4' | 'ticket' = 'ticket') => {
+    setLocalPdfShareBusy({ saleId, format })
+    try {
+      const pd = await requirePrintData(saleId)
+      await shareReceiptPdf(pd, format)
+    } catch (e: unknown) {
+      toast.error((e as Error)?.message ?? 'No se pudo compartir por WhatsApp')
+    } finally {
+      setLocalPdfShareBusy(null)
+    }
+  }
+
   const openLocalPdfTicketTab = async (saleId: number) => {
     setLocalTicketTabBusyId(saleId)
     try {
@@ -971,6 +986,30 @@ export default function VentasPage() {
         <Download size={14} />
         Descargar A4
       </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localPdfShareBusy?.saleId === saleId && localPdfShareBusy?.format === 'ticket'}
+        onClick={() => {
+          closeDropdown()
+          void shareLocalPdfWhatsapp(saleId, 'ticket')
+        }}
+      >
+        <MessageCircle size={14} />
+        WhatsApp ticket
+      </button>
+      <button
+        type="button"
+        className={ROW_DROPDOWN_ITEM}
+        disabled={localPdfShareBusy?.saleId === saleId && localPdfShareBusy?.format === 'a4'}
+        onClick={() => {
+          closeDropdown()
+          void shareLocalPdfWhatsapp(saleId, 'a4')
+        }}
+      >
+        <MessageCircle size={14} />
+        WhatsApp A4
+      </button>
     </>
   )
 
@@ -1193,6 +1232,30 @@ export default function VentasPage() {
         >
           <Download size={14} />
           Descargar A4
+        </button>
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          disabled={localPdfShareBusy?.saleId === saleId && localPdfShareBusy?.format === 'ticket'}
+          onClick={() => {
+            closeDropdown()
+            void shareLocalPdfWhatsapp(saleId, 'ticket')
+          }}
+        >
+          <MessageCircle size={14} />
+          WhatsApp ticket
+        </button>
+        <button
+          type="button"
+          className={ROW_DROPDOWN_ITEM}
+          disabled={localPdfShareBusy?.saleId === saleId && localPdfShareBusy?.format === 'a4'}
+          onClick={() => {
+            closeDropdown()
+            void shareLocalPdfWhatsapp(saleId, 'a4')
+          }}
+        >
+          <MessageCircle size={14} />
+          WhatsApp A4
         </button>
       </AnchoredDropdown>
     </div>
