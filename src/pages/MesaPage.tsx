@@ -108,6 +108,7 @@ export default function MesaPage() {
     seriesMetaReady,
     hasCheckoutSeries,
     sunatEnabled,
+    canFactura,
     seriesLoadError,
     seriesOnOtherBranches,
   } = useBranchCheckoutSeries()
@@ -1324,6 +1325,7 @@ export default function MesaPage() {
         onConfirm={doCheckout}
         confirmDisabled={!checkoutContactOk || !seriesId}
         sunatEnabled={sunatEnabled}
+        canFactura={canFactura}
       />
 
       {/* Modal Precuenta */}

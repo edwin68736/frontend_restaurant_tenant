@@ -25,6 +25,8 @@ type Props = {
   onPreferVariosContact?: () => void
   /** Si false, solo notas de venta (series ya filtradas en el padre). */
   sunatEnabled?: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura?: boolean
   /** Oculta el selector de serie (p. ej. cuando el padre lo muestra en otra fila). */
   hideSeriesPicker?: boolean
 }
@@ -44,11 +46,12 @@ export function CheckoutCartBillingFields({
   onAddContact,
   onPreferVariosContact,
   sunatEnabled = true,
+  canFactura = true,
   hideSeriesPicker = false,
 }: Props) {
   const checkoutSeries = useMemo(
-    () => filterRestaurantCheckoutSeries(series, { sunatEnabled }),
-    [series, sunatEnabled],
+    () => filterRestaurantCheckoutSeries(series, { sunatEnabled, canFactura }),
+    [series, sunatEnabled, canFactura],
   )
 
   const selectedSeries = checkoutSeries.find((s) => s.id === seriesId)

@@ -135,6 +135,7 @@ export default function POSPage() {
     seriesMetaReady,
     hasCheckoutSeries,
     sunatEnabled,
+    canFactura,
     seriesLoadError,
     seriesOnOtherBranches,
   } = useBranchCheckoutSeries()
@@ -1865,6 +1866,7 @@ export default function POSPage() {
         confirmDisabled={!checkoutContactOk || !seriesId}
         allowDiscount={allowCheckoutDiscount}
         sunatEnabled={sunatEnabled}
+        canFactura={canFactura}
       />
 
       <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md" stacked>

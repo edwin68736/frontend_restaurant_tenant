@@ -74,26 +74,30 @@ function emitAffectTotals(
   const exonerado = sumAffectationByGroup(aff, 'exonerado')
   const inafecto = sumAffectationByGroup(aff, 'inafecto')
   const exportacion = sumAffectationByGroup(aff, 'exportacion')
-  if (gravado && gravado.subtotal > 0.000001) {
-    emitRow('Op. Gravadas:', formatMoney(gravado.subtotal, data.currency))
-  }
-  if (exonerado && exonerado.subtotal > 0.000001) {
-    emitRow('Op. Exoneradas:', formatMoney(exonerado.subtotal, data.currency))
-  }
-  if (inafecto && inafecto.subtotal > 0.000001) {
-    emitRow('Op. Inafectas:', formatMoney(inafecto.subtotal, data.currency))
-  }
-  if (exportacion && exportacion.subtotal > 0.000001) {
-    emitRow('Op. Exportación:', formatMoney(exportacion.subtotal, data.currency))
-  }
-  if (bonif && bonif.subtotal > 0.000001) {
-    emitRow('Bonif. (ref.):', formatMoney(bonif.subtotal, data.currency))
-  }
-  if (hasReceiptDiscount(data)) {
-    emitRow('Descuento:', `- ${formatMoney(receiptTotalDiscount(data), data.currency)}`)
-  }
-  if (data.tax_amount > 0.000001) {
-    emitRow('IGV:', formatMoney(data.tax_amount, data.currency))
+  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
+  const hideBreakdown = data.company?.show_igv_breakdown === false
+  if (!hideBreakdown) {
+    if (gravado && gravado.subtotal > 0.000001) {
+      emitRow('Op. Gravadas:', formatMoney(gravado.subtotal, data.currency))
+    }
+    if (exonerado && exonerado.subtotal > 0.000001) {
+      emitRow('Op. Exoneradas:', formatMoney(exonerado.subtotal, data.currency))
+    }
+    if (inafecto && inafecto.subtotal > 0.000001) {
+      emitRow('Op. Inafectas:', formatMoney(inafecto.subtotal, data.currency))
+    }
+    if (exportacion && exportacion.subtotal > 0.000001) {
+      emitRow('Op. Exportación:', formatMoney(exportacion.subtotal, data.currency))
+    }
+    if (bonif && bonif.subtotal > 0.000001) {
+      emitRow('Bonif. (ref.):', formatMoney(bonif.subtotal, data.currency))
+    }
+    if (hasReceiptDiscount(data)) {
+      emitRow('Descuento:', `- ${formatMoney(receiptTotalDiscount(data), data.currency)}`)
+    }
+    if (data.tax_amount > 0.000001) {
+      emitRow('IGV:', formatMoney(data.tax_amount, data.currency))
+    }
   }
   emitRow('TOTAL A PAGAR:', formatMoney(data.total, data.currency), true)
   void doc

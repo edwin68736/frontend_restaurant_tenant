@@ -11,6 +11,7 @@ import {
 import {
   companyService,
   sortSeriesNotaVentaFirst,
+  tenantCanEmitFactura,
   type SeriesRow,
 } from '@/services/company.service'
 import { filterRestaurantCheckoutSeries } from '@/utils/restaurantCheckoutSeries'
@@ -20,6 +21,7 @@ import { useBranch } from '@/contexts/BranchContext'
 type CacheEntry = {
   series: SeriesRow[]
   sunatEnabled: boolean
+  canFactura: boolean
   ready: boolean
   loadError: boolean
   /** Hay series de venta en otras sucursales, no en la activa. */
@@ -32,6 +34,8 @@ type BranchCheckoutSeriesContextValue = {
   hasCheckoutSeries: boolean
   /** Facturación electrónica SUNAT habilitada en el tenant (panel central). */
   sunatEnabled: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura: boolean
   seriesLoadError: boolean
   seriesOnOtherBranches: boolean
   /** Fuerza recarga de la sucursal activa (p. ej. tras crear serie en Ajustes). */
@@ -47,6 +51,7 @@ const BranchCheckoutSeriesContext = createContext<BranchCheckoutSeriesContextVal
 const emptyEntry = (): CacheEntry => ({
   series: [],
   sunatEnabled: true,
+  canFactura: true,
   ready: false,
   loadError: false,
   seriesOnOtherBranches: false,
@@ -57,7 +62,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
   const { activeBranchId, resetEpoch } = useBranch()
   const cacheRef = useRef<Map<number, CacheEntry>>(new Map())
   const inflightRef = useRef<Map<number, Promise<void>>>(new Map())
-  const sunatRef = useRef<{ enabled: boolean } | null>(null)
+  const sunatRef = useRef<{ enabled: boolean; canFactura: boolean } | null>(null)
   const [version, setVersion] = useState(0)
 
   const bump = useCallback(() => setVersion((v) => v + 1), [])
@@ -79,9 +84,13 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
           if (!sunatRef.current) {
             const sunat = await companyService.getSunat().catch(() => null)
             // Si falla la consulta, no asumir SUNAT deshabilitado (evita ocultar F/B válidas).
-            sunatRef.current = { enabled: sunat == null ? true : Boolean(sunat.sunat_enabled) }
+            sunatRef.current = {
+              enabled: sunat == null ? true : Boolean(sunat.sunat_enabled),
+              canFactura: tenantCanEmitFactura(sunat),
+            }
           }
           const enabled = sunatRef.current.enabled
+          const canFactura = sunatRef.current.canFactura
 
           const raw = await companyService.listSeries({
             branch_id: branchId,
@@ -95,11 +104,12 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
           }
 
           const ordered = sortSeriesNotaVentaFirst(
-            filterRestaurantCheckoutSeries(raw ?? [], { sunatEnabled: enabled }),
+            filterRestaurantCheckoutSeries(raw ?? [], { sunatEnabled: enabled, canFactura }),
           )
           cacheRef.current.set(branchId, {
             series: ordered,
             sunatEnabled: enabled,
+            canFactura,
             ready: true,
             loadError: false,
             seriesOnOtherBranches,
@@ -158,6 +168,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
   const checkoutSeries = entry?.series ?? []
   const seriesMetaReady = !activeBranchId || Boolean(entry?.ready)
   const sunatEnabled = entry?.sunatEnabled ?? true
+  const canFactura = entry?.canFactura ?? true
 
   const value = useMemo(
     () => ({
@@ -165,6 +176,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
       seriesMetaReady,
       hasCheckoutSeries: checkoutSeries.length > 0,
       sunatEnabled,
+      canFactura,
       seriesLoadError: entry?.loadError ?? false,
       seriesOnOtherBranches: entry?.seriesOnOtherBranches ?? false,
       refreshCheckoutSeries,
@@ -175,6 +187,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
       checkoutSeries,
       seriesMetaReady,
       sunatEnabled,
+      canFactura,
       entry?.loadError,
       entry?.seriesOnOtherBranches,
       refreshCheckoutSeries,

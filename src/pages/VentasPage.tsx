@@ -70,6 +70,7 @@ import { shareReceiptPdf } from '@/utils/receiptShare'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { formatSoles } from '@/utils/format'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import {
   billingStatusForUI,
   manualBillingMessage,
@@ -115,6 +116,7 @@ type Tab = 'notas' | 'facturacion' | 'credit_notes'
 
 export default function VentasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { canFactura } = useBranchCheckoutSeries()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [tab, setTab] = useState<Tab>(() => {
     const t = searchParams.get('tab')
@@ -2088,15 +2090,17 @@ export default function VentasPage() {
                   >
                     Boleta
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setEmitDocKind('01')}
-                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${
-                      emitDocKind === '01' ? 'bg-rest-600 text-white border-rest-600' : 'border-stone-200'
-                    }`}
-                  >
-                    Factura
-                  </button>
+                  {canFactura && (
+                    <button
+                      type="button"
+                      onClick={() => setEmitDocKind('01')}
+                      className={`flex-1 py-2 rounded-xl text-sm font-semibold border ${
+                        emitDocKind === '01' ? 'bg-rest-600 text-white border-rest-600' : 'border-stone-200'
+                      }`}
+                    >
+                      Factura
+                    </button>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-stone-700 mb-1">

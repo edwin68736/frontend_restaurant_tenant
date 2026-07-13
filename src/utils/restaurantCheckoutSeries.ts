@@ -42,6 +42,8 @@ export function isElectronicBillingSunatCode(code?: string | null): boolean {
 export type RestaurantCheckoutSeriesFilterOpts = {
   /** Si false, solo series SUNAT 00 (nota de venta). */
   sunatEnabled?: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura?: boolean
 }
 
 /**
@@ -53,12 +55,14 @@ export function filterRestaurantCheckoutSeries(
   opts?: RestaurantCheckoutSeriesFilterOpts,
 ): SeriesRow[] {
   const sunatEnabled = opts?.sunatEnabled !== false
+  const canFactura = opts?.canFactura !== false
   return list.filter((s) => {
     if (s.active === false) return false
     const cat = String(s.category ?? 'venta').toLowerCase()
     if (cat && cat !== 'venta') return false
     const code = effectiveSunatCode(s)
     if (!sunatEnabled) return code === '00'
+    if (code === '01' && !canFactura) return false // p. ej. Nuevo RUS: sin facturas
     if (!code || !RESTAURANT_CHECKOUT_SUNAT.has(code)) return false
     const d = String(s.doc_type ?? '').toLowerCase()
     if (d.includes('credito') || d.includes('crédito') || d.includes('debito') || d.includes('débito')) {

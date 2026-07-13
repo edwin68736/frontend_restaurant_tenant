@@ -312,6 +312,9 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const exonerado = sumAffectationByGroup(aff, 'exonerado')
   const inafecto = sumAffectationByGroup(aff, 'inafecto')
   const exportacion = sumAffectationByGroup(aff, 'exportacion')
+  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
+  const hideBreakdown = data.company?.show_igv_breakdown === false
+  if (!hideBreakdown) {
   if (gravado?.subtotal) {
     doc.setFont('helvetica', 'bold')
     doc.text('OP. GRAVADAS:', totalsX - 42, y, { align: 'right' })
@@ -360,6 +363,7 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     doc.setFont('helvetica', 'normal')
     doc.text(formatMoney(data.tax_amount, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
+  }
   }
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(FONT)

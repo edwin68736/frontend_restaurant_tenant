@@ -91,6 +91,8 @@ type Props = {
   allowDiscount?: boolean
   /** Facturación electrónica habilitada (boleta/factura). */
   sunatEnabled?: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura?: boolean
 }
 
 export function POSCheckoutModal({
@@ -124,6 +126,7 @@ export function POSCheckoutModal({
   extraBeforePayments,
   allowDiscount = true,
   sunatEnabled = true,
+  canFactura = true,
 }: Props) {
   const { activeBranch } = useBranch()
   const { seriesLoadError, seriesOnOtherBranches } = useBranchCheckoutSeries()
@@ -167,8 +170,8 @@ export function POSCheckoutModal({
   }, [methodOptions, showMoreMethods])
 
   const checkoutSeries = useMemo(
-    () => filterRestaurantCheckoutSeries(series, { sunatEnabled }),
-    [series, sunatEnabled],
+    () => filterRestaurantCheckoutSeries(series, { sunatEnabled, canFactura }),
+    [series, sunatEnabled, canFactura],
   )
 
   const selectedSeries = useMemo(
@@ -308,6 +311,7 @@ export function POSCheckoutModal({
               onAddContact={onAddContact}
               onPreferVariosContact={onPreferVariosContact}
               sunatEnabled={sunatEnabled}
+              canFactura={canFactura}
               hideSeriesPicker
             />
 

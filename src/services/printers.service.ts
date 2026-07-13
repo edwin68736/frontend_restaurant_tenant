@@ -614,15 +614,19 @@ export async function buildSaleDocumentEscPos(
   const exonerado = sumAffectationByGroup(totals, 'exonerado')
   const inafecto = sumAffectationByGroup(totals, 'inafecto')
   const exportacion = sumAffectationByGroup(totals, 'exportacion')
-  if (gravado?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(gravado.subtotal), cols))
-  if (exonerado?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(exonerado.subtotal), cols))
-  if (inafecto?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(inafecto.subtotal), cols))
-  if (exportacion?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(exportacion.subtotal), cols))
-  if (bonif?.subtotal) totalLines.push(amountLine('Bonif. (ref.):', money(bonif.subtotal), cols))
-  if (hasReceiptDiscount(printData)) {
-    totalLines.push(amountLine('Descuento:', `-${money(receiptTotalDiscount(printData))}`, cols))
+  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
+  const hideBreakdown = printData.company?.show_igv_breakdown === false
+  if (!hideBreakdown) {
+    if (gravado?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(gravado.subtotal), cols))
+    if (exonerado?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(exonerado.subtotal), cols))
+    if (inafecto?.subtotal) totalLines.push(amountLine('Op. Inafectas:', money(inafecto.subtotal), cols))
+    if (exportacion?.subtotal) totalLines.push(amountLine('Op. Exportacion:', money(exportacion.subtotal), cols))
+    if (bonif?.subtotal) totalLines.push(amountLine('Bonif. (ref.):', money(bonif.subtotal), cols))
+    if (hasReceiptDiscount(printData)) {
+      totalLines.push(amountLine('Descuento:', `-${money(receiptTotalDiscount(printData))}`, cols))
+    }
+    if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
   }
-  if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
   totalLines.push(amountLine('TOTAL A PAGAR:', money(printData.total), cols))
 
   const legendLines: string[] = []

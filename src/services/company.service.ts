@@ -22,11 +22,33 @@ export interface CompanyConfig {
   receipt_bank_account_ids?: string | number[]
 }
 
+/** Capacidades resueltas por el backend según el régimen tributario del tenant. */
+export interface TenantCapabilities {
+  allowed_sale_doc_codes?: string[]
+  can_emit_factura?: boolean
+  can_emit_boleta?: boolean
+  can_emit_nota_credito?: boolean
+  can_emit_nota_debito?: boolean
+  show_igv_breakdown?: boolean
+  default_operation_type?: string
+}
+
 export interface SunatConfig {
   sunat_enabled: boolean
   tax_rate: number
   igv_regime: string
   tax_benefit_zone: boolean
+  /** general | nrus — régimen tributario del contribuyente. */
+  taxpayer_regime?: string
+  capabilities?: TenantCapabilities
+}
+
+/**
+ * ¿El tenant puede emitir Factura (01)? Consume la capacidad resuelta por el
+ * backend; default true (retro-compatible con respuestas sin capabilities).
+ */
+export function tenantCanEmitFactura(sunat?: SunatConfig | null): boolean {
+  return sunat?.capabilities?.can_emit_factura !== false
 }
 
 export interface BranchRow {

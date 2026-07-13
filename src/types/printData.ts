@@ -56,6 +56,11 @@ export interface PrintCompany {
   logo_url?: string
   /** Información adicional (config empresa); solo ticket si tiene texto. */
   additional_notes?: string
+  /**
+   * Discriminar IGV/valor de venta en el impreso. Default true. Nuevo RUS = false
+   * (la boleta muestra solo el total; el XML sí lleva el IGV).
+   */
+  show_igv_breakdown?: boolean
 }
 
 export interface PrintBranch {
