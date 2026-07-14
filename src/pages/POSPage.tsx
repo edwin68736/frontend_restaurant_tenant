@@ -27,11 +27,11 @@ import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
 import { sortCategories } from '@/utils/sortCategories'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
+import { posFastCheckoutEnabled } from '@/config/featureFlags'
 import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
-import { calcItem } from '@/utils/taxCalc'
 import { resolveTaxRatePercent } from '@/constants/tax'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useAuth } from '@/contexts/AuthContext'
@@ -62,10 +62,9 @@ import {
   applyCatalogLineUnitPrice,
   buildCatalogConfigureKey,
   cartLineKey,
+  cartLineTaxTotals,
   cartLineTotal,
-  cartLineUnitPrice,
   createCatalogCartLine,
-  isManualCartLine,
   sumCartQty,
   type CatalogCartLine,
   type ManualCartLine,
@@ -452,29 +451,9 @@ export default function POSPage() {
   const taxRate = resolveTaxRatePercent(sunat?.tax_rate)
   const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
 
-  const getCartItemTotals = (item: PosCartLine) => {
-    if (isManualCartLine(item)) {
-      return calcItem(
-        item.unit_price,
-        item.quantity,
-        0,
-        item.igv_affectation_type,
-        item.price_includes_igv,
-        taxRate,
-        taxConfig,
-      )
-    }
-    const p = item.product
-    return calcItem(
-      cartLineUnitPrice(item),
-      item.quantity,
-      0,
-      p.igv_affectation_type ?? '10',
-      p.price_includes_igv ?? true,
-      taxRate,
-      taxConfig,
-    )
-  }
+  // Delega en cartLineTaxTotals para que el total (a pagar) excluya la bonificación gravada ('15'),
+  // igual que la etiqueta de subtotal por línea. Así el "Total a pagar" del modal no cobra la bonificación.
+  const getCartItemTotals = (item: PosCartLine) => cartLineTaxTotals(item, taxRate, taxConfig)
 
   const cartTotal = useMemo(
     () => sumMoney(...cart.map((i) => getCartItemTotals(i).total)),
@@ -1312,61 +1291,98 @@ export default function POSPage() {
       payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
       (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))
 
-    setLoading(true)
-    try {
-      let sid = activeSessionId
-      if (!sid) {
-        const res = await restaurantService.openSession({
-          ...buildSessionPayload(),
-          notes: orderNotes || (isDirectSale ? 'Venta directa' : 'POS'),
-          guests: 1,
-        })
-        sid = (res as { data: { id: number } }).data.id
-      }
-      if (cart.length > 0) {
-        const items = resolveOrderItems()
-        if (!items) return
-        await restaurantService.addOrder(sid!, { items })
-      }
-      const sessionForBill = await restaurantService.getSession(sid!)
-      const billLines = collectCheckoutLineTaxTotals([], sessionForBill, taxRate, taxConfig)
-      const billDiscount = buildRestaurantBillDiscount(
-        billLines,
-        checkoutDiscountMode,
-        checkoutDiscountValue,
-        allowCheckoutDiscount,
-      )
-      if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
-        toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+    if (needsCashSession) {
+      if (!canChargeCash) {
+        toast.error('No tiene permiso para cobrar en efectivo')
         return
       }
-      if (needsCashSession) {
-        if (!canChargeCash) {
-          toast.error('No tiene permiso para cobrar en efectivo')
-          return
-        }
-        if (!myCashSession?.id) {
-          toast.error('Abra su caja para cobrar en efectivo (menú Caja)')
-          return
-        }
+      if (!myCashSession?.id) {
+        toast.error('Abra su caja para cobrar en efectivo (menú Caja)')
+        return
       }
-      const billRes = await restaurantService.billSession(sid, {
-        series_id: seriesId,
-        doc_type: docType,
-        currency: 'PEN',
-        contact_id: selectedContactId,
-        cash_session_id: myCashSession?.id ?? null,
-        close_session: true,
-        discount_mode: billDiscount.discount_mode,
-        discount_value: billDiscount.discount_value,
-        discount_amount: billDiscount.discount_amount,
-        payments: payments.map((p) => ({
-          method: p.method,
-          amount: roundSunat(p.amount),
-          reference: p.reference?.trim() ?? '',
-          notes: '',
-        })),
-      })
+    }
+
+    setLoading(true)
+    try {
+      let billRes: Awaited<ReturnType<typeof restaurantService.billSession>>
+
+      if (posFastCheckoutEnabled()) {
+        // NUEVO (feature flag): un solo request. El backend compone Open+AddOrder+Bill
+        // y recalcula el descuento en servidor a partir de discount_mode/discount_value.
+        const items = resolveOrderItems()
+        if (!items) return
+        billRes = await restaurantService.posCheckout({
+          session_id: activeSessionId ?? null,
+          order_type: posOrderType,
+          guests: 1,
+          notes: orderNotes || (isDirectSale ? 'Venta directa' : 'POS'),
+          contact_id: selectedContactId,
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          delivery_driver_id: deliveryDriverId,
+          delivery_address: deliveryAddress,
+          delivery_reference: deliveryReference,
+          estimated_minutes: estimatedMinutes,
+          items,
+          series_id: seriesId,
+          doc_type: docType,
+          currency: 'PEN',
+          cash_session_id: myCashSession?.id ?? null,
+          discount_mode: checkoutDiscountMode,
+          discount_value: allowCheckoutDiscount ? checkoutDiscountValue : 0,
+          payments: payments.map((p) => ({
+            method: p.method,
+            amount: roundSunat(p.amount),
+            reference: p.reference?.trim() ?? '',
+            notes: '',
+          })),
+        })
+      } else {
+        // ANTIGUO: openSession → addOrder → getSession → billSession (4 round-trips).
+        let sid = activeSessionId
+        if (!sid) {
+          const res = await restaurantService.openSession({
+            ...buildSessionPayload(),
+            notes: orderNotes || (isDirectSale ? 'Venta directa' : 'POS'),
+            guests: 1,
+          })
+          sid = (res as { data: { id: number } }).data.id
+        }
+        if (cart.length > 0) {
+          const items = resolveOrderItems()
+          if (!items) return
+          await restaurantService.addOrder(sid!, { items })
+        }
+        const sessionForBill = await restaurantService.getSession(sid!)
+        const billLines = collectCheckoutLineTaxTotals([], sessionForBill, taxRate, taxConfig)
+        const billDiscount = buildRestaurantBillDiscount(
+          billLines,
+          checkoutDiscountMode,
+          checkoutDiscountValue,
+          allowCheckoutDiscount,
+        )
+        if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
+          toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+          return
+        }
+        billRes = await restaurantService.billSession(sid, {
+          series_id: seriesId,
+          doc_type: docType,
+          currency: 'PEN',
+          contact_id: selectedContactId,
+          cash_session_id: myCashSession?.id ?? null,
+          close_session: true,
+          discount_mode: billDiscount.discount_mode,
+          discount_value: billDiscount.discount_value,
+          discount_amount: billDiscount.discount_amount,
+          payments: payments.map((p) => ({
+            method: p.method,
+            amount: roundSunat(p.amount),
+            reference: p.reference?.trim() ?? '',
+            notes: '',
+          })),
+        })
+      }
       toast.success('Venta registrada')
       setCart([])
       setActiveSessionId(null)
@@ -2312,6 +2328,7 @@ export default function POSPage() {
         saleNumber={lastSale?.number}
         total={lastSale?.total}
         defaultEmail={lastSale?.clientEmail}
+        openInReceiptView
       />
 
       <ManualProductModal

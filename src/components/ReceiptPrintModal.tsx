@@ -17,6 +17,8 @@ import {
   isNativePrintAvailable,
   printDocumentAuto,
 } from '@/services/printers.service'
+import { isCapacitorAndroid } from '@/lib/platform/detect'
+import { ReceiptPaperPreview } from '@/components/ReceiptPaperPreview'
 
 type PanelView = 'details' | 'receipt'
 type PdfFormat = 'ticket' | 'a4'
@@ -38,6 +40,11 @@ interface ReceiptPrintModalProps {
   saleNumber?: string
   total?: number
   defaultEmail?: string
+  /**
+   * Abrir directamente en la vista del comprobante (ticket) en vez del resumen.
+   * En Windows/navegador muestra el PDF incrustado; en Android muestra una emulación HTML.
+   */
+  openInReceiptView?: boolean
 }
 
 export function ReceiptPrintModal({
@@ -48,6 +55,7 @@ export function ReceiptPrintModal({
   saleNumber,
   total,
   defaultEmail = '',
+  openInReceiptView = false,
 }: ReceiptPrintModalProps) {
   const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
@@ -60,6 +68,8 @@ export function ReceiptPrintModal({
 
   const printerCfg = getConfiguredPrinter('documentos')
   const canNativePrint = isNativePrintAvailable()
+  // Android no puede incrustar el PDF en el WebView → se emula el comprobante en HTML.
+  const isAndroid = isCapacitorAndroid()
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
@@ -120,8 +130,12 @@ export function ReceiptPrintModal({
   const showReceipt = useCallback(async () => {
     if (!printData) return
     setPanelView('receipt')
+    if (isAndroid) {
+      setPdfFormat('ticket')
+      return
+    }
     await loadPdf('ticket')
-  }, [printData, loadPdf])
+  }, [printData, loadPdf, isAndroid])
 
   const showDetails = useCallback(() => {
     setPanelView('details')
@@ -129,10 +143,14 @@ export function ReceiptPrintModal({
 
   const switchPdfFormat = useCallback(
     (format: PdfFormat) => {
+      if (isAndroid) {
+        setPdfFormat(format)
+        return
+      }
       if (format === pdfFormat && pdfUrl) return
       void loadPdf(format)
     },
-    [loadPdf, pdfFormat, pdfUrl],
+    [isAndroid, loadPdf, pdfFormat, pdfUrl],
   )
 
   useEffect(() => {
@@ -144,10 +162,17 @@ export function ReceiptPrintModal({
       setEmailModalOpen(false)
       return
     }
-    setPanelView('details')
-    setPdfFormat('ticket')
     revokePdfUrl()
-  }, [open, revokePdfUrl])
+    setPdfFormat('ticket')
+    const shouldShowReceipt = openInReceiptView && Boolean(printData)
+    if (shouldShowReceipt) {
+      setPanelView('receipt')
+      // Windows/navegador: PDF incrustado. Android: emulación HTML (no genera PDF).
+      if (!isAndroid) void loadPdf('ticket')
+    } else {
+      setPanelView('details')
+    }
+  }, [open, revokePdfUrl, openInReceiptView, printData, loadPdf, isAndroid])
 
   const handleClose = () => {
     revokePdfUrl()
@@ -421,7 +446,15 @@ export function ReceiptPrintModal({
                       </button>
                     </div>
                   </div>
-                  {pdfLoading || !pdfUrl ? (
+                  {isAndroid ? (
+                    printData ? (
+                      <ReceiptPaperPreview printData={printData} format={pdfFormat} />
+                    ) : (
+                      <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
+                        <Loader2 className="h-8 w-8 animate-spin text-rest-600" />
+                      </div>
+                    )
+                  ) : pdfLoading || !pdfUrl ? (
                     <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
                       <Loader2 className="h-8 w-8 animate-spin text-rest-600" />
                     </div>

@@ -331,6 +331,38 @@ export const restaurantService = {
     payments: { method: string; amount: number; reference?: string; notes?: string }[]
   }) => api.post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(`/api/restaurant/sessions/${sessionId}/bill`, data).then((r) => r.data),
 
+  // Checkout compuesto del POS de venta rápida: 1 request en vez de openSession→addOrder→getSession→billSession.
+  posCheckout: (data: {
+    session_id?: number | null
+    order_type?: string
+    guests?: number
+    notes?: string
+    contact_id?: number | null
+    customer_name?: string
+    customer_phone?: string
+    delivery_driver_id?: number | null
+    delivery_address?: string
+    delivery_reference?: string
+    estimated_minutes?: number
+    staff_id?: number | null
+    items: OrderItemInput[]
+    series_id: number
+    doc_type: string
+    currency?: string
+    issue_date?: string
+    cash_session_id?: number | null
+    discount_mode?: 'percent' | 'amount'
+    discount_value?: number
+    discount_amount?: number
+    payments: { method: string; amount: number; reference?: string; notes?: string }[]
+  }) =>
+    api
+      .post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(
+        `/api/restaurant/pos/checkout`,
+        data,
+      )
+      .then((r) => r.data),
+
   closeSession: (sessionId: number) =>
     api.post(`/api/restaurant/sessions/${sessionId}/close`).then((r) => r.data),
 

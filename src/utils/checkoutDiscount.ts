@@ -80,7 +80,9 @@ export function applyCheckoutDiscountToLines(
     const newSub = roundSunat(Math.max(0, line.subtotal - d))
     const effRate = line.subtotal > 0 ? line.taxAmount / line.subtotal : 0
     const newTax = roundSunat(newSub * effRate)
-    const newTotal = roundSunat(newSub + newTax)
+    // Línea gratuita (bonificación): base referencial > 0 pero total a pagar 0 → se mantiene en 0.
+    const isFreeLine = line.total <= 0.009 && line.subtotal > 0.009
+    const newTotal = isFreeLine ? 0 : roundSunat(newSub + newTax)
     return { subtotal: newSub, taxAmount: newTax, total: newTotal }
   })
   return {

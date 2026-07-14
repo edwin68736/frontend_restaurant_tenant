@@ -1,4 +1,5 @@
 import api from './api'
+import { clearEscPosImageRasterCache } from '@/utils/escposRasterImage'
 
 export interface CompanyConfig {
   business_name: string
@@ -101,7 +102,10 @@ export const companyService = {
     api.get<CompanyConfig>('/api/company/config').then((r) => r.data),
 
   updateConfig: (data: Partial<CompanyConfig>) =>
-    api.put<{ success: boolean; data: CompanyConfig }>('/api/company/config', data).then((r) => r.data),
+    api.put<{ success: boolean; data: CompanyConfig }>('/api/company/config', data).then((r) => {
+      clearEscPosImageRasterCache() // el logo pudo cambiar (URL estable): invalidar raster cacheado
+      return r.data
+    }),
 
   updateReceiptWallet: (data: {
     wallet_provider: string
@@ -110,7 +114,10 @@ export const companyService = {
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
     receipt_bank_account_ids: number[]
-  }) => api.put<{ success: boolean; data: CompanyConfig }>('/api/company/receipt-wallet', data).then((r) => r.data),
+  }) => api.put<{ success: boolean; data: CompanyConfig }>('/api/company/receipt-wallet', data).then((r) => {
+    clearEscPosImageRasterCache() // el QR de wallet pudo cambiar
+    return r.data
+  }),
 
   /** Sube QR a disco del tenant (VPS: volumen /app/uploads). Devuelve URL /uploads/... */
   uploadReceiptWalletQr: (file: File) => {

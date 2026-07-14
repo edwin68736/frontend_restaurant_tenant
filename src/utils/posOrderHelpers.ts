@@ -14,6 +14,7 @@ import {
 import { formatModifierLines, parseStoredModifiers, storedToCartModifiers } from '@/utils/productModifiers'
 import { calcItem } from '@/utils/taxCalc'
 import type { TaxConfig } from '@/utils/taxCalc'
+import { isBonificacionGravada } from '@/constants/igvAffectation'
 import type { LineTaxTotals } from '@/utils/checkoutDiscount'
 
 /** Total de línea de comanda (misma lógica tributaria que el backend al facturar). */
@@ -30,7 +31,7 @@ export function comandaLineTaxTotals(
   taxRate: number,
   taxConfig?: Partial<TaxConfig>,
 ): LineTaxTotals {
-  return calcItem(
+  const t = calcItem(
     Number(c.unit_price) || 0,
     c.quantity,
     0,
@@ -39,6 +40,8 @@ export function comandaLineTaxTotals(
     taxRate,
     taxConfig,
   )
+  // Bonificación gravada ('15'): es gratuita → no cobra nada en el checkout (base, IGV y total en 0).
+  return isBonificacionGravada(c.igv_affectation_type ?? '') ? { subtotal: 0, taxAmount: 0, total: 0 } : t
 }
 
 /** Líneas tributarias del cobro: carrito pendiente + comandas ya en sesión. */

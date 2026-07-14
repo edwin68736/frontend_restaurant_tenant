@@ -1,6 +1,7 @@
 import type { Product } from '@/services/products.service'
 import { calcItem } from '@/utils/taxCalc'
 import type { TaxConfig } from '@/utils/taxCalc'
+import { isBonificacionGravada } from '@/constants/igvAffectation'
 import type { CartModifierEntry } from '@/types/productModifiers'
 import {
   buildConfigureKey,
@@ -83,26 +84,31 @@ export function cartLineTaxTotals(
   taxConfig: Partial<TaxConfig> | undefined,
 ): { subtotal: number; taxAmount: number; total: number } {
   const unit = cartLineUnitPrice(line)
-  if (line.kind === 'catalog') {
-    return calcItem(
-      unit,
-      line.quantity,
-      0,
-      line.product.igv_affectation_type ?? '10',
-      line.product.price_includes_igv ?? true,
-      taxRate,
-      taxConfig,
-    )
-  }
-  return calcItem(
-    line.unit_price,
-    line.quantity,
-    0,
-    line.igv_affectation_type,
-    line.price_includes_igv,
-    taxRate,
-    taxConfig,
-  )
+  const aff =
+    line.kind === 'catalog' ? (line.product.igv_affectation_type ?? '10') : line.igv_affectation_type
+  const t =
+    line.kind === 'catalog'
+      ? calcItem(
+          unit,
+          line.quantity,
+          0,
+          line.product.igv_affectation_type ?? '10',
+          line.product.price_includes_igv ?? true,
+          taxRate,
+          taxConfig,
+        )
+      : calcItem(
+          line.unit_price,
+          line.quantity,
+          0,
+          line.igv_affectation_type,
+          line.price_includes_igv,
+          taxRate,
+          taxConfig,
+        )
+  // Bonificación gravada ('15'): es gratuita → no cobra nada en el checkout (base, IGV y total en 0).
+  // El valor fiscal referencial lo calcula el backend al emitir el comprobante.
+  return isBonificacionGravada(aff) ? { subtotal: 0, taxAmount: 0, total: 0 } : t
 }
 
 /** Clave de fusión en carrito: modificadores, nota y precio unitario acordado. */
