@@ -9,6 +9,12 @@ import {
   modifiersToJson,
 } from '@/utils/productModifiers'
 import { roundMoney } from '@/utils/checkoutDiscount'
+import {
+  calcComboUnitPrice,
+  comboSelectionsToJson,
+  comboSignature,
+  type ComboCartState,
+} from '@/utils/comboCart'
 
 export type CatalogCartLine = {
   kind: 'catalog'
@@ -22,6 +28,12 @@ export type CatalogCartLine = {
   unit_price: number
   modifiers: CartModifierEntry[]
   configureKey: string
+  /**
+   * Solo si product.has_combo: lo que el cliente eligió en cada grupo.
+   * Un combo es un producto de catálogo con una selección encima, así que reusa esta línea
+   * (impuestos, fusión y precio acordado funcionan igual) en vez de ser un tipo aparte.
+   */
+  combo?: ComboCartState
 }
 
 export type ManualCartLine = {
@@ -111,13 +123,16 @@ export function cartLineTaxTotals(
   return isBonificacionGravada(aff) ? { subtotal: 0, taxAmount: 0, total: 0 } : t
 }
 
-/** Clave de fusión en carrito: modificadores, nota y precio unitario acordado. */
+/** Clave de fusión en carrito: modificadores, elección del combo, nota y precio acordado. */
 export function buildCatalogConfigureKey(
   modifiers: CartModifierEntry[],
   notes: string,
   unitPrice: number,
+  combo?: ComboCartState,
 ): string {
-  return `${buildConfigureKey(modifiers, notes)}@u${roundMoney(unitPrice).toFixed(2)}`
+  const base = `${buildConfigureKey(modifiers, notes)}@u${roundMoney(unitPrice).toFixed(2)}`
+  if (!combo) return base
+  return `${base}@c${comboSignature(combo.components)}`
 }
 
 export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: number): CatalogCartLine {
@@ -125,7 +140,7 @@ export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: numb
   return {
     ...line,
     unit_price: price,
-    configureKey: buildCatalogConfigureKey(line.modifiers, line.notes ?? '', price),
+    configureKey: buildCatalogConfigureKey(line.modifiers, line.notes ?? '', price, line.combo),
   }
 }
 
@@ -137,12 +152,17 @@ export function createCatalogCartLine(
     notes?: string
     modifiers?: CartModifierEntry[]
     base_price?: number
+    combo?: ComboCartState
   },
 ): CatalogCartLine {
   const base = partial?.base_price ?? (Number(product.sale_price) || 0)
   const modifiers = partial?.modifiers ?? []
   const notes = partial?.notes ?? ''
-  const unit_price = calcUnitPriceWithModifiers(base, modifiers)
+  const combo = partial?.combo
+  // El combo cobra su precio fijo + sobreprecios; el resto, base + extras.
+  const unit_price = combo
+    ? calcComboUnitPrice(base, combo.components)
+    : calcUnitPriceWithModifiers(base, modifiers)
   return {
     kind: 'catalog',
     lineId: partial?.lineId ?? newCartLineId(),
@@ -152,7 +172,8 @@ export function createCatalogCartLine(
     base_price: base,
     unit_price,
     modifiers,
-    configureKey: buildCatalogConfigureKey(modifiers, notes, unit_price),
+    configureKey: buildCatalogConfigureKey(modifiers, notes, unit_price, combo),
+    ...(combo ? { combo } : {}),
   }
 }
 
@@ -215,6 +236,8 @@ export function cartToOrderItems(cart: PosCartLine[]) {
       unit_price: x.unit_price,
       notes: (x.notes ?? '').trim(),
       modifiers_json: modifiersToJson(x.modifiers),
+      // El backend explota el combo en una comanda por área usando esta elección.
+      ...(x.combo ? { combo_json: comboSelectionsToJson(x.combo.selections) } : {}),
     }
   })
 }

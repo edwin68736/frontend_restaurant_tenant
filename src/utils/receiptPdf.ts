@@ -1,4 +1,6 @@
+import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
 import { jsPDF } from 'jspdf'
+import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
 import { sumAffectationByGroup } from '@/constants/igvAffectation'
 import type { PrintData } from '@/types/printData'
 import { downloadBlob } from '@/utils/downloadBlob'
@@ -126,6 +128,9 @@ export async function generateReceiptPdf(
   const lineH = 5
   const innerW = pageW - 2 * margin
   const showQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
+  // null salvo en nota de venta (SUNAT 00): en boleta/factura siempre se imprime todo.
+  const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
 
   const ticketText = (text: string) => (isTicket ? normalizeTextForTicketPrint(text) : text)
 
@@ -173,8 +178,9 @@ export async function generateReceiptPdf(
 
   const addCompanyContactLines = () => {
     const align = isTicket ? 'center' : 'left'
-    if (data.company.phone) addWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM, align)
-    if (data.company.email) addWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM, align)
+    const showContact = !nvLayout || nvLayout.showEmailAndPhone
+    if (showContact && data.company.phone) addWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM, align)
+    if (showContact && data.company.email) addWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM, align)
     if (isTicket) {
       const extra = trimCompanyAdditionalNotes(data.company.additional_notes)
       if (extra) {
@@ -228,11 +234,13 @@ export async function generateReceiptPdf(
       doc.setFontSize(ticketDetailFontPt)
     }
 
-    if (data.company.logo_url) {
-      const logoAsset = await resolveReceiptLogoForPdf(data.company.logo_url)
+    // El logo es del emisor, no de la venta: sale de la config, no del print_data.
+    const companyLogo = (!nvLayout || nvLayout.showLogo) ? await ensureCompanyLogoForPrint() : null
+    if (companyLogo) {
+      const logoAsset = await resolveReceiptLogoForPdf(companyLogo)
       if (logoAsset) {
-        const maxLogoW = Math.min(32, innerW)
-        const maxLogoH = 14
+        const maxLogoW = Math.min(42, innerW)
+        const maxLogoH = 19
         const size = fitReceiptLogoMm(logoAsset.naturalW, logoAsset.naturalH, maxLogoW, maxLogoH)
         doc.addImage(
           logoAsset.dataUrl,
@@ -263,13 +271,15 @@ export async function generateReceiptPdf(
     addCompanyContactLines()
     y += 2
 
-    addWrapped(getTipoComprobanteLabel(data.sunat_code, data.doc_type), FONT_SIZE, 'center')
-    addWrapped(data.number, FONT_SIZE_TITLE, 'center')
-    y += 2
+    if (!nvLayout || nvLayout.showDocTypeAndNumber) {
+      addWrapped(getTipoComprobanteLabel(data.sunat_code, data.doc_type), FONT_SIZE, 'center')
+      addWrapped(data.number, FONT_SIZE_TITLE, 'center')
+      y += 2
+    }
 
     addWrapped(`Fecha Emisión: ${data.issue_date}`)
     if (data.issue_time) addWrapped(`Hora Emisión: ${data.issue_time}`)
-    if (data.client) {
+    if (data.client && (!nvLayout || nvLayout.showClientData)) {
       addLabeledField('Cliente:', data.client.business_name)
       addLabeledField(`${docClientLabel(data.client.doc_type)}:`, data.client.doc_number)
       if (data.client.address) addLabeledField('Dirección:', data.client.address)
@@ -336,16 +346,19 @@ export async function generateReceiptPdf(
       y += 2
     }
 
-    y = await renderTicketPaymentAndSunatQrRow(doc, data, {
-      showSunatQr: showQr,
-      y,
-      pageW,
-      margin,
-      innerW,
-      lineH: ticketLineH,
-      normalize: ticketText,
-    })
+    if (showPaymentCondition) {
+      y = await renderTicketPaymentAndSunatQrRow(doc, data, {
+        showSunatQr: showQr,
+        y,
+        pageW,
+        margin,
+        innerW,
+        lineH: ticketLineH,
+        normalize: ticketText,
+      })
+    }
 
+    // Las cuentas bancarias no dependen de este ajuste: se eligen en Restaurante → Comprobantes.
     addBankAccounts()
 
     if (paymentWalletVisible(data, 'ticket')) {

@@ -3,6 +3,42 @@ import { TukichefPrinter } from '@/plugins/tukichef-printer'
 import type { PrinterConfig, PrinterConnectionMode } from './types'
 import { clampPort, DEFAULT_TCP_PORT } from './storage'
 
+/**
+ * Tope de espera al enviar a la impresora.
+ *
+ * Una impresora configurada pero apagada no falla: se queda colgada hasta que el sistema
+ * agota SU propio timeout de TCP/Bluetooth, que puede ser de decenas de segundos. Como el
+ * envío se hace dentro del flujo de venta, eso dejaba la caja bloqueada. El estado de la
+ * impresora no puede frenar una venta que ya está registrada.
+ *
+ * Generoso a propósito: un ticket con logo por Bluetooth tarda unos segundos y no debe
+ * cortarse. Solo pretende evitar la espera larga de una impresora que no está.
+ */
+const PRINT_TIMEOUT_MS = 8000
+
+/**
+ * Corta la espera pero no el envío: el nativo sigue por su cuenta (no se puede cancelar).
+ * Si la impresora estaba solo lenta, el ticket puede salir igual; lo que se recupera es el
+ * control de la app.
+ */
+function withPrintTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`La impresora (${label}) no respondió. Verifica que esté encendida y conectada.`))
+    }, PRINT_TIMEOUT_MS)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.length; i += 1) {
@@ -76,18 +112,19 @@ export async function sendEscPosPayload(
     if (!cfg.printerName?.trim()) {
       throw new Error('Selecciona una impresora Windows')
     }
-    return printViaTauri('windows', cfg, data, docName)
+    return withPrintTimeout(printViaTauri('windows', cfg, data, docName), cfg.printerName.trim())
   }
 
   if (cfg.connection === 'network') {
-    if (!cfg.tcpHost?.trim()) {
+    const host = cfg.tcpHost?.trim()
+    if (!host) {
       throw new Error('Indica la IP o host de la impresora')
     }
     if (isTauriDesktop()) {
-      return printViaTauri('network', cfg, data, docName)
+      return withPrintTimeout(printViaTauri('network', cfg, data, docName), host)
     }
     if (isCapacitorAndroid()) {
-      return printViaCapacitor(cfg, data)
+      return withPrintTimeout(printViaCapacitor(cfg, data), host)
     }
     throw new Error('Impresión por red no disponible')
   }
@@ -96,7 +133,7 @@ export async function sendEscPosPayload(
     if (!isCapacitorAndroid()) {
       throw new Error('Bluetooth solo disponible en Android')
     }
-    return printViaCapacitor(cfg, data)
+    return withPrintTimeout(printViaCapacitor(cfg, data), cfg.bluetoothName?.trim() || 'Bluetooth')
   }
 
   throw new Error('Método de conexión desconocido')

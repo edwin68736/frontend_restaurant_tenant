@@ -16,12 +16,15 @@ export function clearEscPosImageRasterCache(): void {
   imageRasterCache.clear()
 }
 
+// Tope del logo en la ticketera. El ancho no puede superar el imprimible del papel
+// (escposPrintWidthPx: 384 / 576) o la imagen se corta; se deja un margen para que no
+// quede pegado al borde.
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 320 : 420
+  return paperWidthMm === 58 ? 360 : 512
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 96 : 120
+  return paperWidthMm === 58 ? 120 : 150
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {

@@ -1,8 +1,10 @@
+import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
 import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
 import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { formatMoney } from '@/utils/format'
@@ -27,7 +29,7 @@ const FONT_LG = 11
 const GRAY_FILL: [number, number, number] = [225, 225, 225]
 const GREEN_WEB: [number, number, number] = [34, 130, 70]
 /** Máximo del logo en columna izquierda (mm); se respeta proporción. */
-const LOGO_MAX_MM = 30
+const LOGO_MAX_MM = 38
 
 function fitLogoMm(
   naturalW: number,
@@ -105,6 +107,10 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const col3X = MARGIN + col1W + col2W
   const headerTopY = y
   const showQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
+  // null salvo en nota de venta (SUNAT 00): en boleta/factura siempre se imprime todo.
+  const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
+  const showDocBox = !nvLayout || nvLayout.showDocTypeAndNumber
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
 
   const tradeName = String(data.company.trade_name ?? '').trim()
   const businessName = String(data.company.business_name ?? '').trim()
@@ -118,8 +124,11 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   centerLines.push({ text: `RUC ${data.company.ruc}`, size: FONT_SM, bold: false })
   const issuerAddress = getPrintIssuerAddress(data)
   if (issuerAddress) centerLines.push({ text: issuerAddress.toUpperCase(), size: FONT_SM, bold: false })
-  if (data.company.phone) centerLines.push({ text: `Central telefónica: ${data.company.phone}`, size: FONT_SM, bold: false })
-  if (data.company.email) centerLines.push({ text: `Email: ${data.company.email}`, size: FONT_SM, bold: false })
+  const showContact = !nvLayout || nvLayout.showEmailAndPhone
+  if (showContact && data.company.phone)
+    centerLines.push({ text: `Central telefónica: ${data.company.phone}`, size: FONT_SM, bold: false })
+  if (showContact && data.company.email)
+    centerLines.push({ text: `Email: ${data.company.email}`, size: FONT_SM, bold: false })
 
   const docLabel = getTipoComprobanteLabel(data.sunat_code, data.doc_type).toUpperCase()
   const boxPad = 3
@@ -152,32 +161,37 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const gap = 1.2
   const boxH = boxPad + rucBlockH + gap + labelBlockH + gap + numberBlockH + boxPad
 
-  drawDashedRect(doc, boxX, boxY, boxW, boxH)
+  if (showDocBox) {
+    drawDashedRect(doc, boxX, boxY, boxW, boxH)
 
-  doc.setFontSize(FONT_SM)
-  doc.setFont('helvetica', 'bold')
-  doc.text(`RUC: ${data.company.ruc}`, boxX + boxW / 2, boxY + boxPad + LINE_H * 0.82, { align: 'center' })
+    doc.setFontSize(FONT_SM)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`RUC: ${data.company.ruc}`, boxX + boxW / 2, boxY + boxPad + LINE_H * 0.82, { align: 'center' })
 
-  const labelY = boxY + boxPad + rucBlockH + gap
-  fillGrayRect(doc, boxX + 1, labelY, boxW - 2, labelBlockH)
-  doc.setFontSize(labelFontSize)
-  doc.setFont('helvetica', 'bold')
-  const labelTextStartY = labelY + labelPadV + (labelBlockH - labelTextH) / 2 + labelLineH * 0.82
-  let ly = labelTextStartY
-  for (const line of labelLines) {
-    doc.text(line, boxX + boxW / 2, ly, { align: 'center', maxWidth: boxW - 4 })
-    ly += labelLineH
+    const labelY = boxY + boxPad + rucBlockH + gap
+    fillGrayRect(doc, boxX + 1, labelY, boxW - 2, labelBlockH)
+    doc.setFontSize(labelFontSize)
+    doc.setFont('helvetica', 'bold')
+    const labelTextStartY = labelY + labelPadV + (labelBlockH - labelTextH) / 2 + labelLineH * 0.82
+    let ly = labelTextStartY
+    for (const line of labelLines) {
+      doc.text(line, boxX + boxW / 2, ly, { align: 'center', maxWidth: boxW - 4 })
+      ly += labelLineH
+    }
+
+    doc.setFontSize(FONT_LG)
+    doc.setFont('helvetica', 'bold')
+    const numberY = labelY + labelBlockH + gap + LINE_H * 0.88
+    doc.text(data.number, boxX + boxW / 2, numberY, { align: 'center' })
   }
 
-  doc.setFontSize(FONT_LG)
-  doc.setFont('helvetica', 'bold')
-  const numberY = labelY + labelBlockH + gap + LINE_H * 0.88
-  doc.text(data.number, boxX + boxW / 2, numberY, { align: 'center' })
+  // Sin la caja no hay que reservar su alto, o quedaría un hueco en blanco.
+  const headerBottom = showDocBox ? Math.max(cy, boxY + boxH) : cy
 
-  const headerBottom = Math.max(cy, boxY + boxH)
-
-  if (data.company.logo_url) {
-    const logoAsset = await resolveReceiptLogoForPdf(data.company.logo_url)
+  // El logo es del emisor, no de la venta: sale de la config, no del print_data.
+  const companyLogo = (!nvLayout || nvLayout.showLogo) ? await ensureCompanyLogoForPrint() : null
+  if (companyLogo) {
+    const logoAsset = await resolveReceiptLogoForPdf(companyLogo)
     if (logoAsset) {
       const maxLogoH = Math.max(20, headerBottom - headerTopY - 4)
       const size = fitLogoMm(logoAsset.naturalW, logoAsset.naturalH, col1W - 6, maxLogoH)
@@ -191,7 +205,7 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
 
   y = fieldRow(doc, y, 'FECHA DE EMISIÓN:', data.issue_date, MARGIN + 2)
   y = fieldRow(doc, y, 'FECHA DE VENCIMIENTO:', '', MARGIN + 2)
-  if (data.client) {
+  if (data.client && (!nvLayout || nvLayout.showClientData)) {
     y = fieldRow(doc, y, 'CLIENTE:', data.client.business_name, MARGIN + 2)
     y = fieldRow(
       doc,
@@ -382,16 +396,19 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     y += 2
   }
 
-  const payMethods = data.payments?.length
-    ? data.payments.map((p) => paymentLabel(p.method)).join(', ')
-    : data.payment_condition || 'Contado'
-  doc.setFontSize(FONT_SM)
-  doc.setFont('helvetica', 'bold')
-  doc.text('MÉTODO DE PAGO:', MARGIN + 2, y)
-  doc.setFont('helvetica', 'normal')
-  doc.text(payMethods, MARGIN + 32, y)
-  y += LINE_H + 4
+  if (showPaymentCondition) {
+    const payMethods = data.payments?.length
+      ? data.payments.map((p) => paymentLabel(p.method)).join(', ')
+      : data.payment_condition || 'Contado'
+    doc.setFontSize(FONT_SM)
+    doc.setFont('helvetica', 'bold')
+    doc.text('MÉTODO DE PAGO:', MARGIN + 2, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(payMethods, MARGIN + 32, y)
+    y += LINE_H + 4
+  }
 
+  // Las cuentas bancarias no dependen de este ajuste: se eligen en Restaurante → Comprobantes.
   const banks = data.bank_accounts ?? []
   if (banks.length > 0) {
     doc.setFont('helvetica', 'bold')

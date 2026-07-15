@@ -1,5 +1,6 @@
 import api from './api'
 import { clearEscPosImageRasterCache } from '@/utils/escposRasterImage'
+import { primeCompanyLogo } from '@/lib/companyLogo'
 
 export interface CompanyConfig {
   business_name: string
@@ -12,6 +13,8 @@ export interface CompanyConfig {
   currency: string
   tax_rate?: number
   logo_url: string
+  /** Logo ya embebido por el backend: evita que cada dispositivo descargue /uploads. */
+  logo_data_url?: string
   color_theme?: string
   additional_notes?: string
   wallet_provider?: string
@@ -99,11 +102,16 @@ export interface SeriesRow {
 
 export const companyService = {
   getConfig: (): Promise<CompanyConfig> =>
-    api.get<CompanyConfig>('/api/company/config').then((r) => r.data),
+    api.get<CompanyConfig>('/api/company/config').then((r) => {
+      primeCompanyLogo(r.data)
+      return r.data
+    }),
 
   updateConfig: (data: Partial<CompanyConfig>) =>
     api.put<{ success: boolean; data: CompanyConfig }>('/api/company/config', data).then((r) => {
       clearEscPosImageRasterCache() // el logo pudo cambiar (URL estable): invalidar raster cacheado
+      // El logo pudo editarse desde el panel ERP: refrescar el cacheado.
+      if (r.data?.data) primeCompanyLogo(r.data.data)
       return r.data
     }),
 

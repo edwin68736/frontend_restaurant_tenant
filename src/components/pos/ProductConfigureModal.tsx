@@ -7,10 +7,20 @@ import { MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import {
   getProductImageUrl,
   productsService,
+  type ComboGroup,
   type ModifierGroup,
   type Product,
   type ProductPresentation,
 } from '@/services/products.service'
+import {
+  calcComboUnitPrice,
+  componentsToSelections,
+  defaultComboPicks,
+  productIsCombo,
+  resolveComboComponents,
+  validateComboPicks,
+  type ComboPicks,
+} from '@/utils/comboCart'
 import { formatSoles } from '@/utils/format'
 import { formatAmountDisplay } from '@/utils/money'
 import type { CatalogCartLine } from '@/utils/posCart'
@@ -41,6 +51,8 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [allGroups, setAllGroups] = useState<ModifierGroup[]>([])
   const [selected, setSelected] = useState<CartModifierEntry[]>([])
+  const [comboGroups, setComboGroups] = useState<ComboGroup[]>([])
+  const [comboPicks, setComboPicks] = useState<ComboPicks>({})
   const [kitchenNote, setKitchenNote] = useState('')
   const degradedRef = useRef(false)
   const loadGenRef = useRef(0)
@@ -61,6 +73,8 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       setPresentations([])
       setAllGroups([])
       setSelected([])
+      setComboGroups([])
+      setComboPicks({})
       setKitchenNote('')
       return
     }
@@ -71,16 +85,21 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
     setPresentations([])
     setAllGroups([])
     setSelected([])
+    setComboGroups([])
+    setComboPicks({})
     setKitchenNote('')
     Promise.all([productsService.get(productId), productsService.listModifierGroups()])
       .then(([detail, groups]) => {
         if (loadGenRef.current !== gen) return
         const ids = detail.modifier_group_ids ?? []
         const pres = (detail.presentations ?? []).filter((p) => p.name.trim())
+        const combos = detail.combo_groups ?? []
         loadedProductIdRef.current = productId
         setModifierGroupIds(ids)
         setPresentations(pres)
         setAllGroups(groups ?? [])
+        setComboGroups(combos)
+        setComboPicks(defaultComboPicks(combos))
         const auto: CartModifierEntry[] = []
         if (pres.length === 1) {
           auto.push(selectionFromProductPresentation(pres[0]))
@@ -107,13 +126,24 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
     return { ...product, presentations }
   }, [product, presentations])
 
+  const isCombo = !!product && productIsCombo(product)
+  const comboComponents = useMemo(
+    () => (isCombo ? resolveComboComponents(comboGroups, comboPicks) : []),
+    [isCombo, comboGroups, comboPicks],
+  )
+
   useEffect(() => {
     if (!productWithPres || productId == null || loadedProductIdRef.current !== productId) return
     if (!optionsLoaded || loading || degradedRef.current) return
     if (!productNeedsConfiguration(productWithPres)) return
+    // Un combo con grupos siempre tiene UI que mostrar, aunque no tenga extras ni presentaciones.
+    if (isCombo && comboGroups.length > 0) return
     if (hasConfigurableModifierUI(productWithPres, modifierGroupIds, allGroups, presentations)) return
     degradedRef.current = true
-    const issue = getModifierSetupIssue(productWithPres, modifierGroupIds, allGroups, presentations)
+    const issue =
+      isCombo && comboGroups.length === 0
+        ? 'El combo no tiene grupos configurados. Revísalo en Productos → Combos.'
+        : getModifierSetupIssue(productWithPres, modifierGroupIds, allGroups, presentations)
     toast.warning(issue ?? 'Configuración incompleta; se agrega con precio base.', { duration: 6000 })
     onConfirmRef.current(createCatalogCartLine(productWithPres, { quantity: 1, notes: '' }))
     onCloseRef.current()
@@ -125,10 +155,14 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
     modifierGroupIds,
     allGroups,
     presentations,
+    isCombo,
+    comboGroups,
   ])
 
   const basePrice = product ? Number(product.sale_price) || 0 : 0
-  const unitPrice = calcUnitPriceWithModifiers(basePrice, selected)
+  const unitPrice = isCombo
+    ? calcComboUnitPrice(basePrice, comboComponents)
+    : calcUnitPriceWithModifiers(basePrice, selected)
 
   const selectedPresentation = selected.find((m) => m.type === 'variant')
   const displayBaseLabel = selectedPresentation ? 'Precio de la presentación' : 'Precio base del producto'
@@ -138,6 +172,16 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
 
   const priceBreakdown = useMemo(() => {
     const lines: { label: string; amount: number; sign: 'none' | 'plus' }[] = []
+
+    if (isCombo) {
+      lines.push({ label: 'Precio del combo', amount: basePrice, sign: 'none' })
+      for (const c of comboComponents) {
+        const extra = (Number(c.extra_price) || 0) * (Number(c.quantity) || 0)
+        if (extra !== 0) lines.push({ label: c.product_name, amount: extra, sign: 'plus' })
+      }
+      return lines
+    }
+
     const presentation = selected.find((m) => m.type === 'variant')
     const extras = selected.filter((m) => m.type === 'modifier')
 
@@ -156,10 +200,17 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       if (amt !== 0) lines.push({ label: m.option_name, amount: amt, sign: 'plus' })
     }
     return lines
-  }, [basePrice, selected])
+  }, [basePrice, selected, isCombo, comboComponents])
 
   const handleConfirm = () => {
     if (!productWithPres || productId == null || loadedProductIdRef.current !== productId) return
+    if (isCombo) {
+      const comboErr = validateComboPicks(comboGroups, comboPicks)
+      if (comboErr) {
+        toast.error(comboErr)
+        return
+      }
+    }
     const err = validateModifierSelection(presentations, extraGroups, selected, productWithPres)
     if (err) {
       toast.error(err)
@@ -172,6 +223,14 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
         notes: kitchenNote,
         modifiers: selected,
         base_price: basePrice,
+        ...(isCombo
+          ? {
+              combo: {
+                selections: componentsToSelections(comboGroups, comboComponents),
+                components: comboComponents,
+              },
+            }
+          : {}),
       }),
     )
     onCloseRef.current()
@@ -215,6 +274,136 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
             </div>
           ) : (
             <>
+              {isCombo &&
+                comboGroups.map((g) => {
+                  const groupId = g.id ?? 0
+                  const chosen = comboPicks[groupId] ?? []
+                  const isFixed = g.selection_type === 'fixed'
+                  const isSingle = g.selection_type === 'single'
+                  const hint = isFixed
+                    ? 'Incluido en el combo.'
+                    : isSingle
+                      ? 'Elige una opción.'
+                      : g.max_select > 0
+                        ? `Elige ${g.min_select > 0 ? `de ${g.min_select} a ` : 'hasta '}${g.max_select}.`
+                        : 'Elige las que quieras.'
+                  return (
+                    <div
+                      key={groupId}
+                      className="rounded-xl border-2 border-amber-200 bg-amber-50/60 p-3 space-y-3"
+                    >
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-amber-800">
+                          {g.name}
+                        </p>
+                        <p className="text-[11px] text-amber-700/90 mt-0.5">{hint}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {g.items.map((item) => {
+                          const picked = chosen.some((c) => c.product_id === item.product_id)
+                          const extra = Number(item.extra_price) || 0
+                          const pick = chosen.find((c) => c.product_id === item.product_id)
+                          return (
+                            <button
+                              key={item.product_id}
+                              type="button"
+                              disabled={isFixed}
+                              onClick={() => {
+                                if (isFixed) return
+                                setComboPicks((prev) => {
+                                  const qty = item.default_quantity || 1
+                                  if (isSingle) {
+                                    return { ...prev, [groupId]: [{ product_id: item.product_id, quantity: qty }] }
+                                  }
+                                  const current = prev[groupId] ?? []
+                                  const next = picked
+                                    ? current.filter((c) => c.product_id !== item.product_id)
+                                    : [...current, { product_id: item.product_id, quantity: qty }]
+                                  return { ...prev, [groupId]: next }
+                                })
+                              }}
+                              className={clsx(
+                                'px-3 py-2 rounded-lg border-2 text-sm font-medium transition text-left',
+                                isFixed
+                                  ? 'border-amber-300 bg-white text-stone-700 cursor-default'
+                                  : picked
+                                    ? 'border-amber-500 bg-amber-500 text-white'
+                                    : 'border-stone-200 bg-white text-stone-700 hover:border-amber-300',
+                              )}
+                            >
+                              <span>
+                                {item.default_quantity > 1 ? `${item.default_quantity} x ` : ''}
+                                {item.product_name ?? `Producto ${item.product_id}`}
+                              </span>
+                              {extra > 0 ? (
+                                <span className={clsx('ml-1 text-xs', picked && !isFixed ? 'text-amber-50' : 'text-stone-500')}>
+                                  +{formatAmountDisplay(extra)}
+                                </span>
+                              ) : null}
+                              {g.allow_quantity && pick && pick.quantity > 1 ? (
+                                <span className="ml-1 text-xs opacity-80">({pick.quantity})</span>
+                              ) : null}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      {g.allow_quantity && !isFixed && chosen.length > 0 && (
+                        <div className="space-y-1.5 pt-1 border-t border-amber-200/70">
+                          {chosen.map((c) => {
+                            const item = g.items.find((it) => it.product_id === c.product_id)
+                            if (!item) return null
+                            const max = item.max_quantity > 0 ? item.max_quantity : 99
+                            return (
+                              <div key={c.product_id} className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-stone-700 truncate">{item.product_name}</span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    className="w-7 h-7 rounded-md border border-stone-300 bg-white text-stone-700 disabled:opacity-40"
+                                    disabled={c.quantity <= 1}
+                                    onClick={() =>
+                                      setComboPicks((prev) => ({
+                                        ...prev,
+                                        [groupId]: (prev[groupId] ?? []).map((x) =>
+                                          x.product_id === c.product_id
+                                            ? { ...x, quantity: Math.max(1, x.quantity - 1) }
+                                            : x,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    −
+                                  </button>
+                                  <span className="w-6 text-center text-sm font-semibold text-stone-800">
+                                    {c.quantity}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="w-7 h-7 rounded-md border border-stone-300 bg-white text-stone-700 disabled:opacity-40"
+                                    disabled={c.quantity >= max}
+                                    onClick={() =>
+                                      setComboPicks((prev) => ({
+                                        ...prev,
+                                        [groupId]: (prev[groupId] ?? []).map((x) =>
+                                          x.product_id === c.product_id
+                                            ? { ...x, quantity: Math.min(max, x.quantity + 1) }
+                                            : x,
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
               {activePresentations.length > 0 && (
                 <div className="rounded-xl border-2 border-sky-200 bg-sky-50/60 p-3 space-y-3">
                   <div>

@@ -20,6 +20,7 @@ import {
   ChefHat,
   ImagePlus,
   ScanBarcode,
+  UtensilsCrossed,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { SearchInput } from '@/components/SearchInput'
@@ -44,6 +45,7 @@ import { PageShell } from '@/components/layout/PageShell'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ProductCategoriesPanel } from '@/components/products/ProductCategoriesPanel'
 import { ProductPreparationAreasPanel } from '@/components/products/ProductPreparationAreasPanel'
+import { ProductCombosPanel } from '@/components/products/ProductCombosPanel'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { isCapacitorNative } from '@/lib/app'
@@ -60,7 +62,7 @@ import {
 const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
-type ProductosTab = 'products' | 'categories' | 'prep_areas'
+type ProductosTab = 'products' | 'categories' | 'prep_areas' | 'combos'
 
 /** 2 columnas desde sm (tablets / celular grande); 1 columna solo en pantallas muy estrechas. */
 const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-4'
@@ -275,7 +277,8 @@ export default function ProductosPage() {
         activeBranchId,
         !showInactiveOnly,
         showInactiveOnly,
-        { signal, sortBy, sortDir },
+        // Los combos viven en su propia tab: este modal no edita grupos ni componentes.
+        { signal, sortBy, sortDir, excludeCombos: true },
       ),
     onSuccess: ({ data, total: t }) => {
       setProducts(data)
@@ -646,20 +649,24 @@ export default function ProductosPage() {
           ? 'Categorías'
           : activeTab === 'prep_areas'
             ? 'Áreas de preparación'
-            : 'Productos'
+            : activeTab === 'combos'
+              ? 'Combos y promociones'
+              : 'Productos'
       }
       subtitle={
         activeTab === 'categories'
           ? 'Gestiona el orden y las categorías del catálogo (compartidas entre sucursales).'
           : activeTab === 'prep_areas'
             ? 'Define áreas para comandas, cocina e impresoras por estación.'
-            : activeBranch
+            : activeTab === 'combos'
+              ? 'Vende varios productos juntos a un precio fijo, con opciones a elegir por el cliente.'
+              : activeBranch
               ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
               : 'Seleccione una sucursal activa para administrar el catálogo.'
       }
       subtitleClassName="hidden sm:block"
       actions={
-        activeTab === 'categories' || activeTab === 'prep_areas' ? (
+        activeTab === 'categories' || activeTab === 'prep_areas' || activeTab === 'combos' ? (
           <button
             type="button"
             onClick={() => setActiveTab('products')}
@@ -706,6 +713,14 @@ export default function ProductosPage() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('combos')}
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium border border-stone-200 bg-white text-stone-700 hover:bg-stone-50 min-w-0"
+            >
+              <UtensilsCrossed size={15} className="shrink-0" />
+              <span className="truncate">Combos</span>
+            </button>
+            <button
+              type="button"
               onClick={openCreate}
               className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 bg-rest-600 text-white rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium hover:bg-rest-700 shadow-sm min-w-0 col-span-2 sm:col-span-1"
             >
@@ -720,6 +735,8 @@ export default function ProductosPage() {
           <ProductCategoriesPanel onCategoriesChange={loadCategories} />
         ) : activeTab === 'prep_areas' ? (
           <ProductPreparationAreasPanel onAreasChange={loadPrepAreas} />
+        ) : activeTab === 'combos' ? (
+          <ProductCombosPanel branchId={activeBranch?.id ?? null} categories={categories} />
         ) : (
         <>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 shrink-0 mb-2 sm:mb-4 lg:mb-5">

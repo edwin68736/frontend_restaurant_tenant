@@ -18,6 +18,13 @@ import {
 } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
+import { PosProductListRow } from '@/components/pos/PosProductListRow'
+import { PosProductViewModeToggle } from '@/components/pos/PosProductViewModeToggle'
+import {
+  readPosProductViewMode,
+  savePosProductViewMode,
+  type PosProductViewMode,
+} from '@/utils/posProductViewMode'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { restaurantService, type Comanda, type SessionDetail } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
@@ -74,7 +81,7 @@ import { roundMoney } from '@/utils/checkoutDiscount'
 import { productNeedsConfiguration } from '@/utils/productModifiers'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
 import { CartClearButton } from '@/components/pos/CartClearButton'
-import { playCartAddSound, playCartClearSound } from '@/utils/cartSounds'
+import { playCartAddSound, playCartClearSound, playCartRemoveSound } from '@/utils/cartSounds'
 import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { formatModifierLines, formatModifierSummary, parseStoredModifiers } from '@/utils/productModifiers'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
@@ -211,6 +218,7 @@ export default function POSPage() {
     { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number } | null
   >(null)
   const [scannerMode, setScannerMode] = useState(readScannerModePreference)
+  const [productViewMode, setProductViewMode] = useState<PosProductViewMode>(readPosProductViewMode)
   const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
   const [scanProcessing, setScanProcessing] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -974,6 +982,11 @@ export default function POSPage() {
     return () => window.clearTimeout(t)
   }, [scannerMode, useCameraBarcodeScanner])
 
+  const changeProductViewMode = useCallback((mode: PosProductViewMode) => {
+    setProductViewMode(mode)
+    savePosProductViewMode(mode)
+  }, [])
+
   const setScannerModeOff = useCallback(() => {
     setScannerMode(false)
     setCameraScannerOpen(false)
@@ -1013,8 +1026,10 @@ export default function POSPage() {
     [addProduct, scanProcessing, setSearch, activeBranchId, products],
   )
   const setQty = (index: number, qty: number) => {
-    if (qty <= 0) setCart((c) => c.filter((_, i) => i !== index))
-    else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
+    if (qty <= 0) {
+      playCartRemoveSound()
+      setCart((c) => c.filter((_, i) => i !== index))
+    } else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
   }
 
   const setCartNotes = (index: number, notes: string) => {
@@ -1412,7 +1427,9 @@ export default function POSPage() {
           : null,
       )
       setReceiptModalOpen(true)
-      void loadPendingOrders({ silent: true })
+      // Una venta directa no deja pedido pendiente: refrescar la lista solo pediría datos
+      // para descartarlos, y son ~5 queries por pedido abierto justo tras cobrar.
+      if (!isDirectSale) void loadPendingOrders({ silent: true })
       if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && billRes.print_data) {
         const cfg = getConfiguredPrinter('documentos')
         if (!cfg) {
@@ -1423,7 +1440,14 @@ export default function POSPage() {
             toast.success(msg || 'Comprobante enviado a la impresora')
           } catch (e) {
             console.error('[document print error]', e)
-            toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+            // La venta ya está registrada: el fallo de impresora se informa, no se dramatiza.
+            const detail = e instanceof Error ? e.message : ''
+            toast.error(
+              detail
+                ? `${detail} La venta se registró; puedes reimprimir el comprobante.`
+                : 'No se pudo imprimir el comprobante. La venta se registró; puedes reimprimirlo.',
+              { duration: 6000 },
+            )
           }
         }
       }
@@ -1574,22 +1598,35 @@ export default function POSPage() {
                     />
                   </button>
                 </div>
+                <PosProductViewModeToggle mode={productViewMode} onChange={changeProductViewMode} />
               </div>
               <div ref={productsScrollRef} className="flex-1 min-h-0 w-full overflow-y-auto px-2 py-2 lg:p-3">
-                <div className="grid w-full max-w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
-                {products.map((p) => (
-                  <PosProductGridCard
-                    key={p.id}
-                    product={p}
-                    stockQuantity={stockByProductId[String(p.id)]}
-                    onClick={(e) => {
-                      const visual = (e.currentTarget as HTMLElement).querySelector(
-                        '[data-product-visual]',
-                      ) as HTMLElement | null
-                      addProduct(p, visual ?? e.currentTarget)
-                    }}
-                  />
-                ))}
+                <div
+                  className={clsx(
+                    'w-full max-w-full',
+                    productViewMode === 'list'
+                      ? 'flex flex-col gap-2'
+                      : 'grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch',
+                  )}
+                >
+                {products.map((p) => {
+                  const onPick = (e: React.MouseEvent<HTMLButtonElement>) => {
+                    const visual = (e.currentTarget as HTMLElement).querySelector(
+                      '[data-product-visual]',
+                    ) as HTMLElement | null
+                    addProduct(p, visual ?? e.currentTarget)
+                  }
+                  const props = {
+                    product: p,
+                    stockQuantity: stockByProductId[String(p.id)],
+                    onClick: onPick,
+                  }
+                  return productViewMode === 'list' ? (
+                    <PosProductListRow key={p.id} {...props} />
+                  ) : (
+                    <PosProductGridCard key={p.id} {...props} />
+                  )
+                })}
                 </div>
                 <div ref={productsSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
                 {(productsLoading || productsSearching) && products.length === 0 && (

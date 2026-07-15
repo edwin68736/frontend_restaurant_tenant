@@ -1,6 +1,7 @@
 import type { Product } from '@/services/products.service'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
 import type { PrecuentaPrintItem } from '@/services/printers.service'
+import { loadComandaPrintLayoutSettings } from '@/services/printers/comandaPrintLayout'
 import {
   buildCatalogConfigureKey,
   cartLineLabel,
@@ -160,7 +161,13 @@ export function posComandaPrintLabels(
       .join(' - ')
     return { tableName: `Para llevar ${code}`, waiterName: extra || null }
   }
-  return { tableName: code || null, waiterName: detail.waiter_name ?? null }
+  // Ojo: en delivery/takeaway el campo waiterName transporta los datos del cliente, no el
+  // mozo, así que el ajuste no aplica ahí (ocultarlo borraría la dirección de la comanda).
+  const showWaiter = loadComandaPrintLayoutSettings().showWaiter
+  return {
+    tableName: code || null,
+    waiterName: showWaiter ? (detail.waiter_name ?? null) : null,
+  }
 }
 
 /** Etiquetas de ticket según tipo de sesión (mesa, llevar, delivery, POS). */
@@ -170,8 +177,15 @@ export function sessionComandaPrintLabels(
 ): { tableName: string | null; waiterName: string | null } {
   if (!detail) return { tableName: orderCode || 'POS', waiterName: null }
   if (detail.table_name) {
-    const table = detail.floor_name ? `${detail.table_name} (${detail.floor_name})` : detail.table_name
-    return { tableName: table, waiterName: detail.waiter_name ?? null }
+    // El «ambiente» es el piso/sala y viaja pegado al nombre de la mesa; el ajuste local
+    // de comandas decide si se imprime.
+    const layout = loadComandaPrintLayoutSettings()
+    const showFloor = layout.showTableFloor && Boolean(detail.floor_name)
+    const table = showFloor ? `${detail.table_name} (${detail.floor_name})` : detail.table_name
+    return {
+      tableName: table,
+      waiterName: layout.showWaiter ? (detail.waiter_name ?? null) : null,
+    }
   }
   return posComandaPrintLabels(detail, orderCode)
 }

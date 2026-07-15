@@ -1,8 +1,8 @@
 import beepSrc from '@/assets/sound/beep-29.mp3'
-import clearSrc from '@/assets/sound/button-21.mp3'
+import removeSrc from '@/assets/sound/button-21.mp3'
 
 let addAudio: HTMLAudioElement | null = null
-let clearAudio: HTMLAudioElement | null = null
+let removeAudio: HTMLAudioElement | null = null
 
 function playClip(getAudio: () => HTMLAudioElement) {
   try {
@@ -16,6 +16,7 @@ function playClip(getAudio: () => HTMLAudioElement) {
   }
 }
 
+/** Sonido al agregar producto al carrito POS. */
 export function playCartAddSound() {
   playClip(() => {
     if (!addAudio) {
@@ -26,12 +27,18 @@ export function playCartAddSound() {
   })
 }
 
-export function playCartClearSound() {
+/** Sonido al quitar producto del carrito POS. */
+export function playCartRemoveSound() {
   playClip(() => {
-    if (!clearAudio) {
-      clearAudio = new Audio(clearSrc)
-      clearAudio.volume = 0.55
+    if (!removeAudio) {
+      removeAudio = new Audio(removeSrc)
+      removeAudio.volume = 0.55
     }
-    return clearAudio
+    return removeAudio
   })
+}
+
+/** Vaciar el carrito suena igual que quitar un producto (mismo criterio que Tukifac). */
+export function playCartClearSound() {
+  playCartRemoveSound()
 }

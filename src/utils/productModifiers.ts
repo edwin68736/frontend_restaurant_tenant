@@ -2,9 +2,9 @@ import type { ModifierGroup, Product, ProductPresentation } from '@/services/pro
 import type { CartModifierEntry, StoredModifierEntry } from '@/types/productModifiers'
 import { formatAmountDisplay } from '@/utils/money'
 
-/** Abre modal de configuración en POS/Mesa (presentaciones se cargan al abrir). */
+/** Abre modal de configuración en POS/Mesa (presentaciones y combos se cargan al abrir). */
 export function productNeedsConfiguration(product: Product): boolean {
-  return !!(product.has_modifiers || product.has_variants)
+  return !!(product.has_modifiers || product.has_variants || product.has_combo)
 }
 
 /** Grupos de extras globales vinculados al producto. */

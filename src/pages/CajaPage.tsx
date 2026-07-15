@@ -15,6 +15,7 @@ import {
 import { companyService } from '@/services/company.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
+import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import {
@@ -1069,6 +1070,29 @@ export default function CajaPage() {
                 >
                   <Download size={16} />
                   Exportar PDF
+                </button>
+                <button
+                  type="button"
+                  disabled={!report || loadingReport}
+                  onClick={async () => {
+                    if (!report) return
+                    try {
+                      const cfg = await companyService.getConfig().catch(() => null)
+                      await downloadCajaSessionReportExcel(report, {
+                        companyName: cfg?.business_name,
+                      })
+                      toast.success(
+                        'Excel descargado. Búscalo en la carpeta de descargas de tu navegador (normalmente «Descargas» / «Downloads»).',
+                        { duration: 5000 },
+                      )
+                    } catch {
+                      toast.error('No se pudo generar el Excel')
+                    }
+                  }}
+                  className="px-4 py-2 border border-stone-300 bg-white text-stone-800 rounded-xl text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2 hover:bg-stone-50"
+                >
+                  <Download size={16} />
+                  Exportar Excel
                 </button>
               </div>
             </div>

@@ -1,3 +1,4 @@
+import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
@@ -27,6 +28,11 @@ import {
   isComandaAutoPrintEnabled,
 } from '@/services/printers/comandas'
 import { resolvePrinterConfig } from '@/services/printers/resolve'
+import {
+  getNotaVentaPrintLayout,
+  type NotaVentaPrintLayoutSettings,
+} from '@/services/printers/notaVentaPrintLayout'
+import { loadComandaPrintLayoutSettings } from '@/services/printers/comandaPrintLayout'
 import {
   clampPort,
   DEFAULT_TCP_PORT,
@@ -320,7 +326,12 @@ export function buildComandaEscPos(input: {
   paperWidthMm: PrinterPaperWidth
 }): Uint8Array {
   const cols = columnsForWidth(input.paperWidthMm)
-  const bigCols = Math.max(12, Math.floor(cols / 2))
+  // Tamaño del texto destacado (mesa, mozo y platos). «mediano» existe para gastar menos
+  // papel: al no doblar el alto cada línea mide la mitad, y al no doblar el ancho entran el
+  // doble de columnas, así que además se parten menos líneas.
+  const { textSize } = loadComandaPrintLayoutSettings()
+  const sizeMul = textSize === 'mediano' ? 1 : 2
+  const bigCols = sizeMul === 1 ? cols : Math.max(12, Math.floor(cols / 2))
 
   const out: number[] = []
   out.push(...escposInit())
@@ -337,7 +348,7 @@ export function buildComandaEscPos(input: {
   escposPushTextLine(out, '-'.repeat(cols))
 
   out.push(...escposBold(true))
-  out.push(...escposSize(2, 2))
+  out.push(...escposSize(sizeMul, sizeMul))
   if (input.tableName) {
     for (const line of wrapText(`MESA: ${input.tableName}`, bigCols)) escposPushTextLine(out, line)
   }
@@ -355,7 +366,7 @@ export function buildComandaEscPos(input: {
     const wrapped = wrapText(String(it.productName ?? '').trim(), Math.max(6, bigCols - head.length))
 
     out.push(...escposBold(true))
-    out.push(...escposSize(2, 2))
+    out.push(...escposSize(sizeMul, sizeMul))
     escposPushTextLine(out, `${head}${wrapped[0] ?? ''}`)
     for (const w of wrapped.slice(1)) escposPushTextLine(out, `${' '.repeat(head.length)}${w}`)
     out.push(...escposBold(false))
@@ -527,7 +538,12 @@ function escposPushWrappedCenter(
   if (opts?.bold) out.push(...escposBold(false))
 }
 
-function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: number) {
+function pushCompanyHeaderEscPos(
+  out: number[],
+  printData: PrintData,
+  cols: number,
+  nvLayout: NotaVentaPrintLayoutSettings | null,
+) {
   const tradeName = String(printData.company?.trade_name ?? '').trim()
   const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
   const showBusinessName =
@@ -545,8 +561,9 @@ function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: numb
   if (printData.company?.ruc) metaLines.push(`RUC: ${printData.company.ruc}`)
   const addr = getPrintIssuerAddress(printData)
   if (addr) wrapText(addr, cols).forEach((x) => metaLines.push(x))
-  if (printData.company?.phone) metaLines.push(`Telf: ${printData.company.phone}`)
-  if (printData.company?.email) metaLines.push(`Email: ${printData.company.email}`)
+  const showContact = !nvLayout || nvLayout.showEmailAndPhone
+  if (showContact && printData.company?.phone) metaLines.push(`Telf: ${printData.company.phone}`)
+  if (showContact && printData.company?.email) metaLines.push(`Email: ${printData.company.email}`)
   if (metaLines.length) escposPushLines(out, metaLines, 'center')
 }
 
@@ -559,6 +576,9 @@ export async function buildSaleDocumentEscPos(
   const currency = String(printData.currency ?? 'PEN').toUpperCase()
   const money = (n: number) => moneyEsc(currency, n)
   const showQr = isElectronicSunatCode(printData.sunat_code) && Boolean(printData.qr_data)
+  // null salvo en nota de venta (SUNAT 00): en boleta/factura siempre se imprime todo.
+  const nvLayout = getNotaVentaPrintLayout(printData.sunat_code)
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
 
   const additionalNotes = trimCompanyAdditionalNotes(printData.company?.additional_notes)
   const companyAdditionalLines = additionalNotes
@@ -576,7 +596,8 @@ export async function buildSaleDocumentEscPos(
   const detailLines: string[] = []
   detailLines.push(`Fecha Emision: ${printData.issue_date}`)
   if (printData.issue_time) detailLines.push(`Hora Emision: ${printData.issue_time}`)
-  if (printData.client) {
+  const showClient = !nvLayout || nvLayout.showClientData
+  if (showClient && printData.client) {
     wrapText(`Cliente: ${printData.client.business_name}`, cols).forEach((x) => detailLines.push(x))
     detailLines.push(`Doc: ${printData.client.doc_number}`)
     if (printData.client.address) wrapText(`Dir: ${printData.client.address}`, cols).forEach((x) => detailLines.push(x))
@@ -644,8 +665,10 @@ export async function buildSaleDocumentEscPos(
   const out: number[] = []
   out.push(...escposInit())
 
-  const logoUrl = printData.company?.logo_url?.trim()
-  if (logoUrl) {
+  // El logo es del emisor, no de la venta: sale de la config, no del print_data.
+  const logoUrl = await ensureCompanyLogoForPrint()
+  const showLogo = !nvLayout || nvLayout.showLogo
+  if (logoUrl && showLogo) {
     const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)
     if (logoRaster?.length) {
       out.push(...escposAlign('center'))
@@ -654,11 +677,13 @@ export async function buildSaleDocumentEscPos(
     }
   }
 
-  pushCompanyHeaderEscPos(out, printData, cols)
+  pushCompanyHeaderEscPos(out, printData, cols, nvLayout)
   if (companyAdditionalLines.length) escposPushLines(out, companyAdditionalLines, 'left')
   if (companyTailLines.length) escposPushLines(out, companyTailLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'center')
-  escposPushLines(out, docHeaderLines, 'center')
+  if (!nvLayout || nvLayout.showDocTypeAndNumber) {
+    escposPushLines(out, docHeaderLines, 'center')
+  }
   escposPushLines(out, ['-'.repeat(cols)], 'left')
   escposPushLines(out, detailLines, 'left')
   escposPushLines(out, ['-'.repeat(cols)], 'left')
@@ -667,10 +692,12 @@ export async function buildSaleDocumentEscPos(
     out.push(...Array.from(textBytes('\n')))
     escposPushLines(out, legendLines, 'left')
   }
+  // Las cuentas bancarias no se tocan aquí: se eligen en Restaurante → Comprobantes.
   const hasPayBlock =
-    showQr ||
-    Boolean(printData.payment_condition) ||
-    (printData.payments?.length ?? 0) > 0
+    showPaymentCondition &&
+    (showQr ||
+      Boolean(printData.payment_condition) ||
+      (printData.payments?.length ?? 0) > 0)
 
   if (hasPayBlock) {
     out.push(...Array.from(textBytes('\n')))

@@ -5,6 +5,13 @@ import { clsx } from 'clsx'
 import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
+import { PosProductListRow } from '@/components/pos/PosProductListRow'
+import { PosProductViewModeToggle } from '@/components/pos/PosProductViewModeToggle'
+import {
+  readPosProductViewMode,
+  savePosProductViewMode,
+  type PosProductViewMode,
+} from '@/utils/posProductViewMode'
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
@@ -62,7 +69,7 @@ import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
 import { CartClearButton } from '@/components/pos/CartClearButton'
-import { playCartAddSound, playCartClearSound } from '@/utils/cartSounds'
+import { playCartAddSound, playCartClearSound, playCartRemoveSound } from '@/utils/cartSounds'
 import { ComandaLineDisplay } from '@/components/pos/ComandaLineDisplay'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
@@ -128,6 +135,7 @@ export default function MesaPage() {
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
   const [cart, setCart] = useState<PosCartLine[]>([])
+  const [productViewMode, setProductViewMode] = useState<PosProductViewMode>(readPosProductViewMode)
   const [manualProductOpen, setManualProductOpen] = useState(false)
   const [configureProduct, setConfigureProduct] = useState<Product | null>(null)
   const configureFlySourceRef = useRef<HTMLElement | undefined>(undefined)
@@ -333,9 +341,16 @@ export default function MesaPage() {
     setCart([])
     playCartClearSound()
   }, [cart.length])
+  const changeProductViewMode = useCallback((mode: PosProductViewMode) => {
+    setProductViewMode(mode)
+    savePosProductViewMode(mode)
+  }, [])
+
   const setQty = (index: number, qty: number) => {
-    if (qty <= 0) setCart((c) => c.filter((_, i) => i !== index))
-    else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
+    if (qty <= 0) {
+      playCartRemoveSound()
+      setCart((c) => c.filter((_, i) => i !== index))
+    } else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
   }
   const setCartNotes = (index: number, notes: string) => {
     setCart((c) =>
@@ -1027,22 +1042,35 @@ export default function MesaPage() {
                   className="flex-1 min-w-0"
                   inputClassName="text-sm py-1.5"
                 />
+                <PosProductViewModeToggle mode={productViewMode} onChange={changeProductViewMode} />
               </div>
               <div ref={productsScrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 py-2 lg:p-3">
-              <div className="grid w-full max-w-full grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch">
-              {products.map((p) => (
-                <PosProductGridCard
-                  key={p.id}
-                  product={p}
-                  stockQuantity={stockByProductId[String(p.id)]}
-                  onClick={(e) => {
-                    const visual = (e.currentTarget as HTMLElement).querySelector(
-                      '[data-product-visual]',
-                    ) as HTMLElement | null
-                    addToCart(p, visual ?? e.currentTarget)
-                  }}
-                />
-              ))}
+              <div
+                className={clsx(
+                  'w-full max-w-full',
+                  productViewMode === 'list'
+                    ? 'flex flex-col gap-2'
+                    : 'grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 md:grid-cols-4 lg:grid-cols-4 lg:gap-3 xl:grid-cols-5 2xl:grid-cols-6 justify-items-stretch',
+                )}
+              >
+              {products.map((p) => {
+                const onPick = (e: React.MouseEvent<HTMLButtonElement>) => {
+                  const visual = (e.currentTarget as HTMLElement).querySelector(
+                    '[data-product-visual]',
+                  ) as HTMLElement | null
+                  addToCart(p, visual ?? e.currentTarget)
+                }
+                const props = {
+                  product: p,
+                  stockQuantity: stockByProductId[String(p.id)],
+                  onClick: onPick,
+                }
+                return productViewMode === 'list' ? (
+                  <PosProductListRow key={p.id} {...props} />
+                ) : (
+                  <PosProductGridCard key={p.id} {...props} />
+                )
+              })}
               </div>
               <div ref={productsSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
               {(productsLoading || productsSearching) && products.length === 0 && (

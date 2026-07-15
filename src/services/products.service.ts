@@ -18,7 +18,10 @@ export interface Product {
   preparation_area?: string | null
   has_modifiers?: boolean
   has_variants?: boolean
+  /** Producto compuesto: su precio es fijo y se sirve explotado en sus componentes. */
+  has_combo?: boolean
   presentations?: ProductPresentation[]
+  combo_groups?: ComboGroup[]
   manage_stock?: boolean
   active: boolean
   /** Sucursal dueña del plato (catálogo independiente por sucursal). */
@@ -42,6 +45,49 @@ export interface ModifierGroup {
   required: boolean
   multi_select?: boolean
   options: { id: number; name: string; extra_price?: number }[]
+}
+
+/**
+ * Tipo de selección de un grupo de combo:
+ * - fixed: componente siempre incluido, el cliente no elige (ej: el pollo).
+ * - single: el cliente elige exactamente una opción (ej: tu bebida).
+ * - multiple: elige entre min_select y max_select, con cantidad si allow_quantity.
+ */
+export type ComboSelectionType = 'fixed' | 'single' | 'multiple'
+
+export interface ComboGroupItem {
+  id?: number
+  product_id: number
+  preparation_area_id?: number | null
+  default_quantity: number
+  max_quantity: number
+  /** Sobreprecio si es una opción premium (ej: cambiar agua por gaseosa: +1.50). */
+  extra_price: number
+  is_default?: boolean
+  sort_order?: number
+  /** Datos vivos del producto componente (solo lectura, los envía el backend). */
+  product_name?: string
+  product_code?: string
+  product_sale_price?: number
+  product_image_url?: string
+  preparation_area?: string
+}
+
+export interface ComboGroup {
+  id?: number
+  name: string
+  selection_type: ComboSelectionType
+  min_select: number
+  max_select: number
+  allow_quantity?: boolean
+  sort_order?: number
+  items: ComboGroupItem[]
+}
+
+/** Lo que el cliente eligió en un grupo al pedir el combo. */
+export interface ComboSelection {
+  group_id: number
+  items: { product_id: number; quantity: number }[]
 }
 
 export type ModifierOptionInput = { name: string; extra_price: number }
@@ -138,6 +184,8 @@ export interface CreateProductInput {
   preparation_area?: string | null
   modifier_group_ids?: number[]
   presentations?: ProductPresentation[]
+  /** Grupos del combo. En update: omitir = no tocar; [] = deja de ser combo. */
+  combo_groups?: ComboGroup[]
   active?: boolean
 }
 
@@ -156,13 +204,22 @@ export const productsService = {
     branchId?: number | null,
     activeOnly = true,
     inactiveOnly = false,
-    options?: ApiRequestOptions & { sortBy?: ProductSortField; sortDir?: ProductSortDir },
+    options?: ApiRequestOptions & {
+      sortBy?: ProductSortField
+      sortDir?: ProductSortDir
+      /** Solo combos (tab Combos del panel). */
+      combosOnly?: boolean
+      /** Sin combos: candidatos a componente (un combo no puede contener otro combo). */
+      excludeCombos?: boolean
+    },
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
         params: {
           q,
           restaurant_only: restaurantOnly ? 'true' : 'false',
+          combos_only: options?.combosOnly ? 'true' : undefined,
+          exclude_combos: options?.excludeCombos ? 'true' : undefined,
           active_only: inactiveOnly ? 'false' : activeOnly ? 'true' : 'false',
           inactive_only: inactiveOnly ? 'true' : 'false',
           page,
@@ -217,16 +274,24 @@ export const productsService = {
 
   get: (id: number) =>
     api
-      .get<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] }>(
-        `/api/products/${id}`,
-      )
+      .get<{
+        data: Product
+        modifier_group_ids: number[]
+        presentations?: ProductPresentation[]
+        combo_groups?: ComboGroup[]
+        /** Suma de los componentes a precio de lista: sirve para mostrar el ahorro. */
+        combo_components_total?: number
+      }>(`/api/products/${id}`)
       .then((r) => ({
         data: {
           ...r.data.data!,
           presentations: r.data.presentations ?? [],
+          combo_groups: r.data.combo_groups ?? [],
         },
         modifier_group_ids: r.data.modifier_group_ids ?? [],
         presentations: r.data.presentations ?? [],
+        combo_groups: r.data.combo_groups ?? [],
+        combo_components_total: r.data.combo_components_total ?? 0,
       })),
 
   bulkImportRestaurant: (items: BulkImportItemPayload[], branchId?: number) =>
@@ -260,6 +325,7 @@ export const productsService = {
       is_restaurant: true,
       modifier_group_ids: data.modifier_group_ids ?? [],
       presentations: data.presentations ?? [],
+      combo_groups: data.combo_groups ?? [],
     }).then((r) => r.data.data!),
 
   update: (id: number, data: Partial<CreateProductInput>) =>

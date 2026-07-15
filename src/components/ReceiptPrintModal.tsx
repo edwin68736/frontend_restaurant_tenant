@@ -17,15 +17,17 @@ import {
   isNativePrintAvailable,
   printDocumentAuto,
 } from '@/services/printers.service'
-import { isCapacitorAndroid } from '@/lib/platform/detect'
-import { ReceiptPaperPreview } from '@/components/ReceiptPaperPreview'
 
 type PanelView = 'details' | 'receipt'
 type PdfFormat = 'ticket' | 'a4'
 
-/** Botón de acción: icono + texto, color sólido (grid 2 columnas; táctil ≥44px en Android). */
+/**
+ * Botón de acción: icono + texto, color sólido (grid 2 columnas).
+ * Compacto en móvil (Tauri y Android), donde el modal va en una sola columna y el espacio
+ * se reparte con el PDF; a partir de sm recupera los 44px táctiles.
+ */
 const ACTION_ICON_BTN =
-  'flex w-full min-w-0 min-h-[44px] items-center justify-center gap-1.5 rounded-xl px-2 text-white touch-manipulation select-none active:scale-[0.98] transition-transform hover:opacity-95 disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100'
+  'flex w-full min-w-0 min-h-[38px] items-center justify-center gap-1.5 rounded-xl px-2 py-1.5 text-white touch-manipulation select-none active:scale-[0.98] transition-transform hover:opacity-95 disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 sm:min-h-[44px] sm:py-2'
 
 const ACTION_ICON = 'h-4 w-4 sm:h-5 sm:w-5 shrink-0'
 
@@ -68,8 +70,6 @@ export function ReceiptPrintModal({
 
   const printerCfg = getConfiguredPrinter('documentos')
   const canNativePrint = isNativePrintAvailable()
-  // Android no puede incrustar el PDF en el WebView → se emula el comprobante en HTML.
-  const isAndroid = isCapacitorAndroid()
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
@@ -89,6 +89,15 @@ export function ReceiptPrintModal({
     payments: printData?.payments ?? [],
     change_amount: printData?.change_amount,
   })
+
+  // Se pinta dentro del resumen (desktop) y suelto (móvil), donde el resumen no se muestra.
+  const changeRow =
+    change > 0.009 ? (
+      <div className="flex justify-between rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
+        <span className="font-semibold text-amber-900">Vuelto</span>
+        <span className="font-bold text-amber-700">{formatMoney(change, printData?.currency)}</span>
+      </div>
+    ) : null
 
   const revokePdfUrl = useCallback(() => {
     if (pdfUrlRef.current) {
@@ -130,12 +139,8 @@ export function ReceiptPrintModal({
   const showReceipt = useCallback(async () => {
     if (!printData) return
     setPanelView('receipt')
-    if (isAndroid) {
-      setPdfFormat('ticket')
-      return
-    }
     await loadPdf('ticket')
-  }, [printData, loadPdf, isAndroid])
+  }, [printData, loadPdf])
 
   const showDetails = useCallback(() => {
     setPanelView('details')
@@ -143,14 +148,10 @@ export function ReceiptPrintModal({
 
   const switchPdfFormat = useCallback(
     (format: PdfFormat) => {
-      if (isAndroid) {
-        setPdfFormat(format)
-        return
-      }
       if (format === pdfFormat && pdfUrl) return
       void loadPdf(format)
     },
-    [isAndroid, loadPdf, pdfFormat, pdfUrl],
+    [loadPdf, pdfFormat, pdfUrl],
   )
 
   useEffect(() => {
@@ -167,12 +168,12 @@ export function ReceiptPrintModal({
     const shouldShowReceipt = openInReceiptView && Boolean(printData)
     if (shouldShowReceipt) {
       setPanelView('receipt')
-      // Windows/navegador: PDF incrustado. Android: emulación HTML (no genera PDF).
-      if (!isAndroid) void loadPdf('ticket')
+      // Mismo PDF en todas las plataformas; PdfBlobViewer lo rasteriza en Android.
+      void loadPdf('ticket')
     } else {
       setPanelView('details')
     }
-  }, [open, revokePdfUrl, openInReceiptView, printData, loadPdf, isAndroid])
+  }, [open, revokePdfUrl, openInReceiptView, printData, loadPdf])
 
   const handleClose = () => {
     revokePdfUrl()
@@ -252,21 +253,27 @@ export function ReceiptPrintModal({
           <X className="h-4 w-4 text-stone-600 sm:h-5 sm:w-5" />
         </button>
 
-        <div className="scrollbar-checkout min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="mb-4 flex items-center gap-2 pr-10">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-100 md:h-10 md:w-10">
-              <Receipt className="h-5 w-5 text-green-600 md:h-6 md:w-6" />
+        <div className="scrollbar-checkout min-h-0 flex-1 overflow-y-auto p-3 md:p-6">
+          {/* En móvil el header cede altura al comprobante: sin subtítulo (el pie ya confirma
+              la venta y su número) y en una sola línea. */}
+          <div className="mb-2 flex items-center gap-2 pr-10 md:mb-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-green-100 md:h-10 md:w-10">
+              <Receipt className="h-4 w-4 text-green-600 md:h-6 md:w-6" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-stone-800 md:text-lg">Recibo de venta</h2>
-              <p className="text-xs text-stone-500 md:text-sm">Comprobante generado correctamente</p>
+            <div className="min-w-0">
+              <h2 className="truncate text-sm font-bold text-stone-800 md:text-lg">Recibo de venta</h2>
+              <p className="hidden text-xs text-stone-500 md:block md:text-sm">
+                Comprobante generado correctamente
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-6">
             {/* Panel izquierdo: resumen y acciones */}
             <div className="min-w-0 space-y-4 lg:col-span-2">
-              <div className="rounded-xl border border-green-200/80 bg-green-50/60 p-3 md:p-4">
+              {/* En móvil el resumen se oculta: el PDF ya muestra los totales y el espacio
+                  se necesita para las acciones. El vuelto se conserva aparte. */}
+              <div className="hidden rounded-xl border border-green-200/80 bg-green-50/60 p-3 md:p-4 lg:block">
                 <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-700">
                   <span className="text-green-600">●</span> Resumen de pago
                 </h3>
@@ -283,19 +290,16 @@ export function ReceiptPrintModal({
                       {formatMoney(paidTotal, printData?.currency)}
                     </span>
                   </div>
-                  {change > 0.009 && (
-                    <div className="flex justify-between rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
-                      <span className="font-semibold text-amber-900">Vuelto</span>
-                      <span className="font-bold text-amber-700">
-                        {formatMoney(change, printData?.currency)}
-                      </span>
-                    </div>
-                  )}
+                  {changeRow}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-stone-200 bg-stone-50/90 p-3">
-                <h3 className="mb-2.5 text-xs font-semibold text-stone-700">Acciones</h3>
+              {/* Vuelto en móvil: es plata que hay que devolver, tiene que verse aunque el
+                  resto del resumen no esté. */}
+              {changeRow ? <div className="lg:hidden">{changeRow}</div> : null}
+
+              <div className="rounded-xl border border-stone-200 bg-stone-50/90 p-2 md:p-3">
+                <h3 className="mb-2.5 hidden text-xs font-semibold text-stone-700 lg:block">Acciones</h3>
                 <div className="grid min-w-0 grid-cols-2 gap-2">
                   {showReceiptPanel ? (
                     <button
@@ -412,8 +416,9 @@ export function ReceiptPrintModal({
             <div className="lg:col-span-3">
               {showReceiptPanel ? (
                 <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
-                  <div className="border-b border-stone-200 bg-stone-50 px-3 py-2.5">
-                    <div className="mx-auto grid max-w-xs grid-cols-2 gap-2">
+                  <div className="border-b border-stone-200 bg-stone-50 px-3 py-2">
+                    {/* Selector de formato: se ajusta al ancho disponible y no crece de más. */}
+                    <div className="mx-auto grid w-full max-w-[17rem] grid-cols-2 gap-2">
                       <button
                         type="button"
                         disabled={pdfLoading}
@@ -423,11 +428,11 @@ export function ReceiptPrintModal({
                         aria-pressed={pdfFormat === 'ticket'}
                         className={clsx(
                           ACTION_ICON_BTN,
-                          'min-h-[2.75rem]',
                           pdfFormat === 'ticket' ? 'bg-amber-600 ring-2 ring-amber-300 ring-offset-1' : 'bg-amber-500/90',
                         )}
                       >
                         <Receipt className={ACTION_ICON} strokeWidth={2.25} />
+                        <span className={ACTION_LABEL}>Ticket</span>
                       </button>
                       <button
                         type="button"
@@ -438,23 +443,15 @@ export function ReceiptPrintModal({
                         aria-pressed={pdfFormat === 'a4'}
                         className={clsx(
                           ACTION_ICON_BTN,
-                          'min-h-[2.75rem]',
                           pdfFormat === 'a4' ? 'bg-[#E4002B] ring-2 ring-red-300 ring-offset-1' : 'bg-[#E4002B]/85',
                         )}
                       >
                         <FileText className={ACTION_ICON} strokeWidth={2.25} />
+                        <span className={ACTION_LABEL}>A4</span>
                       </button>
                     </div>
                   </div>
-                  {isAndroid ? (
-                    printData ? (
-                      <ReceiptPaperPreview printData={printData} format={pdfFormat} />
-                    ) : (
-                      <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
-                        <Loader2 className="h-8 w-8 animate-spin text-rest-600" />
-                      </div>
-                    )
-                  ) : pdfLoading || !pdfUrl ? (
+                  {pdfLoading || !pdfUrl ? (
                     <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
                       <Loader2 className="h-8 w-8 animate-spin text-rest-600" />
                     </div>

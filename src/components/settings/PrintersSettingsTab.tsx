@@ -16,6 +16,8 @@ import {
 import { preparationAreaLabel } from '@/constants/preparationAreas'
 import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import { PrinterKindCard } from './printers/PrinterKindCard'
+import { NotaVentaPrintSettings } from './printers/NotaVentaPrintSettings'
+import { ComandaPrintSettings } from './printers/ComandaPrintSettings'
 import { ComandasPrinterSettings } from './printers/ComandasPrinterSettings'
 
 export function PrintersSettingsTab() {
@@ -186,6 +188,8 @@ export function PrintersSettingsTab() {
         testingArea={testingArea}
       />
 
+      <ComandaPrintSettings />
+
       {(['precuenta', 'documentos'] as const).map((kind) => (
         <PrinterKindCard
           key={kind}
@@ -200,6 +204,8 @@ export function PrintersSettingsTab() {
           testing={Boolean(testing[kind])}
         />
       ))}
+
+      <NotaVentaPrintSettings />
 
       {!caps.windowsUsb && !caps.bluetooth && caps.network && (
         <p className="text-xs text-stone-500 px-1">
