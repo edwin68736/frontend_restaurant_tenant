@@ -1,3 +1,4 @@
+import { downloadXlsxBytes } from '@/utils/downloadXlsx'
 import { writeXlsx, type CellValue } from 'hucre'
 import type { CashSessionReport } from '@/services/cashbank.service'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -137,13 +138,5 @@ export async function downloadCajaSessionReportExcel(
   }
 
   const bytes = await writeXlsx({ sheets })
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `reporte-caja-sesion-${report.session?.id ?? ''}.xlsx`
-  link.click()
-  URL.revokeObjectURL(url)
+  await downloadXlsxBytes(bytes, `reporte-caja-sesion-${report.session?.id ?? ''}.xlsx`)
 }

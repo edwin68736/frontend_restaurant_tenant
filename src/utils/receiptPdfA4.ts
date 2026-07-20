@@ -1,3 +1,4 @@
+import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
 import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -29,6 +30,7 @@ const FONT_LG = 11
 const GRAY_FILL: [number, number, number] = [225, 225, 225]
 const GREEN_WEB: [number, number, number] = [34, 130, 70]
 /** Máximo del logo en columna izquierda (mm); se respeta proporción. */
+/** Tope base del logo en A4 («mediano»); el ajuste local lo escala. */
 const LOGO_MAX_MM = 38
 
 function fitLogoMm(
@@ -37,7 +39,7 @@ function fitLogoMm(
   maxW: number,
   maxH: number,
 ): { w: number; h: number } {
-  return fitReceiptLogoMm(naturalW, naturalH, Math.min(maxW, LOGO_MAX_MM), maxH)
+  return fitReceiptLogoMm(naturalW, naturalH, Math.min(maxW, scaleLogoDimension(LOGO_MAX_MM)), scaleLogoDimension(maxH))
 }
 
 type A4Col = { header: string; w: number; align: 'left' | 'center' | 'right' }

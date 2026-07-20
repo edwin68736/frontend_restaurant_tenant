@@ -1,3 +1,4 @@
+import { downloadXlsxBytes } from '@/utils/downloadXlsx'
 import {
   readXlsx,
   validateWithSchema,
@@ -192,18 +193,6 @@ function generateEan13(): string {
   return `${base12}${checkDigit}`
 }
 
-function downloadXlsx(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 export async function downloadRestaurantProductTemplate(): Promise<void> {
   const headerRow: CellValue[] = [...IMPORT_COLUMNS]
   const exampleRow: CellValue[] = [
@@ -222,7 +211,7 @@ export async function downloadRestaurantProductTemplate(): Promise<void> {
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
   })
-  downloadXlsx(bytes, 'plantilla-productos-restaurante.xlsx')
+  await downloadXlsxBytes(bytes, 'plantilla-productos-restaurante.xlsx')
 }
 
 export async function validateRestaurantProductExcel(file: File): Promise<ImportValidationResult> {

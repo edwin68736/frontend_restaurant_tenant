@@ -19,6 +19,7 @@ import { PrinterKindCard } from './printers/PrinterKindCard'
 import { NotaVentaPrintSettings } from './printers/NotaVentaPrintSettings'
 import { ComandaPrintSettings } from './printers/ComandaPrintSettings'
 import { ComandasPrinterSettings } from './printers/ComandasPrinterSettings'
+import { LogoPrintSizeSettings } from './printers/LogoPrintSizeSettings'
 
 export function PrintersSettingsTab() {
   const [printers, setPrinters] = useState<string[]>([])
@@ -205,6 +206,7 @@ export function PrintersSettingsTab() {
         />
       ))}
 
+      <LogoPrintSizeSettings />
       <NotaVentaPrintSettings />
 
       {!caps.windowsUsb && !caps.bluetooth && caps.network && (

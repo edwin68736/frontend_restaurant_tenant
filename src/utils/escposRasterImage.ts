@@ -1,3 +1,4 @@
+import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import QRCode from 'qrcode'
 
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
@@ -20,11 +21,11 @@ export function clearEscPosImageRasterCache(): void {
 // (escposPrintWidthPx: 384 / 576) o la imagen se corta; se deja un margen para que no
 // quede pegado al borde.
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 360 : 512
+  return Math.min(scaleLogoDimension(paperWidthMm === 58 ? 360 : 512), escposPrintWidthPx(paperWidthMm))
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 120 : 150
+  return scaleLogoDimension(paperWidthMm === 58 ? 120 : 150)
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
