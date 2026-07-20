@@ -29,6 +29,7 @@ const COLS: ExportColumn<Sale>[] = [
     format: (_, r) => `${r.doc_type} ${formatSaleDocumentNumber(r)}`.trim(),
   },
   { key: 'contact_name', label: 'Cliente', format: (v) => String(v ?? '—') },
+  { key: 'contact_doc_number', label: 'RUC / DNI', format: (v) => String(v ?? '—') },
   { key: 'subtotal', label: 'Subtotal', format: fmtMoney, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoney, excelNumber: true },
   { key: 'total', label: 'Total', format: fmtMoney, excelNumber: true },

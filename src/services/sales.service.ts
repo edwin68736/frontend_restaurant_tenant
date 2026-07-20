@@ -10,6 +10,8 @@ export interface Sale {
   issue_date: string
   contact_id: number | null
   contact_name?: string
+  /** RUC/DNI del cliente; se rellena al listar. */
+  contact_doc_number?: string
   subtotal: number
   tax_amount: number
   total: number

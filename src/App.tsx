@@ -30,8 +30,6 @@ import DashboardPage from '@/pages/DashboardPage'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
 import { DEFAULT_REPORT_PATH } from '@/reports/registry'
 import { LOADING_SCREEN_SAFE } from '@/utils/safeAreaClasses'
-import SafeAreaDebugPanel from '@/components/debug/SafeAreaDebugPanel'
-import { isSafeAreaDebugEnabled } from '@/utils/safeAreaDebugEnabled'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isBound } = useTenantBinding()
@@ -88,12 +86,9 @@ function RequireTenant({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-const showSafeAreaDebug = isSafeAreaDebugEnabled()
-
 export default function App() {
   return (
     <>
-      {showSafeAreaDebug ? <SafeAreaDebugPanel /> : null}
       <Toaster
         position="top-right"
         richColors

@@ -41,6 +41,9 @@ export function effectiveConnection(cfg: {
   const hasBt = Boolean(cfg.bluetoothMac?.trim())
 
   if (isCapacitorAndroid()) {
+    // La elección explícita del usuario manda si es un modo disponible; la
+    // inferencia por datos guardados queda solo como fallback (config vacía/legacy).
+    if (modes.includes(cfg.connection)) return cfg.connection
     if (hasBt && modes.includes('bluetooth')) return 'bluetooth'
     if (hasTcp && modes.includes('network')) return 'network'
     if (modes.includes('bluetooth')) return 'bluetooth'
