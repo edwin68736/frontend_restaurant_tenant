@@ -4,7 +4,7 @@ import { clsx } from 'clsx'
 import type { BillingHub } from '@/services/subscription.service'
 import {
   STATUS_LABELS,
-  billingCycleLabel,
+  contractedPeriodLabel,
   formatDate,
   formatMoney,
   nextPaymentDate,
@@ -71,7 +71,7 @@ export default function CurrentSubscriptionCard({ hub }: Props) {
         <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-0 border-t border-stone-100 space-y-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-3">
             {[
-              { label: 'Ciclo', value: billingCycleLabel(sub.billing_cycle) },
+              { label: 'Ciclo', value: contractedPeriodLabel(sub) },
               { label: 'Inicio', value: sub.start_date ? formatDate(sub.start_date) : '—' },
               { label: 'Fin', value: sub.end_date ? formatDate(sub.end_date) : '—' },
               {

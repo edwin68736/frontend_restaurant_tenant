@@ -172,6 +172,30 @@ export function billingCycleLabel(cycle: string) {
   return CYCLE_LABELS[cycle] ?? cycle
 }
 
+/** Meses de cada ciclo, para saber si lo contratado coincide con el ciclo del plan. */
+const CYCLE_MONTHS: Record<string, number> = {
+  monthly: 1,
+  semiannual: 6,
+  annual: 12,
+  yearly: 12,
+}
+
+/**
+ * Período contratado. billing_cycle es el del PLAN: un plan mensual vendido por 3 meses
+ * decía «Mensual» junto a un período de 3 meses. Si coinciden se usa la etiqueta de
+ * siempre; si no, se dice la duración real, que es la que determina el próximo pago.
+ */
+export function contractedPeriodLabel(sub: {
+  billing_cycle: string
+  contracted_months?: number
+}): string {
+  const cycle = billingCycleLabel(sub.billing_cycle)
+  const months = sub.contracted_months ?? 0
+  if (sub.billing_cycle === 'lifetime' || months <= 0) return cycle
+  if (CYCLE_MONTHS[sub.billing_cycle] === months) return cycle
+  return months === 1 ? '1 mes' : `${months} meses`
+}
+
 export function formatBillingPeriod(periodEnd: string) {
   try {
     const d = new Date(periodEnd)
