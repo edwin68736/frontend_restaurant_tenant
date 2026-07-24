@@ -34,6 +34,10 @@ const emptyForm = (): CreateContactInput => ({
 
 export default function ClientesPage() {
   const [contacts, setContacts] = useState<Contact[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const PER_PAGE = 25
   const [show, setShow] = useState(false)
   const [editing, setEditing] = useState<Contact | null>(null)
   const [form, setForm] = useState<CreateContactInput>(emptyForm())
@@ -44,14 +48,31 @@ export default function ClientesPage() {
   const [togglingActiveId, setTogglingActiveId] = useState<number | null>(null)
 
   const { inputValue: searchInput, setInputValue: setSearchInput, loading, isSearching, refresh } =
-    useDebouncedApiSearch<Contact[]>({
+    useDebouncedApiSearch<{ data: Contact[]; total: number; totalPages: number }>({
       cacheScope: 'restaurant-clientes',
-      deps: [showInactiveOnly],
+      // page en deps: cambiar de página vuelve a pedir. La búsqueda/filtro resetea a la 1.
+      deps: [showInactiveOnly, page],
       fetcher: (query, signal) =>
-        contactsService.list(query, 'customer', showInactiveOnly ? 'inactive' : 'active', { signal }),
-      onSuccess: (d) => setContacts(d ?? []),
+        contactsService.listPaged(
+          query,
+          'customer',
+          showInactiveOnly ? 'inactive' : 'active',
+          page,
+          PER_PAGE,
+          { signal },
+        ),
+      onSuccess: (r) => {
+        setContacts(r.data ?? [])
+        setTotal(r.total ?? 0)
+        setTotalPages(r.totalPages ?? 1)
+      },
       onError: () => toast.error('Error al cargar clientes'),
     })
+
+  // Al cambiar la búsqueda o el filtro de estado, volver a la primera página.
+  useEffect(() => {
+    setPage(1)
+  }, [searchInput, showInactiveOnly])
 
   useEffect(() => {
     companyService.getConfig().then((c) => setTenantRuc(c?.ruc ?? '')).catch(() => setTenantRuc(''))
@@ -239,10 +260,15 @@ export default function ClientesPage() {
         </label>
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-        <div className="w-full overflow-x-auto">
+      {/* flex-1 + min-h-0 para llenar el alto disponible del layout flex, y overflow-auto
+          en el contenedor de la tabla para poder desplazarse en listas largas (antes solo
+          scrolleaba en horizontal y la lista quedaba recortada sin poder subir/bajar). */}
+      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden flex flex-col flex-1 min-h-0">
+        {/* flex-1 min-h-0: la tabla ocupa el alto disponible y scrollea dentro; así el pie
+            de paginación (hermano de abajo) queda visible y no lo recorta overflow-hidden. */}
+        <div className="w-full flex-1 min-h-0 overflow-auto">
           <table className="w-full text-sm min-w-[640px]">
-            <thead className="bg-stone-50 border-b border-stone-200">
+            <thead className="bg-stone-50 border-b border-stone-200 sticky top-0 z-10">
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Doc.</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500">Nombre / Razón social</th>
@@ -337,6 +363,31 @@ export default function ClientesPage() {
             {showInactiveOnly
               ? 'No hay clientes inactivos.'
               : 'No hay clientes activos. Agregue uno o active el switch «Solo inactivos» para ver desactivados.'}
+          </div>
+        )}
+        {total > 0 && (
+          <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 px-4 py-3 text-sm">
+            <span className="text-stone-500">
+              {total} cliente{total === 1 ? '' : 's'} · página {page} de {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 disabled:opacity-40 hover:bg-stone-50"
+              >
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 disabled:opacity-40 hover:bg-stone-50"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </div>

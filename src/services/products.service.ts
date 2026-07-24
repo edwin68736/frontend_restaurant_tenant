@@ -119,6 +119,8 @@ export interface PreparationAreaWithCount extends PreparationArea {
 
 /** Fila enriquecida cuando GET /api/products se llama con report=1 */
 export interface ProductReportRow extends Product {
+  /** Stock mínimo configurado; con stock_total define la alerta «bajo mínimo». */
+  min_stock?: number
   stock_total?: number
   stock_by_branch?: { branch_id: number; branch_name: string; quantity: number }[]
   serials?: string[]
@@ -355,6 +357,8 @@ export const productsService = {
     branch_id?: number
     active_only?: boolean
     no_manage_stock_only?: boolean
+    /** Solo productos con control de stock (reporte de stock). */
+    manage_stock_only?: boolean
     page?: number
     per_page?: number
     stock_less_than?: number
@@ -373,6 +377,7 @@ export const productsService = {
           preparation_area: params.preparation_area,
           restaurant_only: true,
           no_manage_stock_only: params.no_manage_stock_only ? 'true' : undefined,
+          manage_stock_only: params.manage_stock_only ? 'true' : undefined,
           report: true,
         },
       })

@@ -3,6 +3,7 @@ import { salesByProductReportDefinition } from '@/reports/definitions/salesByPro
 import { productsReportDefinition } from '@/reports/definitions/productsReportDefinition'
 import { kardexReportDefinition } from '@/reports/definitions/kardexReportDefinition'
 import { noStockProductsReportDefinition } from '@/reports/definitions/noStockProductsReportDefinition'
+import { stockReportDefinition } from '@/reports/definitions/stockReportDefinition'
 import { cashMovementsReportDefinition } from '@/reports/definitions/cashMovementsReportDefinition'
 import type { ReportDefinition } from '@/reports/types'
 import { isTableReport } from '@/reports/types'
@@ -12,6 +13,7 @@ export const RESTAURANT_REPORT_DEFINITIONS: ReportDefinition[] = [
   salesReportDefinition,
   salesByProductReportDefinition,
   productsReportDefinition,
+  stockReportDefinition,
   kardexReportDefinition,
   noStockProductsReportDefinition,
   cashMovementsReportDefinition,
