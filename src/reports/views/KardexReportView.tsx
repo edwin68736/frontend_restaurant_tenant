@@ -59,6 +59,7 @@ const COLS: ExportColumn<Row>[] = [
         : '',
   },
   { key: 'product_name', label: 'Producto' },
+  { key: 'presentation_name', label: 'Presentación', format: (v: unknown) => String(v ?? '—') },
   { key: 'type', label: 'Tipo', format: (v: unknown) => fmtMovementType(v) },
   { key: 'reference', label: 'Referencia' },
   {

@@ -12,6 +12,8 @@ export interface StockMovement {
   product_id: number
   product_code?: string
   product_name?: string
+  presentation_id?: number
+  presentation_name?: string
   branch_id: number
   branch_name?: string
   type: string
@@ -19,6 +21,8 @@ export interface StockMovement {
   balance?: number
   reference?: string
   notes?: string
+  /** Números de serie que participaron en este movimiento (platos con manage_series). */
+  serials?: string[]
   user_id?: number
   user_name?: string
   created_at: string
@@ -68,6 +72,7 @@ export const inventoryService = {
 
   adjustment: (body: {
     product_id: number
+    presentation_id?: number
     branch_id: number
     type: 'in' | 'out'
     quantity: number

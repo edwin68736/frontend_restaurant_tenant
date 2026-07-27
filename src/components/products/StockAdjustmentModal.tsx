@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { inventoryService } from '@/services/inventory.service'
-import type { Product } from '@/services/products.service'
+import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
 
 type Props = {
   product: Product
@@ -18,10 +18,21 @@ export function StockAdjustmentModal({ product, branchId, branchName, onClose, o
   const [quantity, setQuantity] = useState<number>(1)
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [presentations, setPresentations] = useState<ProductPresentation[]>([])
+  const [presentationId, setPresentationId] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!product.has_variants) return
+    productsService.get(product.id).then((d) => setPresentations(d.presentations ?? []))
+  }, [product.id, product.has_variants])
 
   const handleSubmit = async () => {
     if (branchId <= 0) {
       toast.error('No hay sucursal activa para el ajuste')
+      return
+    }
+    if (product.has_variants && presentations.length > 0 && !presentationId) {
+      toast.error('Selecciona la presentación (variante) a ajustar')
       return
     }
     const qty = Number(quantity)
@@ -33,7 +44,9 @@ export function StockAdjustmentModal({ product, branchId, branchName, onClose, o
       toast.error('Indica la observación del ajuste')
       return
     }
-    if (type === 'out') {
+    if (type === 'out' && !presentationId) {
+      // Con presentación, el saldo a validar es el de esa variante: se deja que el backend lo
+      // valide y muestre el error, ya que "stock" acá es el agregado del producto.
       const stock = await inventoryService.getStock(product.id, branchId)
       const total =
         stock.find((s) => s.branch_id === branchId)?.quantity ?? stock[0]?.quantity ?? 0
@@ -46,6 +59,7 @@ export function StockAdjustmentModal({ product, branchId, branchName, onClose, o
     try {
       await inventoryService.adjustment({
         product_id: product.id,
+        presentation_id: presentationId ?? undefined,
         branch_id: branchId,
         type,
         quantity: qty,
@@ -84,6 +98,21 @@ export function StockAdjustmentModal({ product, branchId, branchName, onClose, o
         </div>
 
         <div className="p-5 space-y-4">
+          {product.has_variants && presentations.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-stone-700 mb-1">Presentación (variante)</label>
+              <select
+                className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
+                value={presentationId ?? ''}
+                onChange={(e) => setPresentationId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">Selecciona presentación</option>
+                {presentations.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-stone-500 mb-2">
               Tipo de ajuste

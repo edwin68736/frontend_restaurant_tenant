@@ -235,6 +235,9 @@ export function cartToOrderItems(cart: PosCartLine[]) {
       quantity: x.quantity,
       unit_price: x.unit_price,
       notes: (x.notes ?? '').trim(),
+      // El backend resuelve y valida la presentación elegida (si hay) a partir de este JSON —
+      // ver resolveRestaurantOrderItem/calcRestaurantUnitPrice — y es quien decide de qué
+      // variante descuenta stock, en vez de confiar en un presentation_id suelto del cliente.
       modifiers_json: modifiersToJson(x.modifiers),
       // El backend explota el combo en una comanda por área usando esta elección.
       ...(x.combo ? { combo_json: comboSelectionsToJson(x.combo.selections) } : {}),
