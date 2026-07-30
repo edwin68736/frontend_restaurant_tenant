@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
+import RestaurantModuleUpsell from '@/components/RestaurantModuleUpsell'
 import RestaurantLayout from '@/layouts/RestaurantLayout'
 import LoginPage from '@/pages/LoginPage'
 import HomePage from '@/pages/HomePage'
@@ -33,7 +34,8 @@ import { LOADING_SCREEN_SAFE } from '@/utils/safeAreaClasses'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isBound } = useTenantBinding()
-  const { isAuthenticated, isLoading, restaurantPermissions } = useAuth()
+  const { isAuthenticated, isLoading, restaurantPermissions, modules, hasModule } = useAuth()
+  const location = useLocation()
   if (!isBound) return <Navigate to="/ruc" replace />
   if (isLoading) {
     return (
@@ -45,6 +47,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated) return <Navigate to="/home" replace />
   if (!restaurantPermissions.length) {
     return <NoAccessPage />
+  }
+  // Gate por PLAN: tukichef requiere el módulo 'restaurant'. Sin él → upsell (pero se permite
+  // /suscripcion para que el tenant lo adquiera). Fail-open si el token no trae módulos (sesión
+  // antigua): modules vacío no bloquea.
+  if (modules.length > 0 && !hasModule('restaurant') && location.pathname !== '/suscripcion') {
+    return <RestaurantModuleUpsell />
   }
   return <>{children}</>
 }

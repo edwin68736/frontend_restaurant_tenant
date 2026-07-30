@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import { authService, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
+import { authService, decodeJWT, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { resetReloginGuard, SESSION_EXPIRED_EVENT } from '@/services/api'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
@@ -16,6 +16,14 @@ type AuthState = {
   employeeType: string
   staffId: number | null
   restaurantPermissions: string[]
+  /** Módulos del plan del tenant (del JWT). Gobierna el acceso a tukichef (módulo 'restaurant'). */
+  modules: string[]
+}
+
+/** Extrae los módulos del plan desde el JWT del tenant. */
+function modulesFromToken(token: string | null): string[] {
+  if (!token) return []
+  return decodeJWT<{ modules?: string[] }>(token)?.modules ?? []
 }
 
 type SessionPayload = LoginResponse & {
@@ -28,6 +36,7 @@ type AuthContextType = AuthState & {
   logout: () => void
   canAccess: (feature: RestaurantFeature) => boolean
   hasPerm: (perm: string) => boolean
+  hasModule: (key: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -50,6 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     employeeType: '',
     staffId: null,
     restaurantPermissions: [],
+    modules: [],
   })
 
   const applySession = useCallback((data: SessionPayload) => {
@@ -79,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       employeeType,
       staffId,
       restaurantPermissions: perms,
+      modules: modulesFromToken(data.token),
     })
     window.dispatchEvent(new CustomEvent('tukichef-session-applied'))
   }, [])
@@ -98,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         employeeType: '',
         staffId: null,
         restaurantPermissions: [],
+        modules: [],
       })
     }
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
@@ -125,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           employeeType,
           staffId,
           restaurantPermissions: perms,
+          modules: modulesFromToken(token),
         })
       } catch {
         authService.logout()
@@ -137,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           employeeType: '',
           staffId: null,
           restaurantPermissions: [],
+          modules: [],
         })
       }
     } else {
@@ -165,6 +179,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canAccess = useCallback(
     (feature: RestaurantFeature) => featureAllowed(state.restaurantPermissions, feature),
     [state.restaurantPermissions],
+  )
+
+  const hasModule = useCallback(
+    (key: string) => state.modules.includes(key),
+    [state.modules],
   )
 
   const hasPerm = useCallback(
@@ -198,13 +217,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       employeeType: '',
       staffId: null,
       restaurantPermissions: [],
+      modules: [],
     })
     toast.info('Sesión cerrada')
     window.location.hash = '#/home'
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, login, applySession, logout, canAccess, hasPerm }}>
+    <AuthContext.Provider value={{ ...state, login, applySession, logout, canAccess, hasPerm, hasModule }}>
       {children}
     </AuthContext.Provider>
   )
