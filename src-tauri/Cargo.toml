@@ -1,6 +1,6 @@
  [package]
  name = "bendey-restaurant"
- version = "1.0.2"
+ version = "1.2.5"
  description = "Bendey Restaurant Panel"
  edition = "2021"
  

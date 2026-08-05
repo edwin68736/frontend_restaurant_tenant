@@ -36,9 +36,14 @@ function syncPackageJson(manifest) {
 
 function syncCargoToml(manifest) {
   const path = join(ROOT, 'src-tauri', 'Cargo.toml')
-  let text = readFileSync(path, 'utf8')
-  text = text.replace(/^version\s*=\s*".*"$/m, `version = "${manifest.version}"`)
-  writeFileSync(path, text, 'utf8')
+  const text = readFileSync(path, 'utf8')
+  // El archivo tiene las líneas sangradas, así que anclar en «^version» no encontraba nada y
+  // el crate se quedó congelado en una versión vieja sin que el script avisara.
+  const pattern = /^([ \t]*)version\s*=\s*"[^"]*"[ \t]*$/m
+  if (!pattern.test(text)) {
+    throw new Error(`No se encontró la versión en ${path}`)
+  }
+  writeFileSync(path, text.replace(pattern, `$1version = "${manifest.version}"`), 'utf8')
 }
 
 function syncTauriConf(manifest) {
