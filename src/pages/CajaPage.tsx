@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
+import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
 import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download } from 'lucide-react'
 import {
   cashbankService,
@@ -19,6 +20,7 @@ import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import {
+  canAdministerCashSessions,
   canManageCashSettings,
   canViewBankAccountBalances,
   canViewCashSettings,
@@ -179,6 +181,8 @@ export default function CajaPage() {
   const canManageCashConfig = canManageCashSettings(restaurantPermissions, employeeType)
   const canViewCashConfig = canViewCashSettings(restaurantPermissions, employeeType)
   const canViewAccountBalances = canViewBankAccountBalances(employeeType)
+  // Corregir apertura y eliminar cajas: solo el administrador del restaurante.
+  const canAdminSessions = canAdministerCashSessions(restaurantPermissions, employeeType, user?.role)
   const restrictMovementsToUserId = canManageCashConfig ? undefined : user?.id
   const { activeBranch, activeBranchId } = useBranch()
   const {
@@ -226,6 +230,11 @@ export default function CajaPage() {
   const [report, setReport] = useState<CashSessionReport | null>(null)
   const [loadingReport, setLoadingReport] = useState(false)
   const [historyReportsSession, setHistoryReportsSession] = useState<CashSession | null>(null)
+
+  // Corregir apertura / eliminar caja vacía (historial)
+  const [openingEdit, setOpeningEdit] = useState<{ session: CashSession; amount: number } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
+  const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
 
   const isSessionOpen = session?.status === 'open'
 
@@ -617,6 +626,44 @@ export default function CajaPage() {
     }
   }
 
+  const handleSaveOpening = async () => {
+    if (!openingEdit) return
+    setSessionAdminBusy(true)
+    try {
+      await cashbankService.updateOpeningBalance(openingEdit.session.id, openingEdit.amount)
+      toast.success('Monto de apertura corregido')
+      setOpeningEdit(null)
+      await load()
+      await refreshCashContext()
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'No se pudo corregir el monto',
+      )
+    } finally {
+      setSessionAdminBusy(false)
+    }
+  }
+
+  const handleDeleteSession = async () => {
+    if (!deleteTarget) return
+    setSessionAdminBusy(true)
+    try {
+      await cashbankService.deleteSession(deleteTarget.id)
+      toast.success('Caja eliminada')
+      setDeleteTarget(null)
+      await load()
+      await refreshCashContext()
+    } catch (e: unknown) {
+      toast.error(
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'No se pudo eliminar la caja',
+      )
+    } finally {
+      setSessionAdminBusy(false)
+    }
+  }
+
   const handleCloseSession = async () => {
     if (!session) return
     setSaving(true)
@@ -876,18 +923,22 @@ export default function CajaPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <p className="text-sm text-stone-500">No hay sesión de caja abierta.</p>
-                  <p className="text-xs text-stone-400">Abra la caja para registrar ventas, ingresos/egresos, arqueo y reporte.</p>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-stone-500">No hay sesión de caja abierta.</p>
+                    <p className="text-xs text-stone-400">Abra la caja para registrar ventas, ingresos/egresos, arqueo y reporte.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenModal(true)}
+                    className="flex items-center justify-center gap-2 px-4 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
+                  >
+                    <Plus size={16} /> Aperturar caja
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOpenModal(true)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
-                >
-                  <Plus size={16} /> Aperturar caja
-                </button>
+                {/* Avisa antes de abrir: la salida solo puede registrarse con una caja abierta. */}
+                <PendingRefundsNotice branchId={activeBranchId} />
               </div>
             )}
           </div>
@@ -938,13 +989,36 @@ export default function CajaPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => setHistoryReportsSession(s)}
-                            className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50 whitespace-nowrap"
-                          >
-                            Reportes
-                          </button>
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => setHistoryReportsSession(s)}
+                              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50"
+                            >
+                              Reportes
+                            </button>
+                            {canAdminSessions && (
+                              <button
+                                type="button"
+                                title="Corregir el monto de apertura"
+                                onClick={() => setOpeningEdit({ session: s, amount: Number(s.opening_balance) })}
+                                className="p-1.5 rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                            {/* Solo las cajas sin nada registrado: las demás respaldan dinero contado. */}
+                            {canAdminSessions && s.empty && (
+                              <button
+                                type="button"
+                                title="Eliminar esta caja (no registró movimientos ni ventas)"
+                                onClick={() => setDeleteTarget(s)}
+                                className="p-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -958,6 +1032,14 @@ export default function CajaPage() {
 
       {tab === 'movimientos' && activeBranchId && (
         <div className="space-y-4">
+          {/* Devoluciones que quedaron esperando una caja abierta. Se oculta si no hay. */}
+          {isSessionOpen && session && (
+            <PendingRefundsPanel
+              sessionId={session.id}
+              branchId={activeBranchId}
+              onApplied={() => void load()}
+            />
+          )}
           {isSessionOpen && session && (
             <div className="bg-white rounded-2xl border border-stone-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -1752,6 +1834,87 @@ export default function CajaPage() {
               onSubmit={handleOpenSession}
             />
           </div>
+      </PortalModal>
+
+      {/* Corregir el monto de apertura */}
+      <PortalModal open={!!openingEdit} onClose={() => setOpeningEdit(null)} className="max-w-md" overlayClassName="items-end sm:items-center">
+        <div className={clsx('bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 overflow-y-auto', MAX_H_SHEET_PANEL)}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-stone-800 text-lg">Corregir monto de apertura</h3>
+            <button type="button" onClick={() => setOpeningEdit(null)} className="p-2 rounded-xl hover:bg-stone-100 touch-manipulation">
+              <X size={20} />
+            </button>
+          </div>
+          <p className="text-xs text-stone-500 mb-3">
+            Caja abierta el {openingEdit?.session.opened_at ? new Date(openingEdit.session.opened_at).toLocaleString() : '—'}.
+            {openingEdit?.session.status === 'closed' &&
+              ' Al estar cerrada, se recalculan el saldo esperado y la diferencia del arqueo.'}
+          </p>
+          <label className="block text-sm font-medium text-stone-700 mb-1">Monto de apertura (S/)</label>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={openingEdit?.amount ?? 0}
+            onChange={(e) =>
+              setOpeningEdit((prev) => (prev ? { ...prev, amount: Number(e.target.value) } : prev))
+            }
+            className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+          />
+          <div className="mt-4 flex flex-col-reverse sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={() => setOpeningEdit(null)}
+              className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm text-stone-600 hover:bg-stone-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveOpening}
+              disabled={sessionAdminBusy}
+              className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700 disabled:opacity-50"
+            >
+              {sessionAdminBusy ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </PortalModal>
+
+      {/* Eliminar caja vacía */}
+      <PortalModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} className="max-w-md" overlayClassName="items-end sm:items-center">
+        <div className={clsx('bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 overflow-y-auto', MAX_H_SHEET_PANEL)}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-stone-800 text-lg">Eliminar caja</h3>
+            <button type="button" onClick={() => setDeleteTarget(null)} className="p-2 rounded-xl hover:bg-stone-100 touch-manipulation">
+              <X size={20} />
+            </button>
+          </div>
+          <p className="text-sm text-stone-600">
+            Se eliminará definitivamente la caja abierta el{' '}
+            {deleteTarget?.opened_at ? new Date(deleteTarget.opened_at).toLocaleString() : '—'}. No
+            registró movimientos ni ventas, así que no se pierde información. Esta acción no se
+            puede deshacer.
+          </p>
+          <div className="mt-4 flex flex-col-reverse sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm text-stone-600 hover:bg-stone-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteSession}
+              disabled={sessionAdminBusy}
+              className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+            >
+              {sessionAdminBusy ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </div>
+        </div>
       </PortalModal>
 
       <PortalModal open={closeModal && !!session} onClose={() => setCloseModal(false)} className="max-w-2xl">

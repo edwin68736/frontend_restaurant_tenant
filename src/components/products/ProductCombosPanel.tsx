@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Loader2, ImagePlus, UtensilsCrossed } from 'lucide-react'
+import { generateLocalProductCode } from '@/utils/productCode'
+import { Plus, Pencil, Trash2, Loader2, ImagePlus, UtensilsCrossed, RefreshCw } from 'lucide-react'
 import {
   getProductImageUrl,
   productsService,
@@ -60,10 +61,16 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
     setImagePreview(null)
   }
 
+  /** «Generar otro»: siempre uno distinto, con el mismo formato del catálogo. */
+  const regenerateCode = () => setForm(f => ({ ...f, code: generateLocalProductCode() }))
+
   const openCreate = () => {
     setEditing(null)
     resetForm()
     setModalOpen(true)
+    // El combo se factura como una línea más y SUNAT exige código: se genera uno con el mismo
+    // formato que el formulario de productos. El usuario puede reemplazarlo por el suyo.
+    setForm(f => ({ ...f, code: generateLocalProductCode() }))
   }
 
   const openEdit = async (combo: Product) => {
@@ -131,11 +138,18 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
       toast.error('Agrega al menos un grupo al combo')
       return
     }
+    // Si lo borraron a mano se pide otro antes de guardar: sin código el combo se crea pero
+    // no se puede facturar.
+    let code = form.code.trim()
+    if (!code) {
+      code = generateLocalProductCode()
+      setForm(f => ({ ...f, code }))
+    }
     setSaving(true)
     try {
       const payload = {
         name: form.name.trim(),
-        code: form.code.trim(),
+        code,
         description: form.description.trim(),
         sale_price: Number(form.sale_price),
         category_id: form.category_id,
@@ -296,12 +310,24 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
                       className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500"
                     />
                     <div className="flex gap-2">
-                      <input
-                        value={form.code}
-                        onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                        placeholder="Código (opcional)"
-                        className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-stone-200 text-sm"
-                      />
+                      <div className="flex-1 min-w-0 flex gap-1">
+                        <input
+                          value={form.code}
+                          onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                          placeholder="Código"
+                          title="Código del combo: SUNAT lo exige en cada línea del comprobante"
+                          className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-stone-200 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={regenerateCode}
+                          title="Generar otro código"
+                          aria-label="Generar otro código"
+                          className="shrink-0 px-2.5 rounded-lg border border-stone-200 text-stone-500 hover:bg-stone-50 hover:text-stone-700"
+                        >
+                          <RefreshCw size={15} />
+                        </button>
+                      </div>
                       <select
                         value={form.category_id ?? ''}
                         onChange={(e) =>

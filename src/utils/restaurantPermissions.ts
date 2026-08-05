@@ -134,6 +134,26 @@ export function canViewBankAccountBalances(employeeType?: string | null): boolea
   return String(employeeType ?? '').toLowerCase() === 'admin'
 }
 
+/**
+ * Corregir el monto de apertura o eliminar una caja del historial.
+ *
+ * Solo el administrador: el personal con caja opera su turno, pero estas dos acciones tocan el
+ * respaldo del dinero contado. Es la misma regla que aplica el backend (permiso «s.m» o empleado
+ * admin), para no ofrecer un botón que después responda 403.
+ *
+ * `role` cubre al administrador del tenant que entra a Tukichef sin ser personal del
+ * restaurante: no tiene permisos de restaurante, pero sí manda sobre la caja.
+ */
+export function canAdministerCashSessions(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+  role?: string | null,
+): boolean {
+  if (hasPermission(permissions, 's.m')) return true
+  if (String(employeeType ?? '').toLowerCase() === 'admin') return true
+  return String(role ?? '').trim().toLowerCase() === 'administrador'
+}
+
 /** Ver configuración global de caja (cajero: solo lectura). */
 export function canViewCashSettings(
   permissions: string[] | null | undefined,

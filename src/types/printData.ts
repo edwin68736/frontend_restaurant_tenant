@@ -22,6 +22,9 @@ export interface PrintData {
   affected_doc_sunat_code?: string
   affected_doc_number?: string
   credit_note_reason?: string
+  /** Tipo de nota: código del catálogo 09/10 y su etiqueta «01 - Anulación de la operación». */
+  note_type_code?: string
+  note_type_label?: string
   /** Vuelto cuando la suma de pagos supera el total (p. ej. efectivo). */
   change_amount?: number
   seller_name?: string

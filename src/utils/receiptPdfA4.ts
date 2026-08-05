@@ -223,6 +223,9 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   }
   const creditNoteRef = getCreditNoteReference(data)
   if (creditNoteRef) {
+    if (creditNoteRef.noteTypeLabel) {
+      y = fieldRow(doc, y, 'TIPO DE NOTA:', creditNoteRef.noteTypeLabel, MARGIN + 2)
+    }
     y = fieldRow(doc, y, 'TIPO DOC. REF.:', creditNoteRef.docTypeLabel, MARGIN + 2)
     y = fieldRow(doc, y, 'DOCUMENTO REF.:', creditNoteRef.docNumber, MARGIN + 2)
     if (creditNoteRef.reason) {

@@ -288,6 +288,7 @@ export async function generateReceiptPdf(
     }
     const creditNoteRef = getCreditNoteReference(data)
     if (creditNoteRef) {
+      if (creditNoteRef.noteTypeLabel) addLabeledField('Tipo de nota:', creditNoteRef.noteTypeLabel)
       addLabeledField('Tipo Doc. Ref.:', creditNoteRef.docTypeLabel)
       addLabeledField('Documento Ref.:', creditNoteRef.docNumber)
       if (creditNoteRef.reason) addLabeledField('Motivo de emisión:', creditNoteRef.reason)

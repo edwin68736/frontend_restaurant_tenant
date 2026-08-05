@@ -1502,6 +1502,9 @@ export default function VentasPage() {
                     <tr>
                       <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Fecha</th>
                       <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Comprobante</th>
+                      {tab === 'credit_notes' && (
+                        <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Doc. afectado</th>
+                      )}
                       <th className="hidden md:table-cell text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Cliente</th>
                       <th className="text-left px-2 sm:px-4 py-1.5 sm:py-3 text-xs font-semibold text-stone-500">Total</th>
                       <th
@@ -1579,6 +1582,28 @@ export default function VentasPage() {
                             </span>
                           )}
                         </td>
+                        {tab === 'credit_notes' && (
+                          <td className="px-2 sm:px-4 py-1.5 sm:py-3 min-w-0">
+                            {/* SUNAT identifica el documento modificado por tipo + serie-correlativo. */}
+                            {s.affected_doc_number ? (
+                              <>
+                                <p className="text-[10px] text-stone-400 leading-tight">
+                                  {s.affected_doc_type || s.affected_doc_sunat_code || 'Comprobante'}
+                                </p>
+                                <p className="font-mono text-xs font-semibold text-stone-700 break-all sm:break-normal">
+                                  {s.affected_doc_number}
+                                </p>
+                                {s.note_type_reason && (
+                                  <p className="text-[10px] text-stone-400 leading-tight mt-0.5">
+                                    {s.note_type_reason}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-xs text-stone-300">—</span>
+                            )}
+                          </td>
+                        )}
                         <td className="hidden md:table-cell px-2 sm:px-4 py-1.5 sm:py-3 text-stone-600">{s.contact_name ?? '—'}</td>
                         <td className="px-2 sm:px-4 py-1.5 sm:py-3 font-semibold text-stone-800 text-xs sm:text-sm whitespace-nowrap">
                           S/ {Number(s.total).toFixed(2)}

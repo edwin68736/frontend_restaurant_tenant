@@ -10,6 +10,7 @@ import RestaurantSidebar, {
 import MobileBottomNav from '@/components/layout/MobileBottomNav'
 import { CashSessionOpenModal } from '@/components/CashSessionOpenModal'
 import { BackendOfflineOverlay } from '@/components/layout/BackendOfflineOverlay'
+import PlanReminderModal from '@/components/layout/PlanReminderModal'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorAndroid, isCapacitorNative } from '@/lib/platform/detect'
 import { isPosFullBleedRoute } from '@/utils/posFullBleedRoute'
@@ -47,6 +48,8 @@ export default function RestaurantLayout() {
         showDesktopTopBar && 'lg:bg-green-700/90',
       )}
     >
+      {/* Aviso de vencimiento/mora: se monta una vez para toda la app. */}
+      <PlanReminderModal />
       {showDesktopTopBar ? (
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-0 hidden h-14 shrink-0 lg:block"

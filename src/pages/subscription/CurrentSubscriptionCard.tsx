@@ -8,8 +8,8 @@ import {
   formatDate,
   formatMoney,
   nextPaymentDate,
+  bannerClass,
   paymentStatusShort,
-  paymentToneClass,
   planAmountDisplay,
   statusBadgeClass,
 } from './subscriptionUx'
@@ -23,6 +23,8 @@ export default function CurrentSubscriptionCard({ hub }: Props) {
   const pay = paymentStatusShort(hub)
   const nextPay = nextPaymentDate(sub)
   const planAmt = planAmountDisplay(hub)
+  const hasDebt = Boolean(ctx?.has_real_debt) && (ctx?.display_debt_amount ?? 0) > 0
+  const debtAmount = ctx?.display_debt_amount ?? sub.pending_amount
 
   return (
     <section className="rounded-2xl border border-stone-100 bg-white shadow-sm overflow-hidden">
@@ -42,15 +44,32 @@ export default function CurrentSubscriptionCard({ hub }: Props) {
               </span>
               {sub.end_date ? (
                 <span className="text-stone-600">
-                  Vence: <span className="font-medium">{formatDate(sub.end_date)}</span>
+                  Servicio hasta <span className="font-medium">{formatDate(sub.end_date)}</span>
+                  {sub.days_until_expiry > 0 ? (
+                    <span className="text-stone-400"> · {sub.days_until_expiry} día(s)</span>
+                  ) : null}
                 </span>
               ) : null}
             </div>
+            {/* «Vence» y «Próximo pago» convivían como dos fechas sueltas y se leían como
+                contradictorias: la del cobro cae antes que la del plan. Cada línea dice ahora
+                de qué fecha habla. */}
             <p className="mt-1.5 text-sm text-stone-600">
-              Próximo pago:{' '}
-              <span className="font-semibold text-stone-900">
-                {nextPay ? formatDate(nextPay) : '—'} · {formatMoney(planAmt)}
-              </span>
+              {hasDebt ? (
+                <>
+                  Pago pendiente:{' '}
+                  <span className="font-semibold text-amber-700">{formatMoney(debtAmount)}</span>
+                  {nextPay ? (
+                    <span className="text-stone-500"> · vence {formatDate(nextPay)}</span>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  Cuota del período:{' '}
+                  <span className="font-semibold text-stone-900">{formatMoney(planAmt)}</span>
+                  <span className="text-emerald-700"> · al día</span>
+                </>
+              )}
             </p>
           </div>
           <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-rest-700 mt-1">
@@ -101,19 +120,10 @@ export default function CurrentSubscriptionCard({ hub }: Props) {
             <p className="text-sm text-emerald-700 font-medium">Documentos electrónicos ilimitados en tu plan.</p>
           ) : null}
 
-          {ctx?.current_payment_tone ? (
-            <span
-              className={clsx(
-                'inline-flex px-2 py-0.5 rounded-full text-xs font-bold',
-                paymentToneClass(ctx.current_payment_tone),
-              )}
-            >
-              {ctx.current_payment_label}
-            </span>
-          ) : null}
-
+          {/* El aviso toma el color de su gravedad: en ámbar fijo, una cuenta bloqueada se
+              leía igual que un recordatorio de renovación. */}
           {hub.status_banner?.message && ctx?.show_status_banner ? (
-            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            <p className={clsx('text-sm rounded-xl border px-3 py-2', bannerClass(hub.status_banner.variant))}>
               {hub.status_banner.message}
             </p>
           ) : null}

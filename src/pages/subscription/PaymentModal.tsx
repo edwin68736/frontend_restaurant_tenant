@@ -9,7 +9,7 @@ import {
   formatBillingPeriod,
   formatDate,
   formatMoney,
-  INVOICE_STATUS_UI,
+  invoiceStatusUI,
 } from './subscriptionUx'
 
 const inputClass =
@@ -44,7 +44,7 @@ export default function PaymentModal({ open, onClose, hub, invoice, onSuccess }:
 
   if (!invoice) return null
 
-  const statusUi = INVOICE_STATUS_UI[invoice.status] ?? INVOICE_STATUS_UI.pending
+  const statusUi = invoiceStatusUI(invoice)
   const total = billingCyclePaymentTotal(invoice, sub)
 
   const handleSubmit = async (e: React.FormEvent) => {

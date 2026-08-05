@@ -604,6 +604,9 @@ export async function buildSaleDocumentEscPos(
   }
   const creditNoteRef = getCreditNoteReference(printData)
   if (creditNoteRef) {
+    if (creditNoteRef.noteTypeLabel) {
+      wrapText(`Tipo de nota: ${creditNoteRef.noteTypeLabel}`, cols).forEach((x) => detailLines.push(x))
+    }
     wrapText(`Tipo Doc. Ref.: ${creditNoteRef.docTypeLabel}`, cols).forEach((x) => detailLines.push(x))
     detailLines.push(`Documento Ref.: ${creditNoteRef.docNumber}`)
     if (creditNoteRef.reason) wrapText(`Motivo: ${creditNoteRef.reason}`, cols).forEach((x) => detailLines.push(x))

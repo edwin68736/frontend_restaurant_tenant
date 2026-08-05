@@ -8,6 +8,7 @@ import TopNavigation from './TopNavigation'
 import UserDropdown from './UserDropdown'
 import CashSessionBadge from './CashSessionBadge'
 import SubscriptionHeaderBadge from './SubscriptionHeaderBadge'
+import NotificationsBell from './NotificationsBell'
 import { useTenantDisplay } from '@/hooks/useTenantDisplay'
 
 type Props = {
@@ -102,6 +103,7 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
 
       <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 lg:gap-1 xl:gap-2 ml-auto shrink-0 py-1.5 lg:py-1 xl:py-1.5 pl-2 lg:pl-1 xl:pl-2">
         <CashSessionBadge />
+        <NotificationsBell />
         <UserDropdown />
       </div>
     </header>

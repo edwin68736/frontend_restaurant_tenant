@@ -196,6 +196,19 @@ export type ProductSortDir = 'asc' | 'desc'
 
 /** Lista con paginación. restaurant_only=true y active_only=true por defecto. category_id y preparation_area opcionales. */
 export const productsService = {
+  /**
+   * Código libre sugerido para el formulario de alta.
+   *
+   * SUNAT exige código por línea del comprobante: un producto sin código se guarda bien pero
+   * revienta al facturar. Se sugiere uno y el usuario puede reemplazarlo por el suyo.
+   */
+  nextCode: async (branchId?: number): Promise<string> => {
+    const { data } = await api.get<{ code: string }>('/api/products/next-code', {
+      params: { scope: 'restaurant', ...(branchId ? { branch_id: branchId } : {}) },
+    })
+    return data.code ?? ''
+  },
+
   list: (
     q = '',
     restaurantOnly = true,

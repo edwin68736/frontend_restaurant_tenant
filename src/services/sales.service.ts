@@ -32,6 +32,14 @@ export interface Sale {
   display_series?: string | null
   display_number?: string | null
   original_sale_id?: number | null
+  /** Nota de crédito/débito: comprobante que modifica, tal como lo declara SUNAT. */
+  affected_doc_sunat_code?: string
+  affected_doc_type?: string
+  affected_doc_series?: string
+  affected_doc_number?: string
+  /** Tipo de nota (catálogo SUNAT 09/10) y su descripción. */
+  note_type_code?: string
+  note_type_reason?: string
   /** Método principal (legacy); si hay `payments`, preferir esa lista. */
   payment_method?: string
 }
@@ -153,7 +161,39 @@ export interface SalesByProductSummary {
   products_count: number
 }
 
+/** Devolución de dinero que quedó sin registrar al anular una venta. */
+export interface PendingRefund {
+  cash_movement_id: number
+  sale_id: number
+  sale_number: string
+  amount: number
+  payment_method: string
+  original_session_id: number
+}
+
 export const salesService = {
+  /**
+   * Devoluciones pendientes de la sucursal.
+   *
+   * Aparecen cuando se anula una venta y no había ninguna caja abierta donde sacar el dinero
+   * (p. ej. SUNAT acepta la nota de crédito de madrugada). No hay estado que mantener: se
+   * derivan de los cobros que aún no tienen una reversión asociada.
+   */
+  pendingRefunds: async (branchId?: number): Promise<PendingRefund[]> => {
+    const { data } = await api.get<{ data: PendingRefund[] }>('/api/sales/pending-refunds', {
+      params: branchId ? { branch_id: branchId } : undefined,
+    })
+    return data.data ?? []
+  },
+
+  /** Registra la devolución en la caja indicada; deja de estar pendiente al hacerlo. */
+  applyPendingRefund: (cashMovementId: number, cashSessionId: number, reason: string) =>
+    api.post('/api/sales/pending-refunds/apply', {
+      cash_movement_id: cashMovementId,
+      cash_session_id: cashSessionId,
+      reason,
+    }),
+
   list: (
     params?: {
       q?: string

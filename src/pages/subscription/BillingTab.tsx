@@ -6,7 +6,7 @@ import {
   formatBillingPeriod,
   formatDate,
   formatMoney,
-  INVOICE_STATUS_UI,
+  invoiceStatusUI,
   sortInvoicesForBillingList,
 } from './subscriptionUx'
 
@@ -25,7 +25,7 @@ function InvoiceRow({
   onPay: (inv: BillingInvoice) => void
 }) {
   const sub = hub.subscription
-  const ui = INVOICE_STATUS_UI[invoice.status] ?? INVOICE_STATUS_UI.pending
+  const ui = invoiceStatusUI(invoice)
   const total = billingCyclePaymentTotal(invoice, sub)
   const canPay = invoice.status === 'pending' || invoice.status === 'overdue'
 

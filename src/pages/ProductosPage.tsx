@@ -349,7 +349,10 @@ export default function ProductosPage() {
       toast.error('Seleccione una sucursal activa para crear productos')
       return
     }
-    setForm({ ...emptyForm(), code: '' })
+    // SUNAT exige código por línea del comprobante: se sugiere uno libre para que el producto
+    // no nazca sin él. El usuario puede reemplazarlo por el suyo o escanear el de barras.
+    // Se genera aquí mismo: si dependiera del backend, un fallo de red dejaría el campo vacío.
+    setForm({ ...emptyForm(), code: generateEan13() })
     setEditing(null)
     setNewCategoryName('')
     setShowMoreOptions(false)
@@ -377,7 +380,8 @@ export default function ProductosPage() {
         setShowMoreOptions(!!desc || purchasePrice > 0)
         setForm({
           name: data.name,
-          code: data.code ?? '',
+          // Producto viejo sin código: se propone uno al abrir, para corregirlo al pasar por aquí.
+          code: data.code?.trim() || generateEan13(),
           description: desc,
           purchase_price: purchasePrice > 0 ? purchasePrice : undefined,
           image_url: data.image_url ?? '',
@@ -450,6 +454,12 @@ export default function ProductosPage() {
     if (!form.name.trim()) {
       toast.error('El nombre es requerido')
       return
+    }
+    // Pudo borrarse el sugerido: sin código el producto se guarda y luego no se puede facturar.
+    if (!form.code?.trim()) {
+      const suggested = generateEan13()
+      setForm(f => ({ ...f, code: suggested }))
+      form.code = suggested
     }
     const presentationRows = (form.presentations ?? []).filter((p) => p.name.trim())
     if (form.has_variants && presentationRows.length === 0) {

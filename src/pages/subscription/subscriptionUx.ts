@@ -8,6 +8,8 @@ import type {
 export type UrgencyTier =
   | 'normal'
   | 'reminder'
+  /** Cobro del período en curso pendiente, con el plan aún lejos de vencer. */
+  | 'payment_due'
   | 'grace'
   | 'overdue'
   | 'suspended'
@@ -19,6 +21,7 @@ export type UrgencyTier =
 const WIDGET_ACCENT: Record<string, string> = {
   normal: 'border-emerald-200/90 bg-emerald-50/50 hover:bg-emerald-50 text-gray-800',
   reminder: 'border-amber-200/90 bg-amber-50/50 hover:bg-amber-50 text-gray-800',
+  payment_due: 'border-amber-200/90 bg-amber-50/50 hover:bg-amber-50 text-gray-800',
   grace: 'border-amber-200/90 bg-amber-50/60 hover:bg-amber-50 text-gray-800',
   overdue: 'border-red-200/90 bg-red-50/50 hover:bg-red-50 text-gray-800',
   suspended: 'border-red-300/90 bg-red-50/60 hover:bg-red-50 text-gray-800',
@@ -234,6 +237,43 @@ export const INVOICE_STATUS_UI: Record<
     badge: 'bg-blue-100 text-blue-800',
     stripe: 'border-l-blue-500',
   },
+}
+
+/** Cobro aún no exigible: emitido, pero su fecha de pago todavía no llega. */
+const NOT_DUE_YET_UI = {
+  label: 'Por vencer',
+  badge: 'bg-stone-100 text-stone-700',
+  stripe: 'border-l-stone-300',
+}
+
+/**
+ * Estado del cobro tal como lo entiende el cliente.
+ *
+ * El estado guardado no distingue un cobro que ya debía estar pagado de otro emitido por
+ * adelantado: los dos son `pending`. Mostrar «Pendiente» en ambos hacía que un cobro con
+ * vencimiento a tres semanas se leyera como una deuda, chocando con el «al día» de la
+ * cabecera. Con la fecha a la vista, «Por vencer» y «Por pagar» se separan.
+ */
+export function invoiceStatusUI(invoice: { status: string; due_date?: string }) {
+  const base = INVOICE_STATUS_UI[invoice.status] ?? INVOICE_STATUS_UI.pending
+  if (invoice.status !== 'pending' || !invoice.due_date) return base
+  return isDueDatePassed(invoice.due_date) ? { ...base, label: 'Por pagar' } : NOT_DUE_YET_UI
+}
+
+/** ¿La fecha límite ya llegó? Se compara por día de calendario en Lima, como el backend. */
+function isDueDatePassed(dueDate: string): boolean {
+  const day = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d)
+  try {
+    return day(new Date(dueDate)) <= day(new Date())
+  } catch {
+    return true
+  }
 }
 
 export function sortInvoicesForBillingList(invoices: BillingInvoice[]) {
