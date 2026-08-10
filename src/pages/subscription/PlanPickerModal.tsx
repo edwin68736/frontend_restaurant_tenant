@@ -4,6 +4,7 @@ import { Check, ChevronLeft, FileUp, Loader2, Package, X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { subscriptionService, type BillingHub, type PublicPlan } from '@/services/subscription.service'
 import { formatMoney } from './subscriptionUx'
+import PaymentMethodsPanel from './PaymentMethodsPanel'
 import { REST_SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 const inputClass =
@@ -161,6 +162,10 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                 Puedes adjuntar tu comprobante ahora para agilizar la aprobación, o enviar solo la
                 solicitud y pagar después desde tu suscripción.
               </p>
+
+              {(cfg.methods.length > 0 || cfg.bank_accounts.length > 0 || cfg.yape_qr_url || cfg.plin_qr_url) && (
+                <PaymentMethodsPanel cfg={cfg} />
+              )}
 
               <div>
                 <label className="text-xs font-medium text-stone-600">Método (opcional)</label>
