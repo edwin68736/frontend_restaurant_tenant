@@ -4,6 +4,7 @@ import { Check, ChevronLeft, FileUp, Loader2, Package, X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { subscriptionService, type BillingHub, type PublicPlan } from '@/services/subscription.service'
 import { formatMoney } from './subscriptionUx'
+import { REST_SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/restaurantUiLayers'
 
 const inputClass =
   'w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rest-300 bg-white'
@@ -74,7 +75,13 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
   }
 
   return (
-    <PortalModal open={open} onClose={onClose} className="max-w-2xl" overlayClassName="items-end sm:items-center" stacked>
+    <PortalModal
+      open={open}
+      onClose={onClose}
+      className="max-w-2xl"
+      overlayClassName="items-end sm:items-center"
+      zClassName={REST_SUBSCRIPTION_BLOCKED_MODAL_Z}
+    >
       <div className="w-full max-w-2xl max-h-[min(92dvh,900px)] overflow-y-auto rounded-2xl bg-white shadow-xl border border-stone-100">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-stone-100 bg-white px-4 py-3 rounded-t-2xl">
           <div>
