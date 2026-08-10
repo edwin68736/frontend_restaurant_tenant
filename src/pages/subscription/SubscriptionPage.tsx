@@ -11,6 +11,7 @@ import PlansPackagesTab from './PlansPackagesTab'
 import HistoryTab from './HistoryTab'
 import PaymentModal from './PaymentModal'
 import PackagePurchaseModal from './PackagePurchaseModal'
+import PlanPickerModal from './PlanPickerModal'
 
 type TabId = 'facturacion' | 'planes' | 'historial'
 
@@ -39,6 +40,7 @@ export default function SubscriptionPage() {
   const [activeTab, setActiveTab] = useState<TabId>('facturacion')
   const [payInvoice, setPayInvoice] = useState<BillingInvoice | null>(null)
   const [buyPackage, setBuyPackage] = useState<DocumentPackageCatalog | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,16 +64,6 @@ export default function SubscriptionPage() {
       setHub(next)
       setGlobalHub(next)
     } else void load()
-  }
-
-  const openPayForPending = () => {
-    const pending = hub?.invoices.find(i => i.status === 'pending' || i.status === 'overdue')
-    if (pending) {
-      setActiveTab('facturacion')
-      setPayInvoice(pending)
-    } else {
-      toast.info('No hay pagos pendientes')
-    }
   }
 
   if (loading || !hub) {
@@ -147,7 +139,7 @@ export default function SubscriptionPage() {
         <PlansPackagesTab
           hub={hub}
           onBuyPackage={pkg => setBuyPackage(pkg)}
-          onRenew={openPayForPending}
+          onRenew={() => setPickerOpen(true)}
         />
       )}
 
@@ -167,6 +159,13 @@ export default function SubscriptionPage() {
         pkg={buyPackage}
         cfg={hub.payment_config}
         onSuccess={() => void load()}
+      />
+
+      <PlanPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        hub={hub}
+        onSuccess={handleHubUpdate}
       />
     </div>
   )

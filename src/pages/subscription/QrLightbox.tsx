@@ -1,6 +1,7 @@
 import { Download, Share2, X, ZoomIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { REST_LIGHTBOX_Z } from '@/utils/restaurantUiLayers'
 
 type Props = {
   open: boolean
@@ -50,7 +51,7 @@ export default function QrLightbox({ open, onClose, url, title, accentClass }: P
   const filename = `qr-${title.toLowerCase()}.png`
 
   return (
-    <PortalModal open={open} onClose={onClose} className="max-w-sm">
+    <PortalModal open={open} onClose={onClose} className="max-w-sm" zClassName={REST_LIGHTBOX_Z}>
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[min(92dvh,640px)]">
         <div className={`px-4 py-3 flex items-center justify-between ${accentClass}`}>
           <h3 className="text-sm font-semibold text-white">QR {title}</h3>

@@ -11,6 +11,8 @@ import MobileBottomNav from '@/components/layout/MobileBottomNav'
 import { CashSessionOpenModal } from '@/components/CashSessionOpenModal'
 import { BackendOfflineOverlay } from '@/components/layout/BackendOfflineOverlay'
 import PlanReminderModal from '@/components/layout/PlanReminderModal'
+import SubscriptionBlockedScreen from '@/components/layout/SubscriptionBlockedScreen'
+import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorAndroid, isCapacitorNative } from '@/lib/platform/detect'
 import { isPosFullBleedRoute } from '@/utils/posFullBleedRoute'
@@ -23,6 +25,10 @@ export default function RestaurantLayout() {
   const showDesktopTopBar = !isCapacitorAndroid()
   const nativeCapacitor = isCapacitorNative()
   const { pathname } = useLocation()
+  const { blocked } = useSubscriptionStatus()
+  // /suscripcion siempre debe verse: es la única salida que tiene el tenant para regularizar.
+  const onSubscriptionPage = pathname.startsWith('/suscripcion')
+  const showBlockedScreen = blocked && !onSubscriptionPage
   const fullBleedMobile = isPosFullBleedRoute(pathname)
   const mobileFlush = nativeCapacitor || fullBleedMobile
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -48,7 +54,9 @@ export default function RestaurantLayout() {
         showDesktopTopBar && 'lg:bg-green-700/90',
       )}
     >
-      {/* Aviso de vencimiento/mora: se monta una vez para toda la app. */}
+      {/* Aviso de vencimiento/mora no bloqueante (recordatorio, pago próximo, gracia): se monta
+          una vez para toda la app. Los tiers que sí bloquean el acceso usan SubscriptionBlockedScreen
+          más abajo, no este modal. */}
       <PlanReminderModal />
       {showDesktopTopBar ? (
         <div
@@ -150,7 +158,7 @@ export default function RestaurantLayout() {
                     : 'px-3 py-2.5 sm:px-4 sm:py-3 lg:px-5 lg:pb-3',
                 )}
               >
-                <Outlet />
+                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet />}
               </div>
             </main>
             <MobileBottomNav />

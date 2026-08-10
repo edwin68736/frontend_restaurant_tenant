@@ -12,6 +12,8 @@ type Props = {
   overlayClassName?: string
   /** Capa superior (p. ej. sobre modal de cobro). */
   stacked?: boolean
+  /** Override explícito de capa (ej. REST_SUBSCRIPTION_BLOCKED_MODAL_Z) cuando ni `stacked` alcanza. */
+  zClassName?: string
 }
 
 /** Modal en document.body — evita recorte por overflow del layout restaurante. */
@@ -22,10 +24,11 @@ export function PortalModal({
   className = '',
   overlayClassName = '',
   stacked = false,
+  zClassName,
 }: Props) {
   if (!open || typeof document === 'undefined') return null
 
-  const zLayer = stacked ? REST_PORTAL_MODAL_STACK_Z : REST_PORTAL_MODAL_Z
+  const zLayer = zClassName ?? (stacked ? REST_PORTAL_MODAL_STACK_Z : REST_PORTAL_MODAL_Z)
   const isSheet = /\bitems-end\b/.test(overlayClassName)
   const overlayPaddingClass = isSheet ? FIXED_OVERLAY_SHEET : FIXED_OVERLAY_SAFE
 

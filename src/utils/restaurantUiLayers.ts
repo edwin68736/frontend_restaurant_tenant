@@ -13,3 +13,9 @@ export const REST_DROPDOWN_Z = 'z-[450]'
 /** Para estilos inline en portales (createPortal). Por encima del aviso de conexión. */
 export const REST_DROPDOWN_Z_INDEX = 450
 export const REST_OFFLINE_OVERLAY_Z = 'z-[400]'
+/** Modales que se abren DESDE SubscriptionBlockedScreen (bloqueo de suscripción, z-400): deben
+ * quedar por encima de ese overlay, no debajo. */
+export const REST_SUBSCRIPTION_BLOCKED_MODAL_Z = 'z-[410]'
+/** Lightbox de QR (zoom/descargar/compartir): siempre el elemento más al frente posible, sin
+ * importar desde qué modal se abra (pago, paquete, picker de plan sobre el bloqueo, etc.). */
+export const REST_LIGHTBOX_Z = 'z-[420]'
