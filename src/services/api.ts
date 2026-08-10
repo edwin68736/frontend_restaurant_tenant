@@ -42,7 +42,7 @@ export function getDisplayedTenantApiUrl(): string {
     const central = getCentralApiBaseUrl()
     return central ? `${central} (proxy dev)` : 'Proxy local (Vite)'
   }
-  return 'ˇˇˇ'
+  return 'ÔøΩÔøΩÔøΩ'
 }
 
 /** En DEV todas las peticiones van por proxy local (sin CORS). */
@@ -118,6 +118,13 @@ api.interceptors.request.use((config) => {
 })
 
 export const SESSION_EXPIRED_EVENT = 'tukichef-session-expired'
+/**
+ * 402 emitido por `SubscriptionGate` (backend) cuando `can_operate=false` (plan vencido fuera
+ * de gracia, suspendido o bloqueado). No es un error de autenticaci√≥n: no desloguea, solo avisa
+ * para que `SubscriptionStatusContext` refresque el hub y la UI bloquee con el motivo real en
+ * vez de dejar que cada pantalla falle en silencio con su propio catch gen√©rico.
+ */
+export const SUBSCRIPTION_BLOCKED_EVENT = 'tukichef-subscription-blocked'
 
 const TOAST_SESSION_EXPIRED = 'session-expired'
 const TOAST_TENANT_ISOLATION = 'tenant-isolation'
@@ -184,6 +191,13 @@ api.interceptors.response.use(
     }
     if (err.response?.status === 401) {
       forceRelogin('session_expired')
+      return Promise.reject(err)
+    }
+    if (err.response?.status === 402) {
+      const scode = err.response?.data?.code as string | undefined
+      if (scode === 'SUBSCRIPTION_REQUIRED' || scode === 'TENANT_BLOCKED') {
+        window.dispatchEvent(new CustomEvent(SUBSCRIPTION_BLOCKED_EVENT))
+      }
       return Promise.reject(err)
     }
     return Promise.reject(err)
