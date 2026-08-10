@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, CreditCard, Headphones, Lock, Package } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { planReminderTitle } from '@/pages/subscription/planNotifications'
@@ -20,12 +21,17 @@ import { REST_OFFLINE_OVERLAY_Z } from '@/utils/restaurantUiLayers'
  * A diferencia de `PlanReminderModal` (dismisseable, una vez por día), esta pantalla no se
  * puede cerrar: se mantiene mientras `can_operate` siga en false, porque el backend tampoco
  * deja operar ninguna otra ruta mientras tanto.
+ *
+ * Portal a document.body: se monta dentro del wrapper del <Outlet/>, y cualquier ancestro con
+ * `transform`/animación de `transform` (ej. una transición de entrada de página) lo convierte en
+ * containing block de sus hijos `position: fixed` — sin portal, el `fixed inset-0` podía quedar
+ * relativo a ese panel de contenido (no cubrir sidebar/header) en vez de a toda la ventana.
  */
 export default function SubscriptionBlockedScreen() {
   const { hub, setHub } = useSubscriptionStatus()
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
-  if (!hub) return null
+  if (!hub || typeof document === 'undefined') return null
 
   const sub = hub.subscription
   const ctx = hub.billing_context
@@ -38,7 +44,7 @@ export default function SubscriptionBlockedScreen() {
   const canSubmitPayment = sub.can_submit_payment !== false
   const supportHref = buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 ${REST_OFFLINE_OVERLAY_Z} flex items-center justify-center bg-stone-950/60 p-4 pt-safe pb-safe`}
       role="alertdialog"
@@ -113,6 +119,7 @@ export default function SubscriptionBlockedScreen() {
         hub={hub}
         onSuccess={next => setHub(next ?? hub)}
       />
-    </div>
+    </div>,
+    document.body,
   )
 }
