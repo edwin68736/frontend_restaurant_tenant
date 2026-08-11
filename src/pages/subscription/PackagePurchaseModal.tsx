@@ -7,7 +7,6 @@ import {
   type DocumentPackageCatalog,
   type PaymentConfigView,
 } from '@/services/subscription.service'
-import PaymentMethodsPanel from './PaymentMethodsPanel'
 import { formatMoney } from './subscriptionUx'
 
 const inputClass =
@@ -101,7 +100,23 @@ export default function PackagePurchaseModal({ open, onClose, pkg, cfg, onSucces
               Enviar comprobante
             </button>
           </form>
-          <PaymentMethodsPanel cfg={cfg} />
+          {/* Este formulario no pide elegir un método (solo referencia + comprobante), así que
+              no hay selección para filtrar el QR/cuenta correspondiente — ver
+              PaymentMethodsPanel, que ahora depende de un método elegido. Se deja como
+              referencia rápida de qué métodos existen, igual que en la barra lateral de
+              SubscriptionPage (Tukifac). */}
+          {cfg.methods.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-stone-500 uppercase mb-2">Métodos de pago</p>
+              <ul className="flex flex-wrap gap-2">
+                {cfg.methods.map(m => (
+                  <li key={m.key} className="px-2.5 py-1 rounded-lg border border-stone-200 bg-stone-50 text-xs font-semibold text-stone-700">
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </PortalModal>

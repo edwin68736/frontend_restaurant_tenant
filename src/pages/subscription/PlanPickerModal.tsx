@@ -228,19 +228,20 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                 solicitud y pagar después desde tu suscripción.
               </p>
 
-              {(cfg.methods.length > 0 || cfg.bank_accounts.length > 0 || cfg.yape_qr_url || cfg.plin_qr_url) && (
-                <PaymentMethodsPanel cfg={cfg} />
+              {cfg.methods.length > 0 && (
+                <div>
+                  <label className="text-xs font-medium text-stone-600">Método de pago (opcional)</label>
+                  <select className={`${inputClass} mt-1`} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                    <option value="">Elige un método para ver cómo pagar…</option>
+                    {cfg.methods.map(m => (
+                      <option key={m.key} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
               )}
 
-              <div>
-                <label className="text-xs font-medium text-stone-600">Método (opcional)</label>
-                <select className={`${inputClass} mt-1`} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                  <option value="">Sin especificar</option>
-                  {cfg.methods.map(m => (
-                    <option key={m.key} value={m.key}>{m.label}</option>
-                  ))}
-                </select>
-              </div>
+              {paymentMethod && <PaymentMethodsPanel cfg={cfg} selectedMethodKey={paymentMethod} />}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-stone-600">Fecha de pago</label>

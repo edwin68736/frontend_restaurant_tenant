@@ -126,6 +126,9 @@ export default function PaymentModal({ open, onClose, hub, invoice, onSuccess }:
                   ))}
                 </select>
               </div>
+
+              {paymentMethod && <PaymentMethodsPanel cfg={cfg} selectedMethodKey={paymentMethod} />}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-stone-600">Monto (S/)</label>
@@ -184,8 +187,6 @@ export default function PaymentModal({ open, onClose, hub, invoice, onSuccess }:
           ) : (
             <p className="text-sm text-red-700">{sub.support_message ?? 'No puede enviar comprobantes en este momento.'}</p>
           )}
-
-          <PaymentMethodsPanel cfg={cfg} />
         </div>
       </div>
     </PortalModal>
