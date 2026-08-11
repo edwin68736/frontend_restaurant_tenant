@@ -22,9 +22,11 @@ type Props = {
  * PaymentModal, que exige billing_cycle_id + comprobante. Cierra un hueco real: "Renovar" en la
  * pestaña Planes y paquetes abría el formulario de pago de la deuda pendiente, no una lista de
  * planes para elegir.
+ *
+ * El ciclo (1/3/6/12 meses) se elige entre los que trae `plan.cycles` — ya no un número de meses
+ * libre: cada plan solo permite los ciclos fijos que el panel central habilitó para él, con el
+ * precio (bruto y neto tras descuento) que el backend ya calculó. Nunca se recalcula acá.
  */
-const MONTH_PRESETS = [1, 3, 6, 12]
-
 export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props) {
   const cfg = hub.payment_config
   const [plans, setPlans] = useState<PublicPlan[]>([])
@@ -42,7 +44,7 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
 
   const selectPlan = (plan: PublicPlan) => {
     setSelected(plan)
-    setMonths(1)
+    setMonths(plan.cycles[0]?.months ?? 1)
     setAdvancingCurrentPlan(Boolean(hub.subscription.can_operate) && plan.name === hub.subscription.plan_name)
   }
 
@@ -72,11 +74,16 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cfg.methods, hub.subscription.can_operate, hub.subscription.plan_name])
 
-  const totalAmount = selected ? +(selected.price * months).toFixed(2) : 0
+  // Ciclos elegibles del plan: para "lifetime" (pago único) solo tiene sentido el de 1 — no se le
+  // ofrece "3/6/12 meses" a un plan que no vence.
+  const isLifetime = selected?.billing_cycle === 'lifetime'
+  const availableCycles = (selected?.cycles ?? []).filter(c => !isLifetime || c.months === 1)
+  const selectedCycle = availableCycles.find(c => c.months === months)
+  const totalAmount = selectedCycle?.net_amount ?? 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selected) return
+    if (!selected || !selectedCycle) return
     const form = new FormData()
     form.append('plan_id', String(selected.id))
     form.append('period_months', String(months))
@@ -190,33 +197,36 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-stone-600">¿Por cuántos meses?</label>
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {MONTH_PRESETS.map(m => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setMonths(m)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-                        months === m
-                          ? 'bg-rest-700 text-white border-rest-700'
-                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
-                      }`}
-                    >
-                      {m} {m === 1 ? 'mes' : 'meses'}
-                    </button>
-                  ))}
-                  <input
-                    type="number"
-                    min={1}
-                    max={24}
-                    className="w-20 border border-stone-200 rounded-lg px-2 py-1.5 text-sm text-center"
-                    value={months}
-                    onChange={e => setMonths(Math.max(1, Math.min(24, +e.target.value || 1)))}
-                  />
+              {!isLifetime && (
+                <div>
+                  <label className="text-xs font-medium text-stone-600">¿Por cuánto tiempo?</label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {availableCycles.map(c => (
+                      <button
+                        key={c.months}
+                        type="button"
+                        onClick={() => setMonths(c.months)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium border text-left ${
+                          months === c.months
+                            ? 'bg-rest-700 text-white border-rest-700'
+                            : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
+                        }`}
+                      >
+                        <div>{c.months} {c.months === 1 ? 'mes' : 'meses'}</div>
+                        <div className={`text-[11px] font-normal ${months === c.months ? 'text-stone-200' : 'text-stone-500'}`}>
+                          {c.net_amount !== c.gross_amount && (
+                            <span className="line-through opacity-70 mr-1">{formatMoney(c.gross_amount)}</span>
+                          )}
+                          {formatMoney(c.net_amount)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {availableCycles.length === 0 && (
+                    <p className="mt-1 text-xs text-amber-600">Este plan no tiene ciclos disponibles por ahora — contacta a soporte.</p>
+                  )}
                 </div>
-              </div>
+              )}
 
               <div className="rounded-xl border border-rest-200 bg-rest-50/60 px-3 py-2.5 text-sm flex items-center justify-between">
                 <span className="text-stone-700">Total a depositar</span>
@@ -269,7 +279,7 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !selectedCycle}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rest-600 text-white text-sm font-semibold hover:bg-rest-700 disabled:opacity-60"
               >
                 {submitting ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
