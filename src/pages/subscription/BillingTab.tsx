@@ -1,7 +1,6 @@
-import { CheckCircle2, Receipt } from 'lucide-react'
-import type { BillingHub, BillingInvoice } from '@/services/subscription.service'
+import { CheckCircle2, Download, Receipt } from 'lucide-react'
+import { assetUrl, type BillingHub, type BillingInvoice } from '@/services/subscription.service'
 import {
-  STATUS_LABELS,
   billingCyclePaymentTotal,
   formatBillingPeriod,
   formatDate,
@@ -55,10 +54,27 @@ function InvoiceRow({
               Pagar
             </button>
           ) : invoice.status === 'paid' ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 px-2 py-1">
-              <CheckCircle2 size={14} />
-              Pagado
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 px-2 py-1">
+                <CheckCircle2 size={14} />
+                Pagado
+              </span>
+              {/* Comprobante del PERÍODO (no del intento de pago): un período puede haber
+                  tenido intentos rechazados/anulados antes del que finalmente lo saldó — este
+                  siempre apunta al que realmente lo pagó (ver InvoiceView.FiscalDocURL en el
+                  backend, compartido con Tukifac). */}
+              {invoice.fiscal_doc_url && (
+                <a
+                  href={assetUrl(invoice.fiscal_doc_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-rest-700 hover:underline px-2"
+                  title="Descargar comprobante"
+                >
+                  <Download size={12} /> Descargar
+                </a>
+              )}
+            </div>
           ) : null}
         </div>
       </div>
@@ -106,9 +122,13 @@ export default function BillingTab({ hub, onPay }: Props) {
         </div>
       ) : null}
 
+      {/* Una renovación anticipada sin ciclo ya emitido no genera una fila acá hasta que se
+          aprueba (el ciclo se crea recién al aprobar, ver ApprovePayment en el backend) — sin
+          esta explicación, un comprobante recién enviado parecía haberse perdido. */}
       {hub.subscription.has_pending_payment_review ? (
-        <p className="text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
-          Tienes un comprobante en revisión ({STATUS_LABELS.pending_review ?? 'En revisión'}).
+        <p className="text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+          Tu comprobante está en revisión — si es una renovación anticipada, el nuevo período
+          aparecerá aquí recién cuando se apruebe. Puedes ver el envío en «Historial».
         </p>
       ) : null}
     </div>

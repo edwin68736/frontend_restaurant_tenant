@@ -134,11 +134,18 @@ export type SentKitchenOrder = KitchenRound
 /** @deprecated Use getActiveKitchenRounds */
 export const getSentKitchenOrders = getActiveKitchenRounds
 
+/** Forma devuelta a printComandaAuto: qué texto imprimir y con qué etiqueta cada línea — para
+ *  llevar/delivery NO es una mesa, y el campo "waiter" ahí transporta datos del CLIENTE, no del
+ *  mozo, así que ninguno de los dos puede quedar con las etiquetas fijas "MESA"/"MOZO". */
+type ComandaPrintLabels = {
+  tableName: string | null
+  tableLabel?: string
+  waiterName: string | null
+  waiterLabel?: string
+}
+
 /** Etiquetas para ticket de comanda en POS (para llevar / delivery). */
-export function posComandaPrintLabels(
-  detail: SessionDetail | null,
-  orderCode: string,
-): { tableName: string | null; waiterName: string | null } {
+export function posComandaPrintLabels(detail: SessionDetail | null, orderCode: string): ComandaPrintLabels {
   const code = detail?.order_code ?? orderCode
   if (!detail) return { tableName: code || 'POS', waiterName: null }
   if (detail.order_type === 'delivery') {
@@ -152,14 +159,16 @@ export function posComandaPrintLabels(
       .map((s) => String(s ?? '').trim())
       .filter(Boolean)
       .join(' - ')
-    return { tableName: `Delivery ${code}`, waiterName: extra || null }
+    // Sin etiqueta ("Delivery P-..." ya se explica solo, no es una mesa) y "CLIENTE" en vez de
+    // "MOZO" porque `extra` son datos del cliente/repartidor, no del mozo.
+    return { tableName: `Delivery ${code}`, tableLabel: '', waiterName: extra || null, waiterLabel: 'CLIENTE' }
   }
   if (detail.order_type === 'takeaway') {
     const extra = [detail.customer_name, detail.customer_phone, detail.notes]
       .map((s) => String(s ?? '').trim())
       .filter(Boolean)
       .join(' - ')
-    return { tableName: `Para llevar ${code}`, waiterName: extra || null }
+    return { tableName: `Para llevar ${code}`, tableLabel: '', waiterName: extra || null, waiterLabel: 'CLIENTE' }
   }
   // Ojo: en delivery/takeaway el campo waiterName transporta los datos del cliente, no el
   // mozo, así que el ajuste no aplica ahí (ocultarlo borraría la dirección de la comanda).
@@ -171,12 +180,12 @@ export function posComandaPrintLabels(
 }
 
 /** Etiquetas de ticket según tipo de sesión (mesa, llevar, delivery, POS). */
-export function sessionComandaPrintLabels(
-  detail: SessionDetail | null,
-  orderCode: string,
-): { tableName: string | null; waiterName: string | null } {
+export function sessionComandaPrintLabels(detail: SessionDetail | null, orderCode: string): ComandaPrintLabels {
   if (!detail) return { tableName: orderCode || 'POS', waiterName: null }
-  if (detail.table_name) {
+  // Por order_type, no por "table_name truthy": un pedido para llevar/delivery con un
+  // table_name residual (dato viejo, migración, etc.) no debe imprimirse como si fuera una
+  // mesa — antes bastaba con que table_name no estuviera vacío para tomar esta rama.
+  if (detail.order_type !== 'delivery' && detail.order_type !== 'takeaway' && detail.table_name) {
     // El «ambiente» es el piso/sala y viaja pegado al nombre de la mesa; el ajuste local
     // de comandas decide si se imprime.
     const layout = loadComandaPrintLayoutSettings()

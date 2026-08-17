@@ -104,8 +104,10 @@ export async function printKitchenRound(params: {
       await printComandaAuto(
         {
           tableName: areaTicketLabel(labels.tableName ?? orderCode, areaKey),
+          tableLabel: labels.tableLabel,
           orderNumber,
           waiterName: labels.waiterName,
+          waiterLabel: labels.waiterLabel,
           items: areaLines.map((l) => ({
             productName: l.productName,
             quantity: l.quantity,

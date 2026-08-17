@@ -315,8 +315,16 @@ function escposPushTextLine(out: number[], line: string) {
 
 export function buildComandaEscPos(input: {
   tableName?: string | null
+  /** Etiqueta de la línea de tableName. Default 'MESA' (pedidos en mesa). Para llevar/delivery
+   *  no es una mesa — pasar '' imprime el texto solo, sin etiqueta ("Para llevar P-...", no
+   *  "MESA: Para llevar P-..."). Ver posOrderHelpers.posComandaPrintLabels. */
+  tableLabel?: string
   orderNumber?: number | null
   waiterName?: string | null
+  /** Etiqueta de la línea de waiterName. Default 'MOZO'. En para llevar/delivery este campo
+   *  transporta datos del CLIENTE, no del mozo — pasar 'CLIENTE' para que la comanda no diga
+   *  "MOZO:" sobre el nombre/teléfono/nota de un cliente. */
+  waiterLabel?: string
   items: {
     productName: string
     quantity: number
@@ -350,11 +358,15 @@ export function buildComandaEscPos(input: {
   out.push(...escposBold(true))
   out.push(...escposSize(sizeMul, sizeMul))
   if (input.tableName) {
-    for (const line of wrapText(`MESA: ${input.tableName}`, bigCols)) escposPushTextLine(out, line)
+    const label = input.tableLabel ?? 'MESA'
+    const text = label ? `${label}: ${input.tableName}` : input.tableName
+    for (const line of wrapText(text, bigCols)) escposPushTextLine(out, line)
   }
   if (input.orderNumber != null) escposPushTextLine(out, `PEDIDO: #${input.orderNumber}`)
   if (input.waiterName) {
-    for (const line of wrapText(`MOZO: ${input.waiterName}`, bigCols)) escposPushTextLine(out, line)
+    const label = input.waiterLabel ?? 'MOZO'
+    const text = label ? `${label}: ${input.waiterName}` : input.waiterName
+    for (const line of wrapText(text, bigCols)) escposPushTextLine(out, line)
   }
   out.push(...escposBold(false))
   out.push(...escposSize(1, 1))
@@ -787,8 +799,10 @@ export async function buildSaleDocumentEscPos(
 export async function printComandaAuto(
   input: {
     tableName?: string | null
+    tableLabel?: string
     orderNumber?: number | null
     waiterName?: string | null
+    waiterLabel?: string
     items: {
       productName: string
       quantity: number

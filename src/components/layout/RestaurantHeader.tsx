@@ -2,8 +2,11 @@ import { useMemo } from 'react'
 import { clsx } from 'clsx'
 import { Menu, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { NAV_GROUPS } from '@/config/restaurantNav'
 import { canAccessAppSettings } from '@/utils/restaurantPermissions'
+import { buildSupportWhatsAppHref, DEFAULT_SUPPORT_WHATSAPP_MESSAGE, openExternalUrl } from '@/utils/supportWhatsApp'
+import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import TopNavigation from './TopNavigation'
 import UserDropdown from './UserDropdown'
 import CashSessionBadge from './CashSessionBadge'
@@ -23,6 +26,11 @@ const SIDEBAR_TOGGLE_CLASS =
 export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
   const { canAccess, restaurantPermissions, employeeType } = useAuth()
   const { title: tenantTitle, ruc: tenantRuc } = useTenantDisplay()
+  // Mismo hub que ya carga SubscriptionHeaderBadge (vía contexto) — pedirlo de nuevo acá
+  // duplicaría la request, a diferencia de UserDropdown que sí hace su propio fetch porque no
+  // vive en un árbol con el contexto ya montado.
+  const { hub } = useSubscriptionStatus()
+  const supportHref = hub ? buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE) : null
   /** Móvil/tablet (<lg): sin sidebar fijo. Desktop: solo con sidebar mini. */
   const showTenantOnDesktop = sidebarCollapsed
 
@@ -102,6 +110,20 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
       ) : null}
 
       <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 lg:gap-1 xl:gap-2 ml-auto shrink-0 py-1.5 lg:py-1 xl:py-1.5 pl-2 lg:pl-1 xl:pl-2">
+        {/* Soporte por WhatsApp directo en el header, no solo dentro de UserDropdown — visible
+            desde `lg` (el mismo corte que ya usa este header para el resto de lo "de escritorio",
+            ej. TopNavigation): en pantallas chicas ya está en el menú de usuario, más abajo, y acá
+            no hay espacio para sumar un botón de texto más sin apretar el resto. */}
+        {supportHref && (
+          <button
+            type="button"
+            onClick={() => void openExternalUrl(supportHref)}
+            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs xl:text-sm font-semibold transition-colors shrink-0 touch-manipulation"
+          >
+            <WhatsAppGlyph className="w-4 h-4" />
+            Soporte
+          </button>
+        )}
         <CashSessionBadge />
         <NotificationsBell />
         <UserDropdown />

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { History, Loader2, Package, Receipt, RefreshCw } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { subscriptionService, type BillingHub, type BillingInvoice, type DocumentPackageCatalog } from '@/services/subscription.service'
-import { bannerClass } from './subscriptionUx'
+import { bannerClass, isInvoicePayableNow } from './subscriptionUx'
 import CurrentSubscriptionCard from './CurrentSubscriptionCard'
 import SubscriptionSupportAside from './SubscriptionSupportAside'
+import PendingPaymentBanner from './PendingPaymentBanner'
 import BillingTab from './BillingTab'
 import PlansPackagesTab from './PlansPackagesTab'
 import HistoryTab from './HistoryTab'
@@ -66,6 +67,11 @@ export default function SubscriptionPage() {
     } else void load()
   }
 
+  // Deuda cobrable HOY (vencida, o pendiente cuyo plazo ya llegó): es lo que arma la barra de
+  // acción prominente. Un cobro emitido por adelantado para el próximo período no cuenta acá
+  // (ese es "por vencer", vive como aviso de renovar en la pestaña Planes y paquetes).
+  const payableNowInvoices = useMemo(() => hub?.invoices.filter(isInvoicePayableNow) ?? [], [hub])
+
   if (loading || !hub) {
     return (
       <div className="flex justify-center py-20 text-stone-500 gap-2">
@@ -107,6 +113,10 @@ export default function SubscriptionPage() {
         <CurrentSubscriptionCard hub={hub} />
         <SubscriptionSupportAside support={hub.support} />
       </div>
+
+      {/* Lo más urgente de la página, justo debajo del resumen: si hay deuda cobrable hoy, se
+          ve sin tener que entrar a la pestaña "Facturación". */}
+      <PendingPaymentBanner hub={hub} invoices={payableNowInvoices} onPay={inv => setPayInvoice(inv)} />
 
       <div className="flex gap-1 p-1 rounded-xl bg-stone-100/90 border border-stone-100 overflow-x-auto">
         {TABS.map(tab => {

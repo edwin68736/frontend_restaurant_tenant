@@ -92,6 +92,10 @@ export interface BillingInvoice {
   period_start: string
   period_end: string
   provisional_used: boolean
+  /** Boleta/factura del pago que saldó este período; vacío si aún no está pagado o el admin
+   *  todavía no la adjuntó. Ya la calcula el backend (compartido con Tukifac) — solo faltaba
+   *  declararla y mostrarla acá. */
+  fiscal_doc_url?: string
 }
 
 export interface SaasPaymentRow {
@@ -212,8 +216,10 @@ export const subscriptionService = {
   listPlans: (): Promise<PublicPlan[]> =>
     api.get('/api/subscription/plans').then(r => (r.data as { plans: PublicPlan[] }).plans),
 
-  /** Elegir plan y, opcionalmente, adjuntar comprobante en el mismo paso (comprobante no
-   * obligatorio, a diferencia de submitPayment). */
+  /** Elegir plan y adjuntar comprobante en el mismo paso — igual que submitPayment, el
+   * comprobante es obligatorio (ver validación en PlanPickerModal). Se diferencia de
+   * submitPayment en que no exige billing_cycle_id: cubre también la renovación anticipada
+   * sin ciclo aún emitido. */
   submitRenewalRequest: (form: FormData): Promise<{ success: boolean; message?: string; hub?: BillingHub }> =>
     api.post('/api/subscription/renewal-request', form, {
       headers: { 'Content-Type': 'multipart/form-data' },

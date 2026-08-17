@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Check, ChevronLeft, FileUp, Loader2, Package, X } from 'lucide-react'
+import { Calendar, Check, ChevronLeft, CreditCard, FileUp, Hash, Loader2, Package, RefreshCw, Upload, X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { subscriptionService, type BillingHub, type PublicPlan } from '@/services/subscription.service'
 import { formatMoney } from './subscriptionUx'
@@ -10,6 +10,10 @@ import { REST_SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/restaurantUiLayers'
 const inputClass =
   'w-full border border-stone-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rest-300 bg-white'
 
+/** Franja de color arriba de cada tarjeta de plan, para distinguirlas a simple vista — cicla
+ *  por índice, no representa nada del plan en sí (no hay un campo de "color" en SaasPlan). */
+const CARD_ACCENTS = ['border-t-emerald-500', 'border-t-blue-500', 'border-t-amber-500', 'border-t-purple-500']
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -18,10 +22,36 @@ type Props = {
 }
 
 /**
- * Elegir plan (alta nueva o cambio) con comprobante OPCIONAL en el mismo paso — a diferencia de
- * PaymentModal, que exige billing_cycle_id + comprobante. Cierra un hueco real: "Renovar" en la
- * pestaña Planes y paquetes abría el formulario de pago de la deuda pendiente, no una lista de
- * planes para elegir.
+ * Progreso del flujo (grilla → confirmar y pagar): solo se muestra en el paso 1 (grilla), como
+ * referencia de dónde se está — la navegación real («Elegir otro plan», «Volver a mi plan
+ * actual») vive en botones aparte, así que acá no hace falta que sea clickeable.
+ */
+function StepIndicator() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl bg-stone-50 px-4 py-2.5 mb-3">
+      <div className="flex items-center gap-2">
+        <span className="flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold shrink-0 bg-rest-700 text-white">
+          1
+        </span>
+        <span className="text-xs font-semibold text-stone-800">Elegir plan</span>
+      </div>
+      <div className="flex-1 h-px min-w-6 bg-stone-200" />
+      <div className="flex items-center gap-2">
+        <span className="flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold shrink-0 bg-stone-200 text-stone-500">
+          2
+        </span>
+        <span className="text-xs font-semibold text-stone-400">Confirmar y pagar</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Elegir plan (alta nueva o cambio) con comprobante en el mismo paso — a diferencia de
+ * PaymentModal, que exige billing_cycle_id, este cubre también el caso sin ciclo aún emitido
+ * (renovación anticipada), pero el comprobante es igualmente obligatorio en los dos: sin él no
+ * se puede enviar. Cierra un hueco real: "Renovar" en la pestaña Planes y paquetes abría el
+ * formulario de pago de la deuda pendiente, no una lista de planes para elegir.
  *
  * El ciclo (1/3/6/12 meses) se elige entre los que trae `plan.cycles` — ya no un número de meses
  * libre: cada plan solo permite los ciclos fijos que el panel central habilitó para él, con el
@@ -51,6 +81,7 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [receipt, setReceipt] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const receiptRef = useRef<HTMLInputElement>(null)
 
   // Ciclos elegibles de un plan: para "lifetime" (pago único) solo tiene sentido el de 1 — no se
   // le ofrece "3/6/12 meses" a un plan que no vence.
@@ -98,19 +129,30 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
   const availableCycles = selected ? cyclesOf(selected) : []
   const selectedCycle = availableCycles.find(c => c.months === months)
   const totalAmount = selectedCycle?.net_amount ?? 0
+  // Plan que el tenant ya tiene activo, si está en el catálogo — mismo criterio que el
+  // auto-select del useEffect. Sirve para el atajo «Volver a mi plan actual» en la grilla.
+  const currentPlan = plans.find(p => Boolean(hub.subscription.can_operate) && p.name === hub.subscription.plan_name)
+  const goBackToGrid = () => { setSelected(null); setAdvancingCurrentPlan(false) }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selected || !selectedCycle) return
+    // El comprobante ya es obligatorio para renovar — antes se podía enviar solo la solicitud
+    // y pagar después, ahora no.
+    if (!receipt) {
+      toast.error('Adjunta tu comprobante de pago para continuar')
+      return
+    }
     const form = new FormData()
     form.append('plan_id', String(selected.id))
     form.append('period_months', String(months))
     form.append('amount', String(totalAmount))
-    // El resto es opcional: el tenant puede pedir el plan sin adjuntar nada todavía.
+    form.append('receipt', receipt)
+    // El método/fecha/referencia siguen siendo opcionales: lo único que ahora se exige es el
+    // comprobante en sí.
     if (paymentMethod) form.append('payment_method', paymentMethod)
     if (paymentDate) form.append('payment_date', paymentDate)
     if (reference.trim()) form.append('reference', reference.trim())
-    if (receipt) form.append('receipt', receipt)
 
     setSubmitting(true)
     try {
@@ -136,24 +178,51 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
     >
       <div className="w-full max-w-2xl max-h-[min(92dvh,900px)] overflow-y-auto rounded-2xl bg-white shadow-xl border border-stone-100">
         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-stone-100 bg-white px-4 py-3 rounded-t-2xl">
-          <div>
-            <h3 className="text-base font-bold text-stone-900">
-              {advancingCurrentPlan ? 'Adelantar pago' : selected ? selected.name : 'Elegir plan'}
-            </h3>
-            <p className="text-xs text-stone-500 mt-0.5">
-              {advancingCurrentPlan
-                ? `Suma meses a tu plan actual (${selected?.name}) sin esperar a que venza`
-                : selected
-                  ? 'Confirma tu solicitud'
-                  : 'Selecciona el plan que quieres contratar o al que quieres cambiarte'}
-            </p>
+          <div className="flex items-start gap-2.5 min-w-0">
+            {selected && (
+              <span className="p-1.5 rounded-lg bg-rest-50 text-rest-700 shrink-0">
+                {advancingCurrentPlan ? <RefreshCw size={16} /> : <Package size={16} />}
+              </span>
+            )}
+            <div className="min-w-0">
+              {/* «Adelantar pago» no decía qué se está pagando — el mismo modal cubre tanto
+                  renovar cerca del vencimiento como adelantar meses sin urgencia, así que el
+                  título habla de lo que es siempre cierto en los dos casos: se está renovando. */}
+              <h3 className="text-base font-bold text-stone-900 truncate">
+                {advancingCurrentPlan ? 'Renovar suscripción' : selected ? selected.name : 'Elegir plan'}
+              </h3>
+              <p className="text-xs text-stone-500 mt-0.5">
+                {advancingCurrentPlan
+                  ? `Adelanta el pago de tu plan ${selected?.name} sin esperar a que venza`
+                  : selected
+                    ? 'Confirma el cambio de plan'
+                    : 'Selecciona el plan que quieres contratar o al que quieres cambiarte'}
+              </p>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-lg text-stone-500 hover:bg-stone-100" aria-label="Cerrar">
+          <button type="button" onClick={onClose} className="p-2 rounded-lg text-stone-500 hover:bg-stone-100 shrink-0" aria-label="Cerrar">
             <X size={18} />
           </button>
         </div>
 
         <div className="p-4">
+          {!selected ? (
+            <>
+              <StepIndicator />
+              {/* Camino de vuelta simétrico a «Elegir otro plan»: si el tenant llegó acá y no
+                  quiere cambiar de plan, tiene que poder volver a renovar el que ya tiene sin
+                  tener que buscarlo y volver a elegirlo en la grilla. */}
+              {currentPlan && (
+                <button
+                  type="button"
+                  onClick={() => selectPlan(currentPlan)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 mb-3 rounded-lg bg-rest-50 text-rest-700 text-xs font-semibold hover:bg-rest-100 transition-colors"
+                >
+                  <ChevronLeft size={14} /> Volver a mi plan actual
+                </button>
+              )}
+            </>
+          ) : null}
           {!selected ? (
             loadingPlans ? (
               <div className="flex items-center justify-center gap-2 py-10 text-stone-500">
@@ -164,14 +233,29 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
               <p className="py-8 text-center text-sm text-stone-500">No hay planes disponibles por ahora.</p>
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
-                {plans.map(p => {
+                {plans.map((p, i) => {
                   const cycles = cyclesOf(p)
                   const chosen = cardCycle(p)
+                  const discountPct =
+                    chosen && chosen.gross_amount > 0 && chosen.net_amount !== chosen.gross_amount
+                      ? Math.round((1 - chosen.net_amount / chosen.gross_amount) * 100)
+                      : 0
+                  // Es dato real (el plan que ya tiene contratado), no una etiqueta de marketing
+                  // inventada — a diferencia de un "más popular" que no hay cómo respaldar con
+                  // los datos del plan.
+                  const isCurrentPlan = Boolean(hub.subscription.can_operate) && p.name === hub.subscription.plan_name
                   return (
                     <div
                       key={p.id}
-                      className="text-left rounded-2xl border border-stone-200 p-4 hover:border-rest-300 transition-colors flex flex-col"
+                      className={`text-left rounded-2xl border bg-white p-4 hover:shadow-md transition-shadow flex flex-col border-t-4 ${
+                        isCurrentPlan ? 'border-rest-200 ring-1 ring-rest-100' : 'border-stone-200'
+                      } ${CARD_ACCENTS[i % CARD_ACCENTS.length]}`}
                     >
+                      {isCurrentPlan && (
+                        <span className="self-start mb-2 px-2 py-0.5 rounded-full bg-rest-700 text-white text-[10px] font-bold uppercase tracking-wide">
+                          Tu plan actual
+                        </span>
+                      )}
                       <div className="flex items-center gap-2 mb-1">
                         <Package size={16} className="text-rest-600" />
                         <span className="font-semibold text-stone-800">{p.name}</span>
@@ -184,7 +268,12 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                         </span>
                       </p>
                       {chosen && chosen.net_amount !== chosen.gross_amount && (
-                        <p className="text-xs text-stone-400 line-through -mt-1">{formatMoney(chosen.gross_amount)}</p>
+                        <p className="flex items-center gap-1.5 -mt-1">
+                          <span className="text-xs text-stone-400 line-through">{formatMoney(chosen.gross_amount)}</span>
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                            -{discountPct}%
+                          </span>
+                        </p>
                       )}
                       {p.description && <p className="text-xs text-stone-500 mt-1 line-clamp-2">{p.description}</p>}
 
@@ -225,9 +314,13 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                       <button
                         type="button"
                         onClick={() => selectPlan(p, chosen?.months)}
-                        className="mt-4 w-full px-3 py-2 rounded-xl bg-rest-700 text-white text-sm font-semibold hover:bg-rest-800"
+                        className={`mt-4 w-full px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                          isCurrentPlan
+                            ? 'bg-rest-700 text-white hover:bg-rest-800'
+                            : 'bg-stone-900 text-white hover:bg-stone-800'
+                        }`}
                       >
-                        Elegir este plan
+                        {isCurrentPlan ? 'Renovar este plan' : 'Elegir este plan'}
                       </button>
                     </div>
                   )
@@ -236,94 +329,136 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
             )
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3">
+              {/* Botón, no enlace suelto: es la acción de retroceder del paso 2, así que pesa
+                  visualmente como tal — mismo color que el resto de acciones de este flujo
+                  (StepIndicator, "Volver a mi plan actual" de la grilla). */}
               <button
                 type="button"
-                onClick={() => { setSelected(null); setAdvancingCurrentPlan(false) }}
-                className="inline-flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700"
+                onClick={goBackToGrid}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rest-50 text-rest-700 text-xs font-semibold hover:bg-rest-100 transition-colors"
               >
                 <ChevronLeft size={14} /> Elegir otro plan
               </button>
 
-              <div className="rounded-xl border border-stone-100 bg-stone-50/70 px-3 py-2.5 text-sm space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-stone-600">Plan elegido</span>
-                  <span className="font-semibold text-stone-800">{selected.name}</span>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-stone-100 bg-stone-50/70 px-3.5 py-3 flex items-center gap-3">
+                  <span className="p-2 rounded-lg bg-white border border-stone-100 text-rest-600 shrink-0">
+                    <Package size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-stone-800 text-sm truncate">{selected.name}</p>
+                    {!isLifetime && (
+                      <p className="text-xs text-stone-500 mt-0.5">
+                        {months} {months === 1 ? 'mes' : 'meses'} de renovación
+                      </p>
+                    )}
+                  </div>
                 </div>
-                {!isLifetime && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-stone-600">Ciclo</span>
-                    <span className="font-semibold text-stone-800">
-                      {months} {months === 1 ? 'mes' : 'meses'}
+
+                <div className="rounded-xl border border-rest-200 bg-rest-50/60 px-3.5 py-3 flex items-center gap-3">
+                  <span className="p-2 rounded-lg bg-white text-rest-600 shrink-0">
+                    <CreditCard size={16} />
+                  </span>
+                  <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
+                    <span className="text-sm text-stone-700">Total a depositar</span>
+                    <span className="text-lg font-bold text-stone-900 shrink-0">
+                      {selectedCycle && selectedCycle.net_amount !== selectedCycle.gross_amount && (
+                        <span className="text-sm font-normal text-stone-400 line-through mr-2">{formatMoney(selectedCycle.gross_amount)}</span>
+                      )}
+                      {formatMoney(totalAmount)}
                     </span>
                   </div>
-                )}
+                </div>
               </div>
 
               {!selectedCycle && (
                 <p className="text-xs text-amber-600">Este plan no tiene ciclos disponibles por ahora — contacta a soporte.</p>
               )}
 
-              <div className="rounded-xl border border-rest-200 bg-rest-50/60 px-3 py-2.5 text-sm flex items-center justify-between">
-                <span className="text-stone-700">Total a depositar</span>
-                <span className="text-lg font-bold text-stone-900">
-                  {selectedCycle && selectedCycle.net_amount !== selectedCycle.gross_amount && (
-                    <span className="text-sm font-normal text-stone-400 line-through mr-2">{formatMoney(selectedCycle.gross_amount)}</span>
-                  )}
-                  {formatMoney(totalAmount)}
-                </span>
-              </div>
+              {/* Todo lo de acá abajo era opcional a propósito antes; el comprobante ya no lo
+                  es (ver validación en handleSubmit) — agrupado en una sola tarjeta para que se
+                  lea como un solo paso, no como un formulario más largo que el anterior. */}
+              <div className="rounded-xl border border-stone-100 p-3.5 space-y-3">
+                <p className="text-xs font-semibold text-stone-500 uppercase tracking-wide">
+                  Comprobante de pago
+                </p>
+                <p className="text-xs text-red-600 font-medium -mt-2">
+                  Adjunta tu comprobante de pago para poder enviar la renovación.
+                </p>
 
-              <p className="text-xs text-stone-500">
-                Puedes adjuntar tu comprobante ahora para agilizar la aprobación, o enviar solo la
-                solicitud y pagar después desde tu suscripción.
-              </p>
+                {cfg.methods.length > 0 && (
+                  <div>
+                    <label className="text-xs font-medium text-stone-600">Método de pago</label>
+                    <select className={`${inputClass} mt-1`} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                      <option value="">Elige un método para ver cómo pagar…</option>
+                      {cfg.methods.map(m => (
+                        <option key={m.key} value={m.key}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-              {cfg.methods.length > 0 && (
-                <div>
-                  <label className="text-xs font-medium text-stone-600">Método de pago (opcional)</label>
-                  <select className={`${inputClass} mt-1`} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                    <option value="">Elige un método para ver cómo pagar…</option>
-                    {cfg.methods.map(m => (
-                      <option key={m.key} value={m.key}>{m.label}</option>
-                    ))}
-                  </select>
+                {paymentMethod && <PaymentMethodsPanel cfg={cfg} selectedMethodKey={paymentMethod} />}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-stone-600 flex items-center gap-1">
+                      <Calendar size={12} className="text-stone-400" /> Fecha de pago
+                    </label>
+                    <input
+                      type="date"
+                      className={`${inputClass} mt-1`}
+                      value={paymentDate}
+                      onChange={e => setPaymentDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-stone-600 flex items-center gap-1">
+                      <Hash size={12} className="text-stone-400" /> Referencia / Nº operación
+                    </label>
+                    <input className={`${inputClass} mt-1`} value={reference} onChange={e => setReference(e.target.value)} placeholder="Opcional" />
+                  </div>
                 </div>
-              )}
 
-              {paymentMethod && <PaymentMethodsPanel cfg={cfg} selectedMethodKey={paymentMethod} />}
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-stone-600">Fecha de pago</label>
-                  <input
-                    type="date"
-                    className={`${inputClass} mt-1`}
-                    value={paymentDate}
-                    onChange={e => setPaymentDate(e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-stone-600">
+                    Comprobante <span className="text-red-600">*</span>
+                  </label>
+                  <div
+                    className={`mt-1 border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-colors ${
+                      receipt
+                        ? 'border-stone-200 hover:border-rest-400 hover:bg-rest-50/30'
+                        : 'border-red-200 bg-red-50/40 hover:border-red-300 hover:bg-red-50/70'
+                    }`}
+                    onClick={() => receiptRef.current?.click()}
+                  >
+                    <input
+                      ref={receiptRef}
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.pdf,.webp"
+                      className="hidden"
+                      onChange={e => setReceipt(e.target.files?.[0] ?? null)}
+                    />
+                    {receipt ? (
+                      <p className="flex items-center justify-center gap-1.5 text-rest-600 text-sm font-medium">
+                        <FileUp size={14} /> {receipt.name}
+                      </p>
+                    ) : (
+                      <p className="flex items-center justify-center gap-1.5 text-red-600 text-sm font-medium">
+                        <Upload size={14} /> Clic para adjuntar imagen o PDF
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-stone-600">Referencia / Nº operación</label>
-                  <input className={`${inputClass} mt-1`} value={reference} onChange={e => setReference(e.target.value)} placeholder="Opcional" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-stone-600">Comprobante (opcional)</label>
-                <input
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.pdf,.webp"
-                  className="text-sm mt-1 block w-full"
-                  onChange={e => setReceipt(e.target.files?.[0] ?? null)}
-                />
               </div>
 
               <button
                 type="submit"
-                disabled={submitting || !selectedCycle}
+                disabled={submitting || !selectedCycle || !receipt}
                 className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-rest-600 text-white text-sm font-semibold hover:bg-rest-700 disabled:opacity-60"
               >
                 {submitting ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
-                Enviar solicitud
+                {advancingCurrentPlan ? 'Enviar renovación' : 'Enviar solicitud'}
               </button>
             </form>
           )}

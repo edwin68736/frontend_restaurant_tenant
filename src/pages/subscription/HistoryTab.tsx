@@ -20,12 +20,17 @@ export default function HistoryTab({ hub }: Props) {
       rows.push({
         id: `pay-${p.id}`,
         date: p.payment_date || p.created_at,
+        // reversed: pago que SÍ se había aprobado y luego se anuló (ver RevertApprovedPayment
+        // en el backend, compartido con Tukifac) — sin este caso caía en "Comprobante enviado",
+        // como si nunca se hubiera resuelto, en vez de decir lo que realmente pasó.
         label:
           p.status === 'approved'
             ? 'Pago recibido'
             : p.status === 'rejected'
               ? 'Pago rechazado'
-              : 'Comprobante enviado',
+              : p.status === 'reversed'
+                ? 'Pago anulado'
+                : 'Comprobante enviado',
         detail: `${formatMoney(p.amount)} · ${p.payment_method}${p.reference ? ` · ${p.reference}` : ''}`,
         kind: 'payment',
       })
