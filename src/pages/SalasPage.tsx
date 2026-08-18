@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Search } from 'lucide-react'
+import { Search, ArrowLeftRight } from 'lucide-react'
 import { restaurantService, type Floor, type RestaurantTable, type StaffOption } from '@/services/restaurant.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { TableCardFooter, TableWithChairsVisual } from '@/components/restaurant/TableWithChairsVisual'
+import { MoveTableModal } from '@/components/restaurant/MoveTableModal'
 import { useOnBranchChange } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { tableStatusLabel, tableStatusStyles } from '@/utils/tableStatusStyles'
@@ -22,6 +23,7 @@ export default function SalasPage() {
   const navigate = useNavigate()
   const { hasPerm } = useAuth()
   const canReassign = hasPerm('s.m')
+  const canMoveTable = hasPerm('t.o')
   const [floors, setFloors] = useState<Floor[]>([])
   const [tables, setTables] = useState<RestaurantTable[]>([])
   const [staffList, setStaffList] = useState<StaffOption[]>([])
@@ -30,6 +32,7 @@ export default function SalasPage() {
   const [openModal, setOpenModal] = useState<RestaurantTable | null>(null)
   const [openForm, setOpenForm] = useState({ staff_id: '', guests: 2, notes: '' })
   const [search, setSearch] = useState('')
+  const [moveModalTable, setMoveModalTable] = useState<RestaurantTable | null>(null)
 
   const loadSalas = useCallback((fid: number | '' = floorId) => {
     setLoading(true)
@@ -191,11 +194,13 @@ export default function SalasPage() {
               const st = tableStatusStyles(effectiveStatus)
               const hasActiveSession = !!t.session_id
               const clickable = hasActiveSession || effectiveStatus === 'libre'
+              const showMoveIcon = hasActiveSession && canMoveTable
               return (
-                <button
+                <div
                   key={t.id}
-                  type="button"
-                  disabled={!clickable}
+                  role="button"
+                  tabIndex={clickable ? 0 : -1}
+                  aria-disabled={!clickable}
                   onClick={() => {
                     if (hasActiveSession) {
                       navigate(`/mesa/${t.session_id}`)
@@ -204,7 +209,12 @@ export default function SalasPage() {
                       setOpenForm({ staff_id: '', guests: 2, notes: '' })
                     }
                   }}
-                  className={`group relative flex min-w-0 flex-col rounded-xl sm:rounded-2xl border-2 p-2 pt-2.5 pb-2 sm:p-3 sm:pt-3.5 sm:pb-3 transition-all duration-200 text-left ${
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    e.preventDefault()
+                    e.currentTarget.click()
+                  }}
+                  className={`group relative flex min-w-0 flex-col rounded-xl sm:rounded-2xl border-2 p-2 pt-2.5 pb-2 sm:p-3 sm:pt-3.5 sm:pb-3 transition-all duration-200 text-left select-none ${
                     clickable ? 'cursor-pointer' : 'cursor-default opacity-80'
                   } ${st.card}`}
                 >
@@ -213,6 +223,21 @@ export default function SalasPage() {
                   >
                     {tableStatusLabel(effectiveStatus)}
                   </span>
+
+                  {showMoveIcon && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMoveModalTable(t)
+                      }}
+                      title="Cambiar de mesa"
+                      aria-label={`Cambiar de mesa (${t.name})`}
+                      className="absolute top-1.5 left-1.5 sm:top-2 sm:left-2 z-10 flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/90 border border-amber-300 text-amber-800 shadow-sm hover:bg-amber-50"
+                    >
+                      <ArrowLeftRight size={13} />
+                    </button>
+                  )}
 
                   <TableWithChairsVisual
                     name={t.name}
@@ -232,7 +257,7 @@ export default function SalasPage() {
                     totalAmount={effectiveStatus === 'ocupada' ? t.total_amount : undefined}
                     amountClassName={st.amount}
                   />
-                </button>
+                </div>
               )
             })}
           </div>
@@ -295,6 +320,19 @@ export default function SalasPage() {
           </div>
         )}
       </PortalModal>
+
+      {moveModalTable?.session_id != null && (
+        <MoveTableModal
+          open
+          onClose={() => setMoveModalTable(null)}
+          sessionId={moveModalTable.session_id}
+          currentTableId={moveModalTable.id}
+          onMoved={() => {
+            setMoveModalTable(null)
+            loadSalas()
+          }}
+        />
+      )}
     </div>
   )
 }
