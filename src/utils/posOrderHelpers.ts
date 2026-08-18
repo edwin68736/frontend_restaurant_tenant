@@ -55,11 +55,25 @@ export function collectCheckoutLineTaxTotals(
   const lines: LineTaxTotals[] = cart.map((line) => cartLineTaxTotals(line, taxRate, taxConfig))
   for (const ord of session?.orders ?? []) {
     for (const c of ord.comandas ?? []) {
-      if (c.cancelled_at) continue
+      // billed_at: ya se cobró en un cobro parcial anterior — no vuelve a sumar al pendiente.
+      if (c.cancelled_at || c.billed_at) continue
       lines.push(comandaLineTaxTotals(c, taxRate, taxConfig))
     }
   }
   return lines
+}
+
+/** Comandas activas, no anuladas y aún no cobradas (para dividir cuenta / total pendiente). */
+export function pendingComandas(detail: SessionDetail | null): Comanda[] {
+  if (!detail?.orders?.length) return []
+  const out: Comanda[] = []
+  for (const ord of detail.orders) {
+    for (const c of ord.comandas ?? []) {
+      if (c.cancelled_at || c.billed_at) continue
+      out.push(c)
+    }
+  }
+  return out
 }
 
 /** @deprecated Use PosCartLine from @/utils/posCart */
@@ -85,7 +99,7 @@ export function countCancellableComandas(detail: SessionDetail | null, orderId?:
   let count = 0
   for (const ord of orders) {
     if (orderId != null && orderId > 0 && ord.id !== orderId) continue
-    count += (ord.comandas ?? []).filter((c) => c.status !== 'entregada').length
+    count += (ord.comandas ?? []).filter((c) => c.status !== 'entregada' && !c.billed_at).length
   }
   return count
 }

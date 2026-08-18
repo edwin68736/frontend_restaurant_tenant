@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { clsx } from 'clsx'
-import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight, ArrowLeftRight } from 'lucide-react'
+import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight, ArrowLeftRight, Receipt } from 'lucide-react'
 import { MoveTableModal } from '@/components/restaurant/MoveTableModal'
+import { SplitBillModal } from '@/components/restaurant/SplitBillModal'
 import { SearchInput } from '@/components/SearchInput'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { PosProductListRow } from '@/components/pos/PosProductListRow'
@@ -36,12 +37,14 @@ import {
   cartToOrderItems,
   collectCheckoutLineTaxTotals,
   comandaToPrecuentaPrintItem,
+  comandaLineTaxTotals,
   comandaLineTotal,
   formatPrecuentaIssueDate,
   getActiveKitchenRounds,
   getActiveSessionOrders,
   getOrderRoundHistory,
   countCancellableComandas,
+  pendingComandas,
   sumSessionComandaQty,
   type KitchenRound,
 } from '@/utils/posOrderHelpers'
@@ -145,6 +148,9 @@ export default function MesaPage() {
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
   const [ordersModalOpen, setOrdersModalOpen] = useState(false)
   const [moveTableOpen, setMoveTableOpen] = useState(false)
+  const [splitBillOpen, setSplitBillOpen] = useState(false)
+  /** null = checkout normal (carrito + toda la sesión). No-null = cobro parcial de estas comandas. */
+  const [splitComandaIds, setSplitComandaIds] = useState<number[] | null>(null)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [seriesId, setSeriesId] = useState(0)
   const [docType, setDocType] = useState('NOTA DE VENTA')
@@ -160,6 +166,8 @@ export default function MesaPage() {
   const [anulPin, setAnulPin] = useState('')
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
+  /** false = fue un cobro parcial (dividir cuenta) y la mesa sigue abierta: no navegar a /salas al cerrar el recibo. */
+  const [receiptClosesTable, setReceiptClosesTable] = useState(true)
   const [lastSale, setLastSale] = useState<{
     id: number
     number: string
@@ -404,6 +412,22 @@ export default function MesaPage() {
   const canGenerarVenta = (cart.length > 0 || sessionTotal > 0) && session?.status === 'open'
   const soloCerrarMesa = session?.status === 'open' && sessionTotal <= 0 && cart.length === 0
 
+  // Dividir cuenta: totales de solo las comandas elegidas (sin descuento — cobro parcial simple).
+  const pendingForSplit = useMemo(() => pendingComandas(session), [session])
+  const splitLineTax = useMemo(
+    () =>
+      splitComandaIds
+        ? pendingForSplit
+            .filter((c) => splitComandaIds.includes(c.id))
+            .map((c) => comandaLineTaxTotals(c, taxRate, taxConfig))
+        : null,
+    [splitComandaIds, pendingForSplit, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+  )
+  const splitTotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.total)) : 0
+  const splitSubtotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.subtotal)) : 0
+  const splitTaxAmount = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.taxAmount)) : 0
+  const canDividirCuenta = cart.length === 0 && pendingForSplit.length > 0 && session?.status === 'open'
+
   const sessionItemQty = useMemo(() => sumSessionComandaQty(session), [session])
   const activeSessionOrders = useMemo(() => getActiveSessionOrders(session), [session])
   const activeKitchenRounds = useMemo(() => getActiveKitchenRounds(session), [session])
@@ -613,7 +637,112 @@ export default function MesaPage() {
     }
   }
 
+  /** Cobro parcial (dividir cuenta): factura solo splitComandaIds, la sesión puede seguir abierta. */
+  const doSplitCheckout = async (comandaIds: number[]) => {
+    const s = session
+    if (!s) { toast.error('No hay una mesa cargada'); return }
+    const paid = payments.reduce((sum, p) => sum + p.amount, 0)
+    if (!paidCoversTotal(paid, splitTotal)) {
+      toast.error('El monto pagado debe ser al menos el total de lo seleccionado')
+      return
+    }
+    if (branchSeriesMissing) return
+    if (!seriesId) return
+    if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries?.sunat_code)) {
+      toast.error(BILLING_NOT_ENABLED_MESSAGE)
+      return
+    }
+    const selectedContactId = effectiveContactId
+    const contactForCheckout = contacts.find((c) => c.id === selectedContactId) ?? null
+    if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries?.sunat_code)) {
+      toast.error(
+        isFacturaDocType(docType, selectedSeries?.sunat_code)
+          ? 'La factura requiere un cliente con RUC'
+          : 'Selecciona un cliente',
+      )
+      return
+    }
+    if (paymentMethods.length > 0) {
+      for (const p of payments) {
+        const pm = findPaymentMethodRecord(paymentMethods, p.method)
+        if (!pm) {
+          toast.error('Método de pago no configurado. Revísalo en Caja → Cuentas y métodos.')
+          return
+        }
+        if (!isPaymentMethodLinkedForSale(pm, bankAccounts)) {
+          toast.error(`El método "${pm.name}" no tiene una cuenta vinculada.`)
+          return
+        }
+      }
+    }
+    const needsCashSession =
+      payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
+      (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))
+    if (needsCashSession) {
+      if (!canChargeCash) {
+        toast.error('Los mozos no pueden cobrar en efectivo; use otro método o un cajero')
+        return
+      }
+      if (!myCashSession?.id) {
+        toast.error('Abra su caja para cobrar en efectivo (menú Caja)')
+        return
+      }
+    }
+
+    setAdding(true)
+    try {
+      const willCloseSession = comandaIds.length === pendingForSplit.length
+      const res = await restaurantService.billSession(id, {
+        series_id: seriesId,
+        doc_type: docType,
+        currency: 'PEN',
+        contact_id: selectedContactId,
+        cash_session_id: myCashSession?.id ?? null,
+        close_session: true, // el servidor lo recalcula según si la selección cubre todo lo pendiente
+        comanda_ids: comandaIds,
+        payments: payments.map((p) => ({
+          method: p.method,
+          amount: roundSunat(p.amount),
+          reference: p.reference?.trim() ?? '',
+          notes: '',
+        })),
+      })
+      toast.success(willCloseSession ? 'Venta generada. Mesa cerrada.' : 'Cobro parcial registrado. La mesa sigue abierta.')
+      setCheckoutOpen(false)
+      setSplitComandaIds(null)
+      setReceiptClosesTable(willCloseSession)
+      setPrintData(res.print_data ?? null)
+      const saleContact = contacts.find((c) => c.id === selectedContactId)
+      setLastSale(
+        res.data
+          ? { id: res.data.id, number: res.data.number, total: res.data.total, clientEmail: saleContact?.email?.trim() ?? '' }
+          : null,
+      )
+      setReceiptModalOpen(true)
+      if (!willCloseSession) await load()
+      if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && res.print_data) {
+        const cfg = getConfiguredPrinter('documentos')
+        if (!cfg) {
+          toast.error('Configura la impresora de documentos en Ajustes')
+        } else {
+          try {
+            const msg = await printDocumentAuto(res.print_data)
+            toast.success(msg || 'Comprobante enviado a la impresora')
+          } catch (e) {
+            console.error('[document print error]', e)
+            toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+          }
+        }
+      }
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   const doCheckout = async () => {
+    if (splitComandaIds) return doSplitCheckout(splitComandaIds)
     const s = session
     if (!s) { toast.error('No hay una mesa cargada'); return }
     if (blockIfMissingCartPrices()) return
@@ -723,6 +852,7 @@ export default function MesaPage() {
             }
           : null,
       )
+      setReceiptClosesTable(true)
       setReceiptModalOpen(true)
       if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && res.print_data) {
         const cfg = getConfiguredPrinter('documentos')
@@ -785,6 +915,7 @@ export default function MesaPage() {
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (!canGenerarVenta) return
+    setSplitComandaIds(null)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
@@ -798,13 +929,36 @@ export default function MesaPage() {
     setCheckoutOpen(true)
   }
 
+  /** Desde SplitBillModal: el mozo eligió qué comandas van en este pago. */
+  const openSplitCheckout = (comandaIds: number[]) => {
+    if (branchSeriesMissing) return
+    setSplitBillOpen(false)
+    setSplitComandaIds(comandaIds)
+    applyCheckoutDefaults()
+    setCheckoutDiscountMode('percent')
+    setCheckoutDiscountValue(0)
+    const total = sumMoney(
+      ...pendingForSplit
+        .filter((c) => comandaIds.includes(c.id))
+        .map((c) => comandaLineTaxTotals(c, taxRate, taxConfig).total),
+    )
+    setPayments([
+      {
+        method: defaultOperationalPaymentCode(paymentMethods),
+        amount: total,
+        reference: '',
+      },
+    ])
+    setCheckoutOpen(true)
+  }
+
   useEffect(() => {
     if (!checkoutOpen || allowCheckoutDiscount) return
     setCheckoutDiscountValue(0)
   }, [checkoutOpen, allowCheckoutDiscount])
 
   useEffect(() => {
-    if (!checkoutOpen || payments.length !== 1) return
+    if (!checkoutOpen || payments.length !== 1 || splitComandaIds) return
     setPayments((prev) => {
       if (prev.length !== 1) return prev
       const cur = prev[0]?.amount ?? 0
@@ -813,7 +967,7 @@ export default function MesaPage() {
       if (Math.abs(cur - nextAmount) < 0.009) return prev
       return [{ ...prev[0], amount: nextAmount }]
     })
-  }, [checkoutOpen, payableTotal, payments.length])
+  }, [checkoutOpen, payableTotal, payments.length, splitComandaIds])
 
   const confirmAnulComanda = async () => {
     if (!anulComanda) return
@@ -930,6 +1084,21 @@ export default function MesaPage() {
                 className="col-span-2 inline-flex items-center justify-center gap-1 py-2.5 bg-rest-600 text-white rounded-xl text-xs font-semibold hover:bg-rest-700 disabled:opacity-50"
               >
                 Generar venta
+              </button>
+            )}
+            {canCerrarMesa && (
+              <button
+                type="button"
+                onClick={() => setSplitBillOpen(true)}
+                disabled={branchSeriesMissing || !canDividirCuenta || adding}
+                title={
+                  cart.length > 0
+                    ? 'Envía la comanda pendiente antes de dividir la cuenta'
+                    : undefined
+                }
+                className="col-span-2 inline-flex items-center justify-center gap-1 py-2 border border-stone-300 text-stone-700 rounded-xl text-xs font-semibold hover:bg-stone-50 disabled:opacity-50"
+              >
+                <Receipt size={14} /> Dividir cuenta
               </button>
             )}
           </>
@@ -1290,15 +1459,21 @@ export default function MesaPage() {
                               <span className="tabular-nums font-medium text-stone-800">
                                 {formatSoles(comandaLineTotal(c, taxRate, taxConfig))}
                               </span>
-                              {session.status === 'open' && canAnularComanda && (
-                                <button
-                                  type="button"
-                                  onClick={() => { setAnulComanda(c); setAnulReason(''); setAnulPin('') }}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs flex items-center gap-1"
-                                  title="Anular comanda (requiere PIN)"
-                                >
-                                  <Trash2 size={12} /> Anular
-                                </button>
+                              {c.billed_at ? (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                                  Cobrado
+                                </span>
+                              ) : (
+                                session.status === 'open' && canAnularComanda && (
+                                  <button
+                                    type="button"
+                                    onClick={() => { setAnulComanda(c); setAnulReason(''); setAnulPin('') }}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-0.5 rounded text-xs flex items-center gap-1"
+                                    title="Anular comanda (requiere PIN)"
+                                  >
+                                    <Trash2 size={12} /> Anular
+                                  </button>
+                                )
                               )}
                             </div>
                           </li>
@@ -1345,18 +1520,21 @@ export default function MesaPage() {
 
       <POSCheckoutModal
         open={checkoutOpen}
-        onClose={() => setCheckoutOpen(false)}
+        onClose={() => {
+          setCheckoutOpen(false)
+          setSplitComandaIds(null)
+        }}
         loading={adding}
-        title="Procesar venta"
-        confirmLabel="Confirmar venta"
-        rawTotal={totalToPay}
-        payableTotal={payableTotal}
-        billingSubtotal={billingSubtotal}
+        title={splitComandaIds ? 'Cobrar parte de la mesa' : 'Procesar venta'}
+        confirmLabel={splitComandaIds ? 'Confirmar pago' : 'Confirmar venta'}
+        rawTotal={splitComandaIds ? splitTotal : totalToPay}
+        payableTotal={splitComandaIds ? splitTotal : payableTotal}
+        billingSubtotal={splitComandaIds ? splitSubtotal : billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
-        igvAmount={checkoutTaxAmount}
+        igvAmount={splitComandaIds ? splitTaxAmount : checkoutTaxAmount}
         series={checkoutSeries}
         seriesId={seriesId}
         docType={docType}
@@ -1375,12 +1553,23 @@ export default function MesaPage() {
         paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
-        allowDiscount={allowCheckoutDiscount}
+        allowDiscount={!splitComandaIds && allowCheckoutDiscount}
         onConfirm={doCheckout}
         confirmDisabled={!checkoutContactOk || !seriesId}
         sunatEnabled={sunatEnabled}
         canFactura={canFactura}
       />
+
+      {splitBillOpen && (
+        <SplitBillModal
+          open={splitBillOpen}
+          onClose={() => setSplitBillOpen(false)}
+          session={session}
+          taxRate={taxRate}
+          taxConfig={taxConfig}
+          onConfirmSelection={openSplitCheckout}
+        />
+      )}
 
       {/* Modal Precuenta */}
       {precuentaOpen && (
@@ -1804,7 +1993,8 @@ export default function MesaPage() {
           setReceiptModalOpen(false)
           setPrintData(null)
           setLastSale(null)
-          navigate('/salas')
+          // Cobro parcial (dividir cuenta): la mesa sigue abierta, no navegar afuera.
+          if (receiptClosesTable) navigate('/salas')
         }}
         printData={printData}
         saleId={lastSale?.id}

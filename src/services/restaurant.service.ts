@@ -108,6 +108,10 @@ export interface Comanda {
   printed?: boolean
   printed_at?: string | null
   created_at?: string
+  /** Agrupa las N comandas explotadas de un mismo combo — deben cobrarse juntas al dividir cuenta. */
+  combo_parent_key?: string
+  /** No-null = ya incluida en un cobro (parcial o total). Independiente de `status` (cocina). */
+  billed_at?: string | null
 }
 
 /** Línea de cocina con contexto del pedido (GET /kitchen). */
@@ -333,6 +337,8 @@ export const restaurantService = {
     discount_value?: number
     discount_amount?: number
     payments: { method: string; amount: number; reference?: string; notes?: string }[]
+    /** Dividir cuenta: factura solo estas comandas (deben estar pendientes). Vacío = todo lo pendiente. */
+    comanda_ids?: number[]
   }) => api.post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(`/api/restaurant/sessions/${sessionId}/bill`, data).then((r) => r.data),
 
   // Checkout compuesto del POS de venta rápida: 1 request en vez de openSession→addOrder→getSession→billSession.
