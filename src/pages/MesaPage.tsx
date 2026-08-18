@@ -36,13 +36,14 @@ import {
   cartToOrderItems,
   collectCheckoutLineTaxTotals,
   comandaToPrecuentaPrintItem,
-  comandaLineTaxTotals,
   comandaLineTotal,
   formatPrecuentaIssueDate,
   getActiveKitchenRounds,
   getActiveSessionOrders,
   getOrderRoundHistory,
   countCancellableComandas,
+  groupedComandaLineTaxTotals,
+  groupedComandaLineTotal,
   pendingComandas,
   sumSessionComandaQty,
   type KitchenRound,
@@ -414,9 +415,11 @@ export default function MesaPage() {
   const splitLineTax = useMemo(
     () =>
       splitComandaIds
-        ? pendingForSplit
-            .filter((c) => splitComandaIds.includes(c.id))
-            .map((c) => comandaLineTaxTotals(c, taxRate, taxConfig))
+        ? groupedComandaLineTaxTotals(
+            pendingForSplit.filter((c) => splitComandaIds.includes(c.id)),
+            taxRate,
+            taxConfig,
+          )
         : null,
     [splitComandaIds, pendingForSplit, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
@@ -934,10 +937,10 @@ export default function MesaPage() {
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
-    const total = sumMoney(
-      ...pendingForSplit
-        .filter((c) => comandaIds.includes(c.id))
-        .map((c) => comandaLineTaxTotals(c, taxRate, taxConfig).total),
+    const total = groupedComandaLineTotal(
+      pendingForSplit.filter((c) => comandaIds.includes(c.id)),
+      taxRate,
+      taxConfig,
     )
     setPayments([
       {
@@ -1419,9 +1422,7 @@ export default function MesaPage() {
                           </button>
                         )}
                         <span className="text-sm font-semibold text-rest-700 tabular-nums">
-                          {formatSoles(
-                            sumMoney(...(ord.comandas ?? []).map((c) => comandaLineTotal(c, taxRate, taxConfig))),
-                          )}
+                          {formatSoles(groupedComandaLineTotal(ord.comandas ?? [], taxRate, taxConfig))}
                         </span>
                       </div>
                     </div>

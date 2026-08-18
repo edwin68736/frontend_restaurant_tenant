@@ -3,10 +3,9 @@ import { X, Receipt, Check } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PortalModal } from '@/components/ui/PortalModal'
 import type { Comanda, SessionDetail } from '@/services/restaurant.service'
-import { comandaLineTaxTotals, pendingComandas } from '@/utils/posOrderHelpers'
+import { groupedComandaLineTotal, pendingComandas } from '@/utils/posOrderHelpers'
 import type { TaxConfig } from '@/utils/taxCalc'
 import { formatSoles } from '@/utils/format'
-import { sumMoney } from '@/utils/money'
 
 type Props = {
   open: boolean
@@ -58,9 +57,7 @@ export function SplitBillModal({ open, onClose, session, taxRate, taxConfig, onC
     })
   }
 
-  const selectedTotal = sumMoney(
-    ...pending.filter((c) => selected.has(c.id)).map((c) => comandaLineTaxTotals(c, taxRate, taxConfig).total),
-  )
+  const selectedTotal = groupedComandaLineTotal(pending.filter((c) => selected.has(c.id)), taxRate, taxConfig)
   const selectedCount = selected.size
 
   return (
@@ -87,7 +84,7 @@ export function SplitBillModal({ open, onClose, session, taxRate, taxConfig, onC
             <ul className="space-y-1.5">
               {groups.map((g) => {
                 const isCombo = g.items.length > 1 || Boolean(g.items[0]?.combo_parent_key)
-                const groupTotal = sumMoney(...g.items.map((c) => comandaLineTaxTotals(c, taxRate, taxConfig).total))
+                const groupTotal = groupedComandaLineTotal(g.items, taxRate, taxConfig)
                 const active = isGroupSelected(g.items)
                 return (
                   <li key={g.key}>

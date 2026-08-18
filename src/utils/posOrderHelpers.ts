@@ -17,6 +17,7 @@ import { calcItem } from '@/utils/taxCalc'
 import type { TaxConfig } from '@/utils/taxCalc'
 import { isBonificacionGravada } from '@/constants/igvAffectation'
 import type { LineTaxTotals } from '@/utils/checkoutDiscount'
+import { sumMoney } from '@/utils/money'
 
 /** Total de línea de comanda (misma lógica tributaria que el backend al facturar). */
 export function comandaLineTotal(
@@ -45,7 +46,66 @@ export function comandaLineTaxTotals(
   return isBonificacionGravada(c.igv_affectation_type ?? '') ? { subtotal: 0, taxAmount: 0, total: 0 } : t
 }
 
-/** Líneas tributarias del cobro: carrito pendiente + comandas ya en sesión. */
+/** Snapshot del combo dueño guardado en cada comanda-componente (combo_json). */
+type ComboComandaPayload = {
+  combo_price?: number
+  combo_quantity?: number
+  igv_affectation_type?: string
+  price_includes_igv?: boolean
+}
+
+function parseComboComandaPayload(json: string | undefined): ComboComandaPayload | null {
+  if (!json) return null
+  try {
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed === 'object' ? (parsed as ComboComandaPayload) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Igual que comandaLineTaxTotals, pero consciente de combos: las N comandas-componente de un
+ * mismo combo (combo_parent_key) valen 0 cada una por su cuenta — el precio real vive en el
+ * combo_json (precio fijo del combo), y solo debe contarse UNA vez por grupo, no sumando ceros
+ * ni multiplicando el precio por cada componente.
+ */
+export function groupedComandaLineTaxTotals(
+  comandas: Comanda[],
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): LineTaxTotals[] {
+  const out: LineTaxTotals[] = []
+  const seenCombo = new Set<string>()
+  for (const c of comandas) {
+    if (c.combo_parent_key) {
+      if (seenCombo.has(c.combo_parent_key)) continue
+      seenCombo.add(c.combo_parent_key)
+      const payload = parseComboComandaPayload(c.combo_json)
+      if (payload && payload.combo_price != null) {
+        const affType = payload.igv_affectation_type || '10'
+        const priceIncludes = payload.price_includes_igv ?? true
+        const qty = payload.combo_quantity ?? 1
+        const t = calcItem(Number(payload.combo_price) || 0, qty, 0, affType, priceIncludes, taxRate, taxConfig)
+        out.push(isBonificacionGravada(affType) ? { subtotal: 0, taxAmount: 0, total: 0 } : t)
+        continue
+      }
+      // Sin combo_json parseable (dato viejo/corrupto): cae al cálculo normal de esta línea.
+    }
+    out.push(comandaLineTaxTotals(c, taxRate, taxConfig))
+  }
+  return out
+}
+
+export function groupedComandaLineTotal(
+  comandas: Comanda[],
+  taxRate: number,
+  taxConfig?: Partial<TaxConfig>,
+): number {
+  return sumMoney(...groupedComandaLineTaxTotals(comandas, taxRate, taxConfig).map((l) => l.total))
+}
+
+/** Líneas tributarias del cobro: carrito pendiente + comandas ya en sesión (combos agrupados). */
 export function collectCheckoutLineTaxTotals(
   cart: PosCartLine[],
   session: SessionDetail | null | undefined,
@@ -54,11 +114,9 @@ export function collectCheckoutLineTaxTotals(
 ): LineTaxTotals[] {
   const lines: LineTaxTotals[] = cart.map((line) => cartLineTaxTotals(line, taxRate, taxConfig))
   for (const ord of session?.orders ?? []) {
-    for (const c of ord.comandas ?? []) {
-      // billed_at: ya se cobró en un cobro parcial anterior — no vuelve a sumar al pendiente.
-      if (c.cancelled_at || c.billed_at) continue
-      lines.push(comandaLineTaxTotals(c, taxRate, taxConfig))
-    }
+    // billed_at: ya se cobró en un cobro parcial anterior — no vuelve a sumar al pendiente.
+    const pending = (ord.comandas ?? []).filter((c) => !c.cancelled_at && !c.billed_at)
+    lines.push(...groupedComandaLineTaxTotals(pending, taxRate, taxConfig))
   }
   return lines
 }

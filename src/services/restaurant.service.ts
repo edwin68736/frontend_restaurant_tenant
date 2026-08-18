@@ -110,6 +110,9 @@ export interface Comanda {
   created_at?: string
   /** Agrupa las N comandas explotadas de un mismo combo — deben cobrarse juntas al dividir cuenta. */
   combo_parent_key?: string
+  /** Snapshot del combo dueño (combo_price/combo_quantity/...): el precio real del grupo, ya que
+   *  cada comanda-componente vale 0 por su cuenta (ver combo_parent_key). */
+  combo_json?: string
   /** No-null = ya incluida en un cobro (parcial o total). Independiente de `status` (cocina). */
   billed_at?: string | null
 }
