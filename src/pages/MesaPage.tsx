@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { clsx } from 'clsx'
-import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight } from 'lucide-react'
+import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight, ArrowLeftRight } from 'lucide-react'
+import { MoveTableModal } from '@/components/restaurant/MoveTableModal'
 import { SearchInput } from '@/components/SearchInput'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { PosProductListRow } from '@/components/pos/PosProductListRow'
@@ -122,6 +123,7 @@ export default function MesaPage() {
   } = useBranchCheckoutSeries()
   const { session: myCashSession, canChargeCash } = useCashSession()
   const canCerrarMesa = canAccess('cerrar_mesa')
+  const canMoveTable = canAccess('mesa')
   const canAnularComanda = canCancelComanda(restaurantPermissions, employeeType)
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
@@ -142,6 +144,7 @@ export default function MesaPage() {
   const configureFlySourceRef = useRef<HTMLElement | undefined>(undefined)
   const [sunat, setSunat] = useState<{ tax_rate?: number; igv_regime?: string; tax_benefit_zone?: boolean } | null>(null)
   const [ordersModalOpen, setOrdersModalOpen] = useState(false)
+  const [moveTableOpen, setMoveTableOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [seriesId, setSeriesId] = useState(0)
   const [docType, setDocType] = useState('NOTA DE VENTA')
@@ -962,6 +965,15 @@ export default function MesaPage() {
           >
             <ArrowLeft size={16} /> Mesas
           </button>
+          {canMoveTable && session?.table_id != null && (
+            <button
+              type="button"
+              onClick={() => setMoveTableOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-stone-700 text-xs font-medium hover:bg-stone-50 shrink-0"
+            >
+              <ArrowLeftRight size={14} /> Cambiar mesa
+            </button>
+          )}
           {activeSessionOrders.length > 0 && (
             <button
               type="button"
@@ -1809,6 +1821,14 @@ export default function MesaPage() {
           setCart((c) => [...c, line])
           playCartAddSound()
         }}
+      />
+
+      <MoveTableModal
+        open={moveTableOpen}
+        onClose={() => setMoveTableOpen(false)}
+        sessionId={id}
+        currentTableId={session?.table_id ?? null}
+        onMoved={() => load()}
       />
 
       <ProductConfigureModal

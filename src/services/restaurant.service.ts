@@ -245,6 +245,10 @@ export const restaurantService = {
   updateSession: (sessionId: number, data: Record<string, unknown>) =>
     api.patch(`/api/restaurant/sessions/${sessionId}`, data).then((r) => r.data),
 
+  /** Mueve una sesión abierta a otra mesa (cliente se cambia de mesa). */
+  moveSessionTable: (sessionId: number, tableId: number) =>
+    api.patch(`/api/restaurant/sessions/${sessionId}/table`, { table_id: tableId }).then((r) => r.data),
+
   updateOrderStatus: (sessionId: number, orderStatus: string) =>
     api.put(`/api/restaurant/sessions/${sessionId}/order-status`, { order_status: orderStatus }).then((r) => r.data),
 
