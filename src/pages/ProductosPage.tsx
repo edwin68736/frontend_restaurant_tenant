@@ -466,12 +466,11 @@ export default function ProductosPage() {
       toast.error('Agrega al menos una presentación o desactiva «Presentaciones»')
       return
     }
-    // Con presentaciones, el precio real vive en cada una (ver más abajo) y el del producto base
-    // es solo un contenedor — sin ellas, este es el precio de venta real y no puede ser 0.
-    if (!form.has_variants && !(Number(form.sale_price) > 0)) {
-      toast.error('El precio de venta debe ser mayor a S/ 0')
-      return
-    }
+    // No se exige sale_price > 0 aquí a propósito: se puede crear un producto "base" sin precio
+    // (contenedor pendiente de presentaciones, o combo a configurar después) y completarlo en una
+    // edición posterior. Lo que nunca se permite es VENDERLO en 0 — eso se bloquea en el POS al
+    // cobrar, no aquí. Las presentaciones sí exigen precio propio (abajo): ahí ya se está
+    // declarando una variante concreta y vendible.
     if (form.has_variants) {
       const missingPrice = presentationRows.find((p) => !(Number(p.sale_price) > 0))
       if (missingPrice) {
