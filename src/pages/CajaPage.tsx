@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
-import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download } from 'lucide-react'
+import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock } from 'lucide-react'
+import { openCashDrawer } from '@/services/printers.service'
 import {
   cashbankService,
   type CashSession,
@@ -211,6 +212,7 @@ export default function CajaPage() {
   const [closeWithArqueo, setCloseWithArqueo] = useState(false)
   const [closeArqueo, setCloseArqueo] = useState<Record<string, number>>(emptyArqueo())
   const [saving, setSaving] = useState(false)
+  const [openingDrawer, setOpeningDrawer] = useState(false)
 
   const [showMov, setShowMov] = useState(false)
   const [movType, setMovType] = useState<'income' | 'expense'>('income')
@@ -733,6 +735,19 @@ export default function CajaPage() {
     }
   }
 
+  const handleOpenDrawer = async () => {
+    setOpeningDrawer(true)
+    try {
+      const msg = await openCashDrawer()
+      toast.success(msg || 'Gaveta abierta')
+    } catch (e) {
+      console.error('[caja] abrir gaveta]', e)
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir la gaveta')
+    } finally {
+      setOpeningDrawer(false)
+    }
+  }
+
   const loadReport = async (id: number) => {
     setLoadingReport(true)
     try {
@@ -870,6 +885,15 @@ export default function CajaPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleOpenDrawer()}
+                      disabled={openingDrawer}
+                      className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Unlock size={16} />
+                      {openingDrawer ? 'Abriendo…' : 'Abrir gaveta'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => {

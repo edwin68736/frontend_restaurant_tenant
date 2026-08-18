@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { UtensilsCrossed } from 'lucide-react'
+import { UtensilsCrossed, AlertTriangle } from 'lucide-react'
+import { clsx } from 'clsx'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import { getProductImageUrl } from '@/services/products.service'
 import type { PosCartLine } from '@/utils/posCart'
 import {
   cartLineBasePrice,
+  cartLineHasMissingPrice,
   cartLineLabel,
   cartLineUnitPrice,
   isCatalogCartLine,
@@ -30,9 +32,11 @@ function formatUnitPriceInput(n: number): string {
 function CartUnitPriceInput({
   unitPrice,
   onCommit,
+  invalid,
 }: {
   unitPrice: number
   onCommit: (value: string) => void
+  invalid?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -83,8 +87,14 @@ function CartUnitPriceInput({
           e.currentTarget.blur()
         }
       }}
-      className="h-8 w-[4.75rem] box-border rounded-lg border border-stone-200 px-1.5 text-xs font-semibold text-rest-700 tabular-nums text-right focus:border-rest-500 focus:outline-none focus:ring-1 focus:ring-rest-400"
+      className={clsx(
+        'h-8 w-[4.75rem] box-border rounded-lg border px-1.5 text-xs font-semibold tabular-nums text-right focus:outline-none focus:ring-1',
+        invalid
+          ? 'border-red-400 bg-red-50 text-red-700 focus:border-red-500 focus:ring-red-400'
+          : 'border-stone-200 text-rest-700 focus:border-rest-500 focus:ring-rest-400',
+      )}
       aria-label="Precio unitario de venta"
+      aria-invalid={invalid || undefined}
     />
   )
 }
@@ -101,9 +111,15 @@ export function PosCartLineRow({
   const catalog = isCatalogCartLine(line)
   const modifierLines = catalog && line.modifiers.length > 0 ? formatModifierLines(line.modifiers) : []
   const thumbUrl = catalog ? getProductImageUrl(line.product.image_url) : null
+  const missingPrice = cartLineHasMissingPrice(line)
 
   return (
-    <li className="py-2 border-b border-stone-100 last:border-0 space-y-1.5">
+    <li
+      className={clsx(
+        'py-2 border-b last:border-0 space-y-1.5',
+        missingPrice ? 'border-red-100 bg-red-50/60 -mx-2 px-2 rounded-lg' : 'border-stone-100',
+      )}
+    >
       <div className="flex gap-2.5 items-start">
         <div
           className="w-12 h-12 rounded-lg border border-stone-200 bg-stone-100 overflow-hidden shrink-0 flex items-center justify-center"
@@ -128,6 +144,11 @@ export function PosCartLineRow({
                 Base {formatSoles(cartLineBasePrice(line))} + extras
               </p>
             )}
+            {missingPrice && (
+              <p className="flex items-center gap-1 text-[10px] font-semibold text-red-600 mt-0.5">
+                <AlertTriangle size={11} /> Sin precio de venta configurado
+              </p>
+            )}
             {modifierLines.length > 0 && (
               <ul className="mt-0.5 space-y-0.5">
                 {modifierLines.map((m) => (
@@ -146,9 +167,15 @@ export function PosCartLineRow({
               <CartUnitPriceInput
                 unitPrice={cartLineUnitPrice(line)}
                 onCommit={onUnitPriceChange}
+                invalid={missingPrice}
               />
             ) : (
-              <span className="h-8 min-w-[4.75rem] px-1.5 flex items-center justify-end text-xs font-semibold text-rest-600 tabular-nums">
+              <span
+                className={clsx(
+                  'h-8 min-w-[4.75rem] px-1.5 flex items-center justify-end text-xs font-semibold tabular-nums',
+                  missingPrice ? 'text-red-600' : 'text-rest-600',
+                )}
+              >
                 {formatSoles(cartLineUnitPrice(line))}
               </span>
             )}

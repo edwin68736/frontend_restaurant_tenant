@@ -466,6 +466,19 @@ export default function ProductosPage() {
       toast.error('Agrega al menos una presentación o desactiva «Presentaciones»')
       return
     }
+    // Con presentaciones, el precio real vive en cada una (ver más abajo) y el del producto base
+    // es solo un contenedor — sin ellas, este es el precio de venta real y no puede ser 0.
+    if (!form.has_variants && !(Number(form.sale_price) > 0)) {
+      toast.error('El precio de venta debe ser mayor a S/ 0')
+      return
+    }
+    if (form.has_variants) {
+      const missingPrice = presentationRows.find((p) => !(Number(p.sale_price) > 0))
+      if (missingPrice) {
+        toast.error(`La presentación «${missingPrice.name.trim()}» debe tener un precio mayor a S/ 0`)
+        return
+      }
+    }
     if (form.has_modifiers && (form.modifier_group_ids ?? []).length === 0) {
       toast.error('Selecciona al menos un grupo de extras o desactiva «Extras»')
       return

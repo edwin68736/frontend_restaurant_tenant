@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Smartphone, Monitor } from 'lucide-react'
+import { Smartphone, Monitor, ChefHat, Receipt, FileText } from 'lucide-react'
 import {
   getPrinterPlatformCapabilities,
   isNativePrintAvailable,
@@ -16,6 +16,7 @@ import {
 import { preparationAreaLabel } from '@/constants/preparationAreas'
 import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import { PrinterKindCard } from './printers/PrinterKindCard'
+import { PrinterColumn } from './printers/PrinterColumn'
 import { NotaVentaPrintSettings } from './printers/NotaVentaPrintSettings'
 import { ComandaPrintSettings } from './printers/ComandaPrintSettings'
 import { ComandasPrinterSettings } from './printers/ComandasPrinterSettings'
@@ -127,7 +128,7 @@ export function PrintersSettingsTab() {
   }
 
   return (
-    <div className="space-y-5 max-w-3xl pb-[max(2rem,calc(var(--app-bottom-nav-offset)+1rem))] lg:pb-[max(2rem,calc(var(--safe-bottom)+1.5rem))]">
+    <div className="space-y-5 pb-[max(2rem,calc(var(--app-bottom-nav-offset)+1rem))] lg:pb-[max(2rem,calc(var(--safe-bottom)+1.5rem))]">
       <div className="rounded-2xl border border-stone-200 bg-stone-50/90 px-4 py-3 text-sm text-stone-700">
         <p className="font-semibold text-stone-900">Configuración local</p>
         <p className="text-xs text-stone-500 mt-1">
@@ -154,60 +155,91 @@ export function PrintersSettingsTab() {
         </div>
       </div>
 
-      <ComandasPrinterSettings
-        comandasDefault={settings.comandasDefault}
-        comandasByArea={settings.comandasByArea}
-        printerOptions={printerOptions}
-        paperOptions={paperOptions}
-        loadingPrinters={loadingPrinters}
-        onRefreshPrinters={refreshPrinters}
-        onDefaultChange={(patch) =>
-          setSettings((prev) => ({
-            ...prev,
-            comandasDefault: { ...prev.comandasDefault, ...patch },
-          }))
-        }
-        onAreaChange={(areaKey, patch) =>
-          setSettings((prev) => ({
-            ...prev,
-            comandasByArea: {
-              ...prev.comandasByArea,
-              [areaKey]: normalizeSlot({ ...prev.comandasByArea[areaKey], ...patch }),
-            },
-          }))
-        }
-        onAreaClear={(areaKey) =>
-          setSettings((prev) => {
-            const next = { ...prev.comandasByArea }
-            delete next[areaKey]
-            return { ...prev, comandasByArea: next }
-          })
-        }
-        onTestDefault={() => void onTestDefault()}
-        onTestArea={(areaKey) => void onTestArea(areaKey)}
-        testingDefault={Boolean(testing.comandas)}
-        testingArea={testingArea}
-      />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-6 items-start">
+        <PrinterColumn
+          icon={<ChefHat size={18} />}
+          title="Comandas"
+          description="Cocina, bar y demás áreas de preparación."
+        >
+          <ComandasPrinterSettings
+            comandasDefault={settings.comandasDefault}
+            comandasByArea={settings.comandasByArea}
+            printerOptions={printerOptions}
+            paperOptions={paperOptions}
+            loadingPrinters={loadingPrinters}
+            onRefreshPrinters={refreshPrinters}
+            onDefaultChange={(patch) =>
+              setSettings((prev) => ({
+                ...prev,
+                comandasDefault: { ...prev.comandasDefault, ...patch },
+              }))
+            }
+            onAreaChange={(areaKey, patch) =>
+              setSettings((prev) => ({
+                ...prev,
+                comandasByArea: {
+                  ...prev.comandasByArea,
+                  [areaKey]: normalizeSlot({ ...prev.comandasByArea[areaKey], ...patch }),
+                },
+              }))
+            }
+            onAreaClear={(areaKey) =>
+              setSettings((prev) => {
+                const next = { ...prev.comandasByArea }
+                delete next[areaKey]
+                return { ...prev, comandasByArea: next }
+              })
+            }
+            onTestDefault={() => void onTestDefault()}
+            onTestArea={(areaKey) => void onTestArea(areaKey)}
+            testingDefault={Boolean(testing.comandas)}
+            testingArea={testingArea}
+          />
+          <ComandaPrintSettings />
+        </PrinterColumn>
 
-      <ComandaPrintSettings />
+        <PrinterColumn
+          icon={<Receipt size={18} />}
+          title="Precuenta"
+          description="Ticket de precuenta que se entrega antes de cobrar."
+        >
+          <PrinterKindCard
+            kind="precuenta"
+            cfg={settings.precuenta}
+            printerOptions={printerOptions}
+            paperOptions={paperOptions}
+            loadingPrinters={loadingPrinters}
+            onRefreshPrinters={refreshPrinters}
+            onChange={(patch) =>
+              setSettings((prev) => ({ ...prev, precuenta: { ...prev.precuenta, ...patch } }))
+            }
+            onTest={() => void onTestKind('precuenta')}
+            testing={Boolean(testing.precuenta)}
+          />
+        </PrinterColumn>
 
-      {(['precuenta', 'documentos'] as const).map((kind) => (
-        <PrinterKindCard
-          key={kind}
-          kind={kind}
-          cfg={settings[kind]}
-          printerOptions={printerOptions}
-          paperOptions={paperOptions}
-          loadingPrinters={loadingPrinters}
-          onRefreshPrinters={refreshPrinters}
-          onChange={(patch) => setSettings((prev) => ({ ...prev, [kind]: { ...prev[kind], ...patch } }))}
-          onTest={() => void onTestKind(kind)}
-          testing={Boolean(testing[kind])}
-        />
-      ))}
-
-      <LogoPrintSizeSettings />
-      <NotaVentaPrintSettings />
+        <PrinterColumn
+          icon={<FileText size={18} />}
+          title="Documentos"
+          description="Boleta, factura y nota de venta."
+        >
+          <PrinterKindCard
+            kind="documentos"
+            cfg={settings.documentos}
+            printerOptions={printerOptions}
+            paperOptions={paperOptions}
+            loadingPrinters={loadingPrinters}
+            onRefreshPrinters={refreshPrinters}
+            onChange={(patch) =>
+              setSettings((prev) => ({ ...prev, documentos: { ...prev.documentos, ...patch } }))
+            }
+            onTest={() => void onTestKind('documentos')}
+            testing={Boolean(testing.documentos)}
+          />
+          <NotaVentaPrintSettings />
+          <LogoPrintSizeSettings />
+        </PrinterColumn>
+      </div>
 
       {!caps.windowsUsb && !caps.bluetooth && caps.network && (
         <p className="text-xs text-stone-500 px-1">

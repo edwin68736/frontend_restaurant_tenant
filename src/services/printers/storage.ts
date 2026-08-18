@@ -33,6 +33,7 @@ export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterC
     networkPrinterLabel: String(raw?.networkPrinterLabel ?? '').trim(),
     bluetoothName: String(raw?.bluetoothName ?? '').trim(),
     bluetoothMac: String(raw?.bluetoothMac ?? '').trim(),
+    openDrawerOnPrint: raw?.openDrawerOnPrint === true,
   }
   return { ...slot, connection: effectiveConnection(slot) }
 }
@@ -48,6 +49,7 @@ function emptySlot(): PrinterConfig {
     networkPrinterLabel: '',
     bluetoothName: '',
     bluetoothMac: '',
+    openDrawerOnPrint: false,
   }
 }
 

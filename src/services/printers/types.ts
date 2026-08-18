@@ -15,6 +15,8 @@ export type PrinterConfig = {
   networkPrinterLabel?: string
   bluetoothName?: string
   bluetoothMac?: string
+  /** Solo aplica al slot "documentos": abre el cajón de dinero (vía la impresora) al imprimir boleta/factura/nota de venta. */
+  openDrawerOnPrint?: boolean
 }
 
 export type StoredPrinterSettings = {

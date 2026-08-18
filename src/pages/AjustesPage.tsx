@@ -32,7 +32,9 @@ export default function AjustesPage() {
 
   return (
     <div className="w-full flex flex-col">
-      <div className="w-full max-w-6xl mx-auto pb-4 sm:pb-6">
+      <div
+        className={`w-full mx-auto pb-4 sm:pb-6 ${activeTab === 'impresoras' ? 'max-w-[100rem]' : 'max-w-6xl'}`}
+      >
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-base sm:text-xl font-bold text-stone-900">

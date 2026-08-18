@@ -68,7 +68,9 @@ import {
   appendCatalogLine,
   applyCatalogLineUnitPrice,
   buildCatalogConfigureKey,
+  cartLineHasMissingPrice,
   cartLineKey,
+  cartLineLabel,
   cartLineTaxTotals,
   cartLineTotal,
   createCatalogCartLine,
@@ -1066,6 +1068,17 @@ export default function POSPage() {
       />
     ))
 
+  // Última barrera antes de enviar a cocina o cobrar: ninguna línea del carrito puede tener
+  // precio 0 (ni siquiera bonificación — ahí lo que se zerea es el total cobrado, no el precio).
+  const blockIfMissingCartPrices = (): boolean => {
+    const bad = cart.find((l) => cartLineHasMissingPrice(l))
+    if (bad) {
+      toast.error(`«${cartLineLabel(bad)}» no tiene precio de venta. Corrígelo antes de continuar.`)
+      return true
+    }
+    return false
+  }
+
   const resolveOrderItems = () => {
     try {
       return cartToOrderItems(cart)
@@ -1108,6 +1121,7 @@ export default function POSPage() {
       toast.error('Agrega productos al carrito')
       return
     }
+    if (blockIfMissingCartPrices()) return
     if (posOrderType === 'delivery' && !deliveryAddress.trim()) {
       toast.error('Completa la dirección en Delivery')
       setOrderDetailsModal('delivery')
@@ -1266,6 +1280,7 @@ export default function POSPage() {
   }, [checkoutOpen, payableTotal, payments.length])
 
   const doCheckout = async () => {
+    if (blockIfMissingCartPrices()) return
     const paid = payments.reduce((s, p) => s + p.amount, 0)
     if (!paidCoversTotal(paid, payableTotal)) {
       toast.error('El monto pagado debe ser al menos el total')
