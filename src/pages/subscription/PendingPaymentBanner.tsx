@@ -4,9 +4,10 @@ import { formatMoney } from './subscriptionUx'
 
 /**
  * Barra de acción a todo el ancho: es lo más urgente que puede haber en esta página, así que va
- * justo debajo del resumen del plan, antes de las pestañas. Solo se muestra cuando hay deuda
- * real y cobrable HOY (ver isInvoicePayableNow) — un cobro emitido por adelantado para el
- * próximo período no cuenta, ese vive en la pestaña "Planes y paquetes" como aviso de renovar.
+ * justo debajo del resumen del plan, antes de las pestañas. Se muestra para todo cobro
+ * `pending`/`overdue` (ver isInvoicePayableNow: el estado real manda, no la cercanía del
+ * vencimiento) — un cobro `pending_review` no cuenta, ya tiene un comprobante esperando
+ * aprobación.
  */
 export default function PendingPaymentBanner({
   hub,

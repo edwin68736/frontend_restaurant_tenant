@@ -6,6 +6,7 @@ import {
   formatDate,
   formatMoney,
   invoiceStatusUI,
+  isInvoicePayableNow,
   sortInvoicesForBillingList,
 } from './subscriptionUx'
 
@@ -26,7 +27,7 @@ function InvoiceRow({
   const sub = hub.subscription
   const ui = invoiceStatusUI(invoice)
   const total = billingCyclePaymentTotal(invoice, sub)
-  const canPay = invoice.status === 'pending' || invoice.status === 'overdue'
+  const canPay = isInvoicePayableNow(invoice)
 
   return (
     <article
@@ -84,7 +85,13 @@ function InvoiceRow({
 
 export default function BillingTab({ hub, onPay }: Props) {
   const sorted = sortInvoicesForBillingList(hub.invoices)
-  const pending = sorted.filter(i => i.status === 'pending' || i.status === 'overdue')
+  // pending_review va en este grupo (no en uno aparte): sigue siendo un cobro abierto, solo que
+  // ya tiene un comprobante esperando aprobación (ui.label lo distingue con su propio badge).
+  // Antes de existir este estado no hacía falta contemplarlo acá; sin esto, el cobro
+  // desaparecía por completo de la pantalla mientras se revisaba.
+  const pending = sorted.filter(
+    i => i.status === 'pending' || i.status === 'overdue' || i.status === 'pending_review',
+  )
   const paid = sorted.filter(i => i.status === 'paid')
 
   if (sorted.length === 0) {
