@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileText, Receipt } from 'lucide-react'
+import { CheckCircle2, Download, Receipt } from 'lucide-react'
 import { assetUrl, type BillingHub, type BillingInvoice } from '@/services/subscription.service'
 import {
   billingCyclePaymentTotal,
@@ -74,21 +74,6 @@ function InvoiceRow({
                 title="Descargar boleta/factura"
               >
                 <Download size={12} /> Descargar
-              </a>
-            )}
-            {/* Comprobante que EL TENANT subió, del intento más reciente para este período —
-                distinto de la boleta/factura de arriba. Se muestra sin importar el estado: útil
-                tanto para ver qué se subió mientras está en revisión como para revisar un
-                rechazo. */}
-            {invoice.receipt_url && (
-              <a
-                href={assetUrl(invoice.receipt_url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-rest-700 hover:underline px-2"
-                title="Ver comprobante subido"
-              >
-                <FileText size={12} /> Ver comprobante
               </a>
             )}
           </div>
