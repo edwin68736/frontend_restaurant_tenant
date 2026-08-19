@@ -104,6 +104,10 @@ export interface BillingInvoice {
    *  todavía no la adjuntó. Ya la calcula el backend (compartido con Tukifac) — solo faltaba
    *  declararla y mostrarla acá. */
   fiscal_doc_url?: string
+  /** Comprobante que EL TENANT subió (voucher/captura) del intento de pago más reciente para
+   *  este período, sea cual sea su estado — distinto de fiscal_doc_url (la boleta/factura que
+   *  le emite el admin). */
+  receipt_url?: string
 }
 
 export interface SaasPaymentRow {

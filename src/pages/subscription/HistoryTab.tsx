@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { CheckCircle2, Clock, History } from 'lucide-react'
+import { CheckCircle2, Clock, History, RotateCcw, XCircle } from 'lucide-react'
 import type { BillingHub } from '@/services/subscription.service'
-import { formatDate, formatMoney } from './subscriptionUx'
+import { formatDate, formatMoney, paymentIconTone } from './subscriptionUx'
 
 type Props = { hub: BillingHub }
 
@@ -11,6 +11,8 @@ type TimelineItem = {
   label: string
   detail?: string
   kind: 'payment' | 'event'
+  /** Solo para kind: 'payment' — el status real de saas_payments, para colorear el ícono. */
+  status?: string
 }
 
 export default function HistoryTab({ hub }: Props) {
@@ -33,6 +35,7 @@ export default function HistoryTab({ hub }: Props) {
                 : 'Comprobante enviado',
         detail: `${formatMoney(p.amount)} · ${p.payment_method}${p.reference ? ` · ${p.reference}` : ''}`,
         kind: 'payment',
+        status: p.status,
       })
     }
     for (const ev of hub.events) {
@@ -89,11 +92,19 @@ export default function HistoryTab({ hub }: Props) {
                 </p>
               ) : null}
               <div className="flex gap-3 pb-4">
-                <div className="shrink-0 w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-                  {item.kind === 'payment' && item.label.includes('recibido') ? (
-                    <CheckCircle2 size={16} className="text-emerald-600" />
+                <div
+                  className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                    item.kind === 'payment' ? paymentIconTone(item.status ?? '') : 'bg-stone-100 text-stone-400'
+                  }`}
+                >
+                  {item.kind === 'payment' && item.status === 'approved' ? (
+                    <CheckCircle2 size={16} />
+                  ) : item.kind === 'payment' && item.status === 'rejected' ? (
+                    <XCircle size={16} />
+                  ) : item.kind === 'payment' && item.status === 'reversed' ? (
+                    <RotateCcw size={16} />
                   ) : (
-                    <Clock size={16} className="text-stone-400" />
+                    <Clock size={16} />
                   )}
                 </div>
                 <div className="min-w-0 flex-1 border-l border-stone-100 pl-3 -ml-3">

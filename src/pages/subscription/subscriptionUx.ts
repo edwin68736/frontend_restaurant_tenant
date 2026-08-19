@@ -83,6 +83,20 @@ export const STATUS_LABELS: Record<string, string> = {
   reversed: 'Anulado',
 }
 
+/** Color del ícono de cada intento de pago en la línea de tiempo (HistoryTab), según su
+ *  estado real (saas_payments.status) — no una aproximación por el texto del label. */
+const PAYMENT_ICON_TONE: Record<string, string> = {
+  approved: 'bg-emerald-50 text-emerald-600',
+  pending_review: 'bg-blue-50 text-blue-600',
+  rejected: 'bg-red-50 text-red-600',
+  reversed: 'bg-stone-100 text-stone-500',
+  pending: 'bg-amber-50 text-amber-600',
+}
+
+export function paymentIconTone(status: string) {
+  return PAYMENT_ICON_TONE[status] ?? 'bg-stone-100 text-stone-400'
+}
+
 export function formatMoney(n: number, c = 'PEN') {
   return `${c === 'PEN' ? 'S/' : `${c} `}${n.toFixed(2)}`
 }

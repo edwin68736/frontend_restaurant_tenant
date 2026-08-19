@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Receipt } from 'lucide-react'
+import { CheckCircle2, Download, FileText, Receipt } from 'lucide-react'
 import { assetUrl, type BillingHub, type BillingInvoice } from '@/services/subscription.service'
 import {
   billingCyclePaymentTotal,
@@ -45,7 +45,7 @@ function InvoiceRow({
             Emisión {formatDate(invoice.period_start)} · Vence {formatDate(invoice.due_date)}
           </p>
         </div>
-        <div className="shrink-0 flex flex-col gap-2">
+        <div className="shrink-0 flex flex-col items-end gap-2">
           {canPay ? (
             <button
               type="button"
@@ -55,28 +55,43 @@ function InvoiceRow({
               Pagar
             </button>
           ) : invoice.status === 'paid' ? (
-            <div className="flex flex-col items-end gap-1">
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 px-2 py-1">
-                <CheckCircle2 size={14} />
-                Pagado
-              </span>
-              {/* Comprobante del PERÍODO (no del intento de pago): un período puede haber
-                  tenido intentos rechazados/anulados antes del que finalmente lo saldó — este
-                  siempre apunta al que realmente lo pagó (ver InvoiceView.FiscalDocURL en el
-                  backend, compartido con Tukifac). */}
-              {invoice.fiscal_doc_url && (
-                <a
-                  href={assetUrl(invoice.fiscal_doc_url)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs font-medium text-rest-700 hover:underline px-2"
-                  title="Descargar comprobante"
-                >
-                  <Download size={12} /> Descargar
-                </a>
-              )}
-            </div>
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 px-2 py-1">
+              <CheckCircle2 size={14} />
+              Pagado
+            </span>
           ) : null}
+          <div className="flex flex-col items-end gap-1">
+            {/* Boleta/factura del PERÍODO (la emite el admin): un período puede haber tenido
+                intentos rechazados/anulados antes del que finalmente lo saldó — esta siempre
+                apunta al que realmente lo pagó (ver InvoiceView.FiscalDocURL en el backend,
+                compartido con Tukifac). */}
+            {invoice.status === 'paid' && invoice.fiscal_doc_url && (
+              <a
+                href={assetUrl(invoice.fiscal_doc_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-rest-700 hover:underline px-2"
+                title="Descargar boleta/factura"
+              >
+                <Download size={12} /> Descargar
+              </a>
+            )}
+            {/* Comprobante que EL TENANT subió, del intento más reciente para este período —
+                distinto de la boleta/factura de arriba. Se muestra sin importar el estado: útil
+                tanto para ver qué se subió mientras está en revisión como para revisar un
+                rechazo. */}
+            {invoice.receipt_url && (
+              <a
+                href={assetUrl(invoice.receipt_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-rest-700 hover:underline px-2"
+                title="Ver comprobante subido"
+              >
+                <FileText size={12} /> Ver comprobante
+              </a>
+            )}
+          </div>
         </div>
       </div>
     </article>
