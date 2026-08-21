@@ -35,7 +35,7 @@ import { productsService, type Product, type Category, getProductImageUrl } from
 import { sortCategories } from '@/utils/sortCategories'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
 import { posFastCheckoutEnabled } from '@/config/featureFlags'
-import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
+import { companyService, pickDefaultCheckoutSeries } from '@/services/company.service'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { consultaService } from '@/services/consulta.service'
@@ -356,7 +356,7 @@ export default function POSPage() {
   }, [loadPosMeta])
 
   useEffect(() => {
-    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    const def = pickDefaultCheckoutSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -442,7 +442,7 @@ export default function POSPage() {
   const checkoutContactOk = checkoutContactIsValid(selectedContact, docType, selectedSeries?.sunat_code)
 
   const applyCheckoutDefaults = useCallback(() => {
-    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    const def = pickDefaultCheckoutSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')

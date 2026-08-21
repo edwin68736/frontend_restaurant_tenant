@@ -93,6 +93,8 @@ export interface SeriesRow {
   category: string
   active?: boolean
   sunat_code?: string
+  /** Comprobante preferido al iniciar una venta en esta sucursal (solo nota de venta/boleta/factura). */
+  is_default?: boolean
   locked?: boolean
   can_delete?: boolean
   usage_table?: string
@@ -168,7 +170,7 @@ export const companyService = {
         categoryLabels: r.data.category_labels ?? {},
       })),
 
-  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number }) =>
+  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number; is_default?: boolean }) =>
     api.post('/api/company/series', data).then((r) => r.data),
 
   updateSeries: (
@@ -178,17 +180,27 @@ export const companyService = {
       active: boolean
       doc_type: string
       correlative?: number
+      is_default?: boolean
     },
   ) => api.put(`/api/company/series/${id}`, data).then((r) => r.data),
+
+  /** Atajo de un clic: marca esta serie como el comprobante por defecto de su sucursal. */
+  setDefaultSeries: (id: number) => api.put(`/api/company/series/${id}/default`).then((r) => r.data),
 
   deleteSeries: (id: number) => api.delete(`/api/company/series/${id}`).then((r) => r.data),
 }
 
-/** Serie por defecto en POS/checkout: nota de venta (SUNAT 00). */
-export function pickDefaultNotaVentaSeries<T extends { id: number; doc_type: string; sunat_code?: string }>(
+/**
+ * Serie por defecto en POS/checkout: la marcada is_default en Ajustes → Series de esa sucursal;
+ * si ninguna lo trae (tenant sin migrar aún, o sucursal sin default elegido), cae a nota de venta
+ * (SUNAT 00) como antes, y por último a la primera de la lista.
+ */
+export function pickDefaultCheckoutSeries<T extends { id: number; doc_type: string; sunat_code?: string; is_default?: boolean }>(
   list: T[],
 ): T | null {
   if (!list.length) return null
+  const byDefault = list.find((s) => s.is_default)
+  if (byDefault) return byDefault
   const bySunat = list.find((s) => {
     const code = String(s.sunat_code ?? '').trim()
     if (code === '00') return true

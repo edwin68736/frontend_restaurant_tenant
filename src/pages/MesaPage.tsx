@@ -22,7 +22,7 @@ import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import type { PrintData } from '@/types/printData'
 import { productsService, type Product, type Category, getProductImageUrl } from '@/services/products.service'
 import { sortCategories } from '@/utils/sortCategories'
-import { companyService, pickDefaultNotaVentaSeries } from '@/services/company.service'
+import { companyService, pickDefaultCheckoutSeries } from '@/services/company.service'
 import { resolveTaxRatePercent } from '@/constants/tax'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
@@ -234,7 +234,7 @@ export default function MesaPage() {
   })
 
   useEffect(() => {
-    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    const def = pickDefaultCheckoutSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -498,7 +498,7 @@ export default function MesaPage() {
   const checkoutContactOk = checkoutContactIsValid(selectedContact, docType, selectedSeries?.sunat_code)
 
   const applyCheckoutDefaults = useCallback(() => {
-    const def = pickDefaultNotaVentaSeries(checkoutSeries)
+    const def = pickDefaultCheckoutSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')

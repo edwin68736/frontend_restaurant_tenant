@@ -92,6 +92,13 @@ export function formatDocumentCode(row: Pick<SeriesRow, 'sunat_code'>): string {
   return (row.sunat_code ?? '—').trim() || '—'
 }
 
+/** Solo nota de venta/boleta/factura (category=venta) pueden marcarse como comprobante por defecto. */
+export function isDefaultEligibleSeries(row: Pick<SeriesRow, 'sunat_code' | 'category'>): boolean {
+  const code = (row.sunat_code ?? '').trim()
+  const category = (row.category ?? '').trim().toLowerCase()
+  return category === 'venta' && (code === '00' || code === '01' || code === '03')
+}
+
 export function groupSeriesByBranch(series: SeriesRow[], branches: { id: number; name: string }[]) {
   return branches.map((b) => ({
     branchId: b.id,
