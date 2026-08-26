@@ -90,6 +90,19 @@ function SalesFilters({ filters, onChange, catalogs, exportActions }: ReportFilt
           </select>
         </ReportFilterField>
       )}
+      <ReportFilterField label="Comprobante" className="shrink-0">
+        <select
+          value={String(filters.doc_type_group ?? 'all')}
+          onChange={(e) => onChange({ doc_type_group: e.target.value })}
+          className={reportSelectClass}
+        >
+          <option value="all">Todos</option>
+          <option value="notes">Notas de venta</option>
+          <option value="facturas_boletas">Facturas + boletas</option>
+          <option value="factura">Solo facturas</option>
+          <option value="boleta">Solo boletas</option>
+        </select>
+      </ReportFilterField>
       <ReportFilterField label="Estado venta" className="shrink-0">
         <select
           value={String(filters.sale_status ?? 'all')}
@@ -148,6 +161,20 @@ function buildListParams(filters: Record<string, unknown>, page?: number, perPag
   if (filters.branch_id) params.branch_id = Number(filters.branch_id)
   if (filters.payment_method) params.payment_method = filters.payment_method
   if (filters.sale_status && filters.sale_status !== 'all') params.sale_status = filters.sale_status
+  switch (filters.doc_type_group) {
+    case 'notes':
+      params.sunat_code = '00'
+      break
+    case 'facturas_boletas':
+      params.sunat_code = '01,03'
+      break
+    case 'factura':
+      params.sunat_code = '01'
+      break
+    case 'boleta':
+      params.sunat_code = '03'
+      break
+  }
   if (page != null) params.page = page
   if (perPage != null) params.per_page = perPage
   return params
@@ -165,7 +192,7 @@ export const salesReportDefinition: TableReportDefinition<Sale> = {
   excelColumns: COLS,
   initialFilters: () => {
     const { from, to } = getCurrentMonthRange()
-    return { from, to, branch_id: '', sale_status: 'all', payment_method: '', q: '' }
+    return { from, to, branch_id: '', doc_type_group: 'all', sale_status: 'all', payment_method: '', q: '' }
   },
   FilterPanel: SalesFilters,
   SummaryPanel: SalesSummary,
