@@ -149,6 +149,13 @@ function parseArqueoJson(v: string | null | undefined) {
 
 const REPORT_SESSION_NOTE_MAX = 72
 
+/** true solo para efectivo — mismo criterio que ya usan cajaSessionReportPdf.ts/
+ *  CajaSessionReportView.tsx para separar "caja física" de medios electrónicos. */
+function isEfectivoMethod(method: string | undefined): boolean {
+  const c = (method ?? '').trim().toLowerCase()
+  return c === 'efectivo' || c === 'cash'
+}
+
 function cashSessionOpenerLabel(s: CashSession): string {
   const name = (s.opened_by_name ?? '').trim()
   if (name) return name
@@ -593,16 +600,24 @@ export default function CajaPage() {
     if (session?.id != null && selectedReportSessionId == null) setSelectedReportSessionId(session.id)
   }, [session?.id, selectedReportSessionId])
 
+  // GetMovements (backend) unifica tenant_cash_movements (efectivo) y tenant_bank_movements
+  // manuales (Yape/Plin/tarjeta/transferencia) en una sola lista — antes solo devolvía efectivo,
+  // así que sumar `movements` completo aquí daba el número correcto por coincidencia. Ahora hay
+  // que filtrar por método: "Ingresos efectivo (caja física)"/"Egresos de caja"/"Saldo actual en
+  // caja" son, por su propio nombre, solo efectivo — nunca deben incluir un ingreso/egreso manual
+  // por un método electrónico.
+  const cashMovements = useMemo(() => movements.filter((m) => isEfectivoMethod(m.payment_method)), [movements])
+
   const { totalIncome, totalExpense, currentBalance } = useMemo(() => {
     const opening = Number(session?.opening_balance ?? 0)
     let income = 0
     let expense = 0
-    movements.forEach((m) => {
+    cashMovements.forEach((m) => {
       if (m.type === 'income') income += Number(m.amount || 0)
       else expense += Number(m.amount || 0)
     })
     return { totalIncome: income, totalExpense: expense, currentBalance: opening + income - expense }
-  }, [movements, session?.opening_balance])
+  }, [cashMovements, session?.opening_balance])
 
   const handleOpenSession = async (openingBalance: number, notes?: string) => {
     if (!activeBranchId) {
@@ -783,30 +798,32 @@ export default function CajaPage() {
   return (
     <div className="w-full flex flex-col">
       <div className="mb-3 border-b border-stone-200/80 pb-2">
-        <div className="mb-2">
-          <h2 className="text-lg font-bold text-stone-800">Caja</h2>
-          <p className="text-sm text-stone-500 hidden sm:block">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin" role="tablist" aria-label="Secciones de caja">
-          {cajaTabs.map((t) => {
-            const Icon = t.icon
-            const active = tab === t.key
-            return (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setTab(t.key)}
-                className={`shrink-0 px-3 py-2 rounded-xl border text-sm font-medium flex items-center gap-2 ${
-                  active ? 'bg-rest-600 text-white border-rest-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
-                }`}
-              >
-                <Icon size={16} />
-                {t.label}
-              </button>
-            )
-          })}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-bold text-stone-800">Caja</h2>
+            <p className="text-sm text-stone-500 hidden sm:block">Apertura/cierre, arqueo, movimientos y reporte de caja</p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-thin sm:justify-end" role="tablist" aria-label="Secciones de caja">
+            {cajaTabs.map((t) => {
+              const Icon = t.icon
+              const active = tab === t.key
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setTab(t.key)}
+                  className={`shrink-0 px-3 py-2 rounded-xl border text-sm font-medium flex items-center gap-2 ${
+                    active ? 'bg-rest-600 text-white border-rest-600' : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  <Icon size={16} />
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -840,16 +857,16 @@ export default function CajaPage() {
                 </div>
 
                 {sessionSalesByMethod.length > 0 && (
-                  <div className="rounded-xl border border-stone-200 bg-stone-50/50 p-3">
+                  <div>
                     <p className="text-xs font-semibold text-stone-700 mb-2">Desglose de ventas por método</p>
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {sessionSalesByMethod.map((x) => (
-                        <li key={x.method} className="flex justify-between text-sm gap-2">
-                          <span className="text-stone-600">{paymentMethodLabel(x.method)}</span>
-                          <span className="font-semibold text-stone-800 tabular-nums">S/ {Number(x.total).toFixed(2)}</span>
-                        </li>
+                        <div key={x.method} className="rounded-xl border border-stone-200 p-3">
+                          <p className="text-xs text-stone-500">{paymentMethodLabel(x.method)}</p>
+                          <p className="text-lg font-bold text-stone-800 tabular-nums">S/ {Number(x.total).toFixed(2)}</p>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
                 )}
 
@@ -1074,7 +1091,7 @@ export default function CajaPage() {
               <div>
                 <p className="text-sm font-semibold text-stone-800">Sesión abierta (ID {session.id})</p>
                 <p className="text-xs text-stone-500">
-                  {movements.length} movimiento(s) físicos en caja · ventas electrónicas en la tabla inferior
+                  {cashMovements.length} movimiento(s) físicos en caja · ventas electrónicas en la tabla inferior
                 </p>
               </div>
               <div className="flex gap-2">
