@@ -9,6 +9,22 @@ type Props = {
   compact?: boolean
 }
 
+// incomeTypeLabel — 'venta' (contado, misma Caja que el registro) y 'cobro_cxc' (cobro posterior
+// de una venta a crédito registrada en OTRA Caja) son ambos "dinero recibido" pero conceptualmente
+// distintos — mismo criterio que ya usa Tukifac. Un tipo desconocido muestra el texto crudo.
+function incomeTypeLabel(type: string): string {
+  switch (type) {
+    case 'venta':
+      return 'Venta'
+    case 'cobro_cxc':
+      return 'Cobro CxC'
+    case 'ingreso_manual':
+      return 'Ingreso manual'
+    default:
+      return type || 'Ingreso'
+  }
+}
+
 function DetailIncomeTable({
   rows,
   paymentLabel,
@@ -21,12 +37,15 @@ function DetailIncomeTable({
   if (!rows?.length) {
     return <p className="text-sm text-stone-400 py-4 text-center">{emptyText}</p>
   }
+  // "Caja origen" solo aporta algo cuando hay al menos un cobro_cxc — evita una columna vacía en
+  // las tablas que nunca la necesitan (ventas al contado, ingresos manuales).
+  const showOrigin = rows.some((r) => r.type === 'cobro_cxc')
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm min-w-[560px]">
         <thead className="bg-stone-50">
           <tr>
-            {['Fecha', 'Doc', 'Método', 'Monto'].map((h) => (
+            {['Fecha', 'Tipo', 'Doc', 'Método', ...(showOrigin ? ['Caja origen'] : []), 'Monto'].map((h) => (
               <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase">
                 {h}
               </th>
@@ -39,8 +58,14 @@ function DetailIncomeTable({
               <td className="px-3 py-2 text-xs whitespace-nowrap">
                 {r.date ? new Date(r.date).toLocaleString() : '—'}
               </td>
+              <td className="px-3 py-2 text-stone-600">{incomeTypeLabel(r.type)}</td>
               <td className="px-3 py-2 text-stone-700">{r.doc_number || r.reference || '—'}</td>
               <td className="px-3 py-2 text-stone-600">{paymentLabel(r.payment_method)}</td>
+              {showOrigin && (
+                <td className="px-3 py-2 text-xs text-stone-500">
+                  {r.type === 'cobro_cxc' && r.sale_cash_session_id ? `#${r.sale_cash_session_id}` : '—'}
+                </td>
+              )}
               <td className="px-3 py-2 font-semibold text-green-700 tabular-nums">
                 {formatSoles(r.amount)}
               </td>
@@ -88,6 +113,49 @@ function DetailExpenseTable({
               <td className="px-3 py-2 font-semibold text-red-700 tabular-nums">
                 {formatSoles(r.amount)}
               </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+const AMOUNT_TABLE_TONE = {
+  amber: { head: 'bg-amber-100/50', text: 'text-amber-900', border: 'border-amber-100' },
+  blue: { head: 'bg-blue-100/50', text: 'text-blue-900', border: 'border-blue-100' },
+  orange: { head: 'bg-orange-100/50', text: 'text-orange-900', border: 'border-orange-100' },
+} as const
+
+/** Tabla simple Fecha/Comprobante/Monto — usada por los paneles de SPOT/crédito CxC/CxP
+ *  generados (no llevan método de pago propio, a diferencia de DetailIncomeTable). */
+function DetailAmountTable({
+  rows,
+  tone,
+}: {
+  rows: { date: string; doc_number: string; amount: number }[]
+  tone: keyof typeof AMOUNT_TABLE_TONE
+}) {
+  const c = AMOUNT_TABLE_TONE[tone]
+  if (!rows?.length) return null
+  return (
+    <div className="max-h-48 overflow-y-auto overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className={`${c.head} sticky top-0`}>
+          <tr>
+            {['Fecha', 'Comprobante', 'Monto'].map((h) => (
+              <th key={h} className={`text-left px-3 py-2 text-xs font-semibold ${c.text}`}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className={`border-b ${c.border}`}>
+              <td className="px-3 py-2 text-xs">{r.date ? new Date(r.date).toLocaleString() : '—'}</td>
+              <td className="px-3 py-2">{r.doc_number || '—'}</td>
+              <td className={`px-3 py-2 font-semibold ${c.text}`}>{formatSoles(r.amount)}</td>
             </tr>
           ))}
         </tbody>
@@ -152,6 +220,44 @@ export function CajaSessionReportView({ report, paymentMethods = [], compact = f
               <p className="text-sm text-stone-800 whitespace-pre-wrap">{notes.closing}</p>
             </div>
           ) : null}
+        </div>
+      )}
+
+      {/* Detracción BN (SPOT), crédito y CxP generados — el backend ya los calcula (mismo
+          GetSessionReport que usa Tukifac); antes esta vista no los mostraba en absoluto. Cada
+          uno se oculta si no aplica a esta sesión (total 0). */}
+      {(report.detraction?.total_spot ?? 0) > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+          <p className="text-sm font-semibold text-amber-900 mb-1">Detracción BN (SPOT)</p>
+          <p className="text-xs text-amber-800 mb-3">
+            Montos de detracción registrados en ventas 1001. No entran al arqueo de caja ni a ingresos bancarios.
+          </p>
+          <p className="text-lg font-bold text-amber-900 mb-2">{formatSoles(report.detraction?.total_spot ?? 0)}</p>
+          <DetailAmountTable rows={report.detraction?.sales ?? []} tone="amber" />
+        </div>
+      )}
+
+      {(report.credit_generated?.total ?? 0) > 0 && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4">
+          <p className="text-sm font-semibold text-blue-900 mb-1">Crédito generado (CxC)</p>
+          <p className="text-xs text-blue-800 mb-3">
+            Ventas a crédito registradas en esta sesión, todavía sin cobrar. No es dinero recibido: no entra a
+            "Total ventas sesión" ni al arqueo. El saldo pendiente se cobra desde Cuentas por cobrar.
+          </p>
+          <p className="text-lg font-bold text-blue-900 mb-2">{formatSoles(report.credit_generated?.total ?? 0)}</p>
+          <DetailAmountTable rows={report.credit_generated?.sales ?? []} tone="blue" />
+        </div>
+      )}
+
+      {(report.payable_generated?.total ?? 0) > 0 && (
+        <div className="rounded-xl border border-orange-200 bg-orange-50/30 p-4">
+          <p className="text-sm font-semibold text-orange-900 mb-1">Cuenta por pagar generada (CxP)</p>
+          <p className="text-xs text-orange-800 mb-3">
+            Compras a crédito registradas en esta sesión, todavía sin pagar al proveedor. No es dinero pagado: no
+            entra a "Egresos de caja" ni al arqueo. El saldo pendiente se paga desde Cuentas por pagar.
+          </p>
+          <p className="text-lg font-bold text-orange-900 mb-2">{formatSoles(report.payable_generated?.total ?? 0)}</p>
+          <DetailAmountTable rows={report.payable_generated?.purchases ?? []} tone="orange" />
         </div>
       )}
 

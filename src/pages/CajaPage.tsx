@@ -979,7 +979,7 @@ export default function CajaPage() {
                 <table className="w-full text-sm min-w-[1100px]">
                   <thead className="bg-stone-50">
                     <tr>
-                      {['Apertura', 'Cierre', 'Aperturó', 'Cerró', 'Inicial', 'Ingresos', 'Egresos', 'Saldo cierre', 'Estado', ''].map((h) => (
+                      {['Apertura', 'Cierre', 'Aperturó', 'Cerró', 'Inicial', 'Ingresos', 'Egresos', 'Saldo cierre', 'Saldo actual', 'Estado', ''].map((h) => (
                         <th key={h || 'actions'} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">
                           {h}
                         </th>
@@ -1003,6 +1003,11 @@ export default function CajaPage() {
                         <td className="px-3 py-2 font-medium whitespace-nowrap">
                           {s.closing_balance != null ? `S/ ${Number(s.closing_balance).toFixed(2)}` : '-'}
                         </td>
+                        {/* Saldo con TODOS los métodos de pago (efectivo + Yape/Plin/transferencia/
+                            tarjeta) — "Saldo cierre" es solo lo declarado en el arqueo (solo
+                            efectivo), no alcanza para ver de un vistazo el total real de una sesión
+                            con ventas electrónicas. Mismo campo que ya usa Tukifac. */}
+                        <td className="px-3 py-2 font-medium whitespace-nowrap">S/ {Number(s.total ?? 0).toFixed(2)}</td>
                         <td className="px-3 py-2">
                           <span
                             className={`text-xs px-2 py-0.5 rounded-full font-medium ${

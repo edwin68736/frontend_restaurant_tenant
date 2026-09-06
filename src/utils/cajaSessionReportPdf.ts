@@ -33,6 +33,22 @@ function paymentMethodLabel(code: string): string {
   return map[c] || code || '—'
 }
 
+// incomeTypeLabel — mismo criterio que la pantalla (CajaSessionReportView.tsx) y que Tukifac:
+// 'venta' (contado) y 'cobro_cxc' (cobro de una venta a crédito registrada en OTRA Caja) son
+// ambos "dinero recibido" pero conceptualmente distintos.
+function incomeTypeLabel(type: string): string {
+  switch (type) {
+    case 'venta':
+      return 'Venta'
+    case 'cobro_cxc':
+      return 'Cobro CxC'
+    case 'ingreso_manual':
+      return 'Ingreso manual'
+    default:
+      return type || 'Ingreso'
+  }
+}
+
 function fmtDate(d: string | undefined): string {
   if (!d) return '—'
   try {
@@ -258,7 +274,10 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
       ensureSpace(doc, y, 12)
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(8)
-      doc.setTextColor(...C_MUTED)
+      // C_TEXT (oscuro), no C_MUTED: un subtítulo en negrita con el gris apagado de las
+      // etiquetas pequeñas se leía casi invisible — ese gris está pensado para ir junto a un
+      // valor oscuro más grande, no solo (mismo bug ya corregido en cashSessionReportPdf.ts).
+      doc.setTextColor(...C_TEXT)
       doc.text('Apertura', MARGIN, y.v)
       y.v += 4
       doc.setFont('helvetica', 'normal')
@@ -275,7 +294,7 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
       ensureSpace(doc, y, 12)
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(8)
-      doc.setTextColor(...C_MUTED)
+      doc.setTextColor(...C_TEXT)
       doc.text('Cierre', MARGIN, y.v)
       y.v += 4
       doc.setFont('helvetica', 'normal')
@@ -308,6 +327,62 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
   doc.setTextColor(...C_MUTED)
   doc.text(`Saldo inicial de caja: ${money(cash?.opening_balance ?? s.opening_balance)}`, MARGIN, y.v)
   y.v += 8
+
+  // Detracción/crédito/CxP generados — el backend ya los calcula (mismo GetSessionReport que
+  // usa Tukifac); antes este PDF no los mostraba en absoluto. Cada uno se omite si no aplica.
+  const spotTotal = report.detraction?.total_spot ?? 0
+  if (spotTotal > 0) {
+    drawSectionTitle(doc, y, 'Detracción BN (SPOT)')
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Montos de detracción registrados en ventas 1001. No entran al arqueo de caja.', MARGIN, y.v)
+    y.v += 5
+    const detRows = (report.detraction?.sales ?? []).map((r) => [fmtDate(r.date), r.doc_number || '—', money(r.amount)])
+    if (detRows.length === 0) {
+      doc.text('Sin registros de detracción.', MARGIN, y.v)
+      y.v += 8
+    } else {
+      drawDataTable(doc, y, ['Fecha', 'Comprobante', 'Monto'], detRows, [58, 78, 38])
+    }
+  }
+
+  const creditTotal = report.credit_generated?.total ?? 0
+  if (creditTotal > 0) {
+    drawSectionTitle(doc, y, 'Crédito generado (CxC)')
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Ventas a crédito registradas en esta sesión, sin cobrar. No entran al arqueo de caja.', MARGIN, y.v)
+    y.v += 5
+    const creditRows = (report.credit_generated?.sales ?? []).map((r) => [fmtDate(r.date), r.doc_number || '—', money(r.amount)])
+    if (creditRows.length === 0) {
+      doc.text('Sin ventas a crédito registradas.', MARGIN, y.v)
+      y.v += 8
+    } else {
+      drawDataTable(doc, y, ['Fecha', 'Comprobante', 'Monto'], creditRows, [58, 78, 38])
+    }
+  }
+
+  const payableTotal = report.payable_generated?.total ?? 0
+  if (payableTotal > 0) {
+    drawSectionTitle(doc, y, 'Cuenta por pagar generada (CxP)')
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Compras a crédito registradas en esta sesión, sin pagar al proveedor. No entran al arqueo de caja.', MARGIN, y.v)
+    y.v += 5
+    const payableRows = (report.payable_generated?.purchases ?? []).map((r) => [fmtDate(r.date), r.doc_number || '—', money(r.amount)])
+    if (payableRows.length === 0) {
+      doc.text('Sin compras a crédito registradas.', MARGIN, y.v)
+      y.v += 8
+    } else {
+      drawDataTable(doc, y, ['Fecha', 'Comprobante', 'Monto'], payableRows, [58, 78, 38])
+    }
+  }
 
   drawSectionTitle(doc, y, 'Totales por método — caja física')
   const cashMethodRows: string[][] = []
@@ -356,11 +431,12 @@ export function generateCajaSessionReportPdf(report: CashSessionReport, opts?: {
     drawDataTable(doc, y, ['Origen', 'Método', 'Monto'], purchaseRows, [42, 118, 26])
   }
 
-  const incomeCols = [38, 28, 58, 28, 26] as const
-  const incomeHeaders = ['Fecha / hora', 'Documento', 'Referencia', 'Método', 'Monto']
+  const incomeCols = [32, 24, 28, 46, 24, 26] as const
+  const incomeHeaders = ['Fecha / hora', 'Tipo', 'Documento', 'Referencia', 'Método', 'Monto']
   const mapIncomeRows = (rows: CashSessionReport['income_detail']) =>
     (rows ?? []).map((r) => [
       fmtDate(r.date),
+      incomeTypeLabel(r.type),
       r.doc_number || '—',
       r.reference || '—',
       paymentMethodLabel(r.payment_method),

@@ -36,6 +36,10 @@ export interface CashSession {
   notes?: string
   /** Sin movimientos ni ventas: se puede eliminar sin perder nada. */
   empty?: boolean
+  /** Saldo con TODOS los métodos de pago (efectivo + Yape/Plin/transferencia/tarjeta) — a
+   *  diferencia de total_income/total_expense (solo efectivo, pensados para el arqueo). Mismo
+   *  campo que ya usa Tukifac en su historial de sesiones. */
+  total?: number
 }
 
 export interface CashMovement {
@@ -110,6 +114,9 @@ export interface IncomeDetailRow {
   reference: string
   amount: number
   payment_method: string
+  /** Solo en type="cobro_cxc": Caja donde se REGISTRÓ la venta (distinta de esta sesión, que es
+   *  donde ocurrió el cobro). Mismo campo que ya usa Tukifac. */
+  sale_cash_session_id?: number | null
 }
 
 export interface ExpenseDetailRow {
@@ -164,12 +171,32 @@ export interface CashSessionReport {
   totals: {
     total_income: number
     total_expense: number
+    /** Cobrado directo (sin SPOT). */
     total_sales: number
+    total_sales_direct?: number
+    total_detraccion_spot?: number
+    total_sales_commercial?: number
     total_purchases: number
     final_balance: number
   }
   cash_physical: SessionCashPhysical
   electronic: SessionElectronic
+  detraction?: {
+    total_spot: number
+    sales: IncomeDetailRow[]
+  }
+  /** Ventas a crédito REGISTRADAS en esta sesión, sin cobrar todavía — no es dinero recibido, ya
+   *  está excluido de totals.total_sales/electronic. El saldo pendiente real se consulta en CxC. */
+  credit_generated?: {
+    total: number
+    sales: IncomeDetailRow[]
+  }
+  /** Compras a crédito REGISTRADAS en esta sesión, sin pagar todavía — no es dinero pagado, ya
+   *  está excluido de totals.total_purchases. El saldo pendiente real se consulta en CxP. */
+  payable_generated?: {
+    total: number
+    purchases: ExpenseDetailRow[]
+  }
 }
 
 export interface MovementReportRow {

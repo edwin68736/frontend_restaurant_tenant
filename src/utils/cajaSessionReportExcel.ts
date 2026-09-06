@@ -43,6 +43,15 @@ function buildSummarySheet(report: CashSessionReport): CellValue[][] {
   rows.push(['Total ventas', money(t.total_sales)])
   rows.push(['Total compras', money(t.total_purchases)])
   rows.push(['Saldo final', money(t.final_balance)])
+  if (report.detraction?.total_spot) {
+    rows.push(['Detracción SPOT', money(report.detraction.total_spot)])
+  }
+  if (report.credit_generated?.total) {
+    rows.push(['Crédito generado (CxC, sin cobrar)', money(report.credit_generated.total)])
+  }
+  if (report.payable_generated?.total) {
+    rows.push(['Cuenta por pagar generada (CxP, sin pagar)', money(report.payable_generated.total)])
+  }
   rows.push([])
 
   const cash = report.cash_physical
@@ -93,6 +102,15 @@ function buildMovementsSheet(
   return rows
 }
 
+// buildAmountSheet — hoja simple Fecha/Comprobante/Monto para SPOT/crédito CxC/CxP generados:
+// no llevan método de pago propio, a diferencia de ingresos/egresos (buildMovementsSheet).
+function buildAmountSheet(title: string, rows: { date: string; doc_number: string; amount: number }[]): CellValue[][] {
+  const out: CellValue[][] = [[title], [], ['Fecha', 'Comprobante', 'Monto']]
+  for (const r of rows) out.push([r.date ?? '', r.doc_number ?? '', money(r.amount)])
+  if (rows.length === 0) out.push(['Sin registros'])
+  return out
+}
+
 function buildMethodsSheet(report: CashSessionReport): CellValue[][] {
   const rows: CellValue[][] = [['TOTALES POR MÉTODO DE PAGO'], []]
   const blocks: [string, { method: string; total: number }[]][] = [
@@ -123,6 +141,18 @@ export async function downloadCajaSessionReportExcel(
   sheets.push({ name: 'Ingresos', rows: buildMovementsSheet('INGRESOS', report.income_detail ?? []) })
   sheets.push({ name: 'Egresos', rows: buildMovementsSheet('EGRESOS', report.expense_detail ?? []) })
   sheets.push({ name: 'Por método', rows: buildMethodsSheet(report) })
+
+  // Detracción/crédito/CxP generados — el backend ya los calcula; antes este Excel no los incluía
+  // en absoluto (ni la línea de total en Resumen, ni el detalle). Cada hoja se omite si no aplica.
+  if ((report.detraction?.sales ?? []).length > 0) {
+    sheets.push({ name: 'Detracción SPOT', rows: buildAmountSheet('DETRACCIÓN SPOT', report.detraction!.sales) })
+  }
+  if ((report.credit_generated?.sales ?? []).length > 0) {
+    sheets.push({ name: 'Crédito generado', rows: buildAmountSheet('CRÉDITO GENERADO (CxC, SIN COBRAR)', report.credit_generated!.sales) })
+  }
+  if ((report.payable_generated?.purchases ?? []).length > 0) {
+    sheets.push({ name: 'CxP generada', rows: buildAmountSheet('CUENTA POR PAGAR GENERADA (CxP, SIN PAGAR)', report.payable_generated!.purchases) })
+  }
 
   const cancelled = report.cancelled_sales_detail ?? []
   if (cancelled.length > 0) {
