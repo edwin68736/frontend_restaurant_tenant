@@ -19,6 +19,7 @@ type Props = {
   line: PosCartLine
   subtotalLabel: string
   onQtyChange: (delta: number) => void
+  onQtySet?: (quantity: number) => void
   onNotesChange: (notes: string) => void
   onUnitPriceChange?: (value: string) => void
   showNotes?: boolean
@@ -99,10 +100,70 @@ function CartUnitPriceInput({
   )
 }
 
+/**
+ * Cantidad libre: evita tener que presionar "+" N veces para vender, p. ej., 100 unidades.
+ * Mismo patrón que CartUnitPriceInput — al enfocar se limpia; si sale sin escribir nada (o con
+ * un valor inválido) se restablece el valor original en vez de aplicar un cambio no deseado.
+ */
+function CartQuantityInput({
+  quantity,
+  onCommit,
+}: {
+  quantity: number
+  onCommit: (value: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const savedRef = useRef(quantity)
+
+  useEffect(() => {
+    if (!editing) savedRef.current = quantity
+  }, [quantity, editing])
+
+  const commit = () => {
+    const trimmed = draft.trim().replace(',', '.')
+    setEditing(false)
+    if (trimmed === '') return
+    const parsed = Number.parseFloat(trimmed)
+    if (Number.isNaN(parsed) || parsed < 0 || parsed === savedRef.current) return
+    onCommit(parsed)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={editing ? draft : String(quantity)}
+      onFocus={() => {
+        savedRef.current = quantity
+        setDraft('')
+        setEditing(true)
+      }}
+      onBlur={commit}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.currentTarget.blur()
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          setDraft('')
+          setEditing(false)
+          e.currentTarget.blur()
+        }
+      }}
+      className="h-8 w-10 rounded-lg border border-stone-200 text-center text-sm font-medium tabular-nums focus:outline-none focus:border-rest-500 focus:ring-1 focus:ring-rest-400"
+      aria-label="Cantidad"
+    />
+  )
+}
+
 export function PosCartLineRow({
   line,
   subtotalLabel,
   onQtyChange,
+  onQtySet,
   onNotesChange,
   onUnitPriceChange,
   showNotes = true,
@@ -187,7 +248,11 @@ export function PosCartLineRow({
             >
               −
             </button>
-            <span className="w-6 text-center font-medium tabular-nums">{line.quantity}</span>
+            {onQtySet ? (
+              <CartQuantityInput quantity={line.quantity} onCommit={onQtySet} />
+            ) : (
+              <span className="w-6 text-center font-medium tabular-nums">{line.quantity}</span>
+            )}
             <button
               type="button"
               onClick={() => onQtyChange(1)}

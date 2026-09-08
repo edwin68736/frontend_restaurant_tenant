@@ -1062,6 +1062,7 @@ export default function POSPage() {
         line={item}
         subtotalLabel={`Subtotal: ${formatSoles(cartLineTotal(item, taxRate, taxConfig))}`}
         onQtyChange={(d) => setQty(i, item.quantity + d)}
+        onQtySet={(qty) => setQty(i, qty)}
         onNotesChange={(n) => setCartNotes(i, n)}
         onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
         showNotes={isRestaurantOrder}
