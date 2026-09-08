@@ -412,6 +412,23 @@ export default function POSPage() {
       ? 'other_branch'
       : 'missing'
 
+  /**
+   * Limpia los datos de "Para llevar"/Delivery (nombre, teléfono, notas, dirección, repartidor,
+   * contacto) al iniciar un pedido nuevo. Sin esto quedaban pegados del pedido anterior: se veían
+   * en el modal/panel de un pedido que todavía no tenía nada propio, o — peor — se guardaban con
+   * el "Enviar a cocina" del pedido nuevo, pisando lo que el usuario recién había escrito.
+   */
+  const resetOrderDetails = () => {
+    setCustomerName('')
+    setCustomerPhone('')
+    setOrderNotes('')
+    setDeliveryAddress('')
+    setDeliveryReference('')
+    setDeliveryDriverId(null)
+    setContactId(null)
+    setEstimatedMinutes(30)
+  }
+
   useOnBranchChange(() => {
     setCart([])
     setCheckoutOpen(false)
@@ -420,6 +437,7 @@ export default function POSPage() {
     setComandaModal(null)
     setOrderCode('')
     setSessionTotal(0)
+    resetOrderDetails()
     loadPosMeta()
     refreshProducts()
     void loadPendingOrders({ silent: true })
@@ -509,6 +527,7 @@ export default function POSPage() {
       setSessionTotal(0)
       setCart([])
       setSearchParams({})
+      resetOrderDetails()
       toast.info('Se inició un pedido nuevo')
     }
     setPosOrderType(next)
@@ -1422,6 +1441,7 @@ export default function POSPage() {
       setOrderCode('')
       setSessionTotal(0)
       setSearchParams({})
+      resetOrderDetails()
       setCheckoutOpen(false)
       setPayments([
         {
@@ -2184,6 +2204,7 @@ export default function POSPage() {
               setSessionTotal(0)
               setCart([])
               setSearchParams({})
+              resetOrderDetails()
             }
             void loadPendingOrders({ silent: true })
           } catch (e: unknown) {
