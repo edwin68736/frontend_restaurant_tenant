@@ -1787,7 +1787,10 @@ export default function POSPage() {
                 className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700"
                 onClick={async () => {
                   try {
-                    if (activeSessionId) await restaurantService.updateSession(activeSessionId, buildSessionPayload())
+                    // "Llevar" abre este modal antes de crear la sesión (ver applyPosOrderType):
+                    // sin esto, con activeSessionId aún null no se guardaba nada — el toast de éxito
+                    // mentía y los datos se perdían al salir de la vista sin antes enviar a cocina.
+                    await ensureSession(true)
                     setOrderDetailsModal(null)
                     toast.success('Datos guardados')
                   } catch (e: unknown) {
@@ -1884,7 +1887,9 @@ export default function POSPage() {
                   return
                 }
                 try {
-                  if (activeSessionId) await restaurantService.updateSession(activeSessionId, buildSessionPayload())
+                  // Mismo caso que "Llevar": el modal de Delivery también abre antes de crear la
+                  // sesión, así que hay que crearla (o actualizarla) acá, no solo actualizar.
+                  await ensureSession(true)
                   setOrderDetailsModal(null)
                   toast.success('Datos guardados')
                 } catch (e: unknown) {
