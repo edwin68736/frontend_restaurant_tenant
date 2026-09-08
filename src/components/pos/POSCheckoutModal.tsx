@@ -495,7 +495,10 @@ export function POSCheckoutModal({
               )}
 
               <div className="mt-3 space-y-2">
-                {change > 0.009 && isModeSimple && (
+                {/* El vuelto es la suma de pagos menos el total, sin importar cuántos métodos se
+                    usen para pagar — antes solo se mostraba con un método (isModeSimple), aunque
+                    el backend (print_data.ChangeAmount) siempre lo calculó de forma agregada. */}
+                {change > 0.009 && (
                   <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-900">
                     <span className="text-[10px] font-bold uppercase tracking-wide">Vuelto</span>
                     <span className="text-sm font-bold">{formatMoney(change)}</span>
