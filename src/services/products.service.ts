@@ -11,6 +11,8 @@ export interface Product {
   sale_price: number
   purchase_price?: number
   unit: string
+  /** Fuente de verdad de la unidad — se gestiona desde Tukifac (Productos → Unidades de medida). */
+  unit_id?: number | null
   category_id?: number | null
   category_name?: string
   is_restaurant: boolean
@@ -105,6 +107,17 @@ export interface CategoryWithCount extends Category {
   product_count?: number
 }
 
+/** Catálogo de unidades de medida (SUNAT N°03) — se gestiona desde Tukifac, se lee/usa igual acá. */
+export interface Unit {
+  id: number
+  code: string
+  name: string
+  symbol?: string
+  is_system: boolean
+  sort_order?: number
+  active: boolean
+}
+
 export interface PreparationArea {
   id: number
   name: string
@@ -171,6 +184,7 @@ export interface CreateProductInput {
   description?: string
   image_url?: string
   unit?: string
+  unit_id?: number | null
   sale_price: number
   purchase_price?: number
   category_id?: number | null
@@ -324,6 +338,7 @@ export const productsService = {
       description: data.description ?? '',
       image_url: data.image_url ?? '',
       unit: data.unit ?? 'NIU',
+      unit_id: data.unit_id ?? null,
       sale_price: data.sale_price,
       purchase_price:
         data.purchase_price != null && data.purchase_price > 0 ? data.purchase_price : 0,
@@ -401,6 +416,8 @@ export const productsService = {
 
   listCategories: () =>
     api.get<{ data: Category[] }>('/api/categories').then((r) => r.data.data ?? []),
+
+  listUnits: () => api.get<{ data: Unit[] }>('/api/units').then((r) => r.data.data ?? []),
 
   listCategoriesWithCounts: () =>
     api

@@ -34,6 +34,7 @@ import {
   type Product,
   type ModifierGroup,
   type Category,
+  type Unit,
   type PreparationArea,
   type CreateProductInput,
   type BulkDeleteRestaurantResult,
@@ -150,12 +151,13 @@ function generateEan13(): string {
   return `${base12}${checkDigit}`
 }
 
-const emptyForm = (): CreateProductInput => ({
+const emptyForm = (unitId: number | null = null): CreateProductInput => ({
   name: '',
   code: '',
   description: '',
   sale_price: 0,
   unit: 'NIU',
+  unit_id: unitId,
   has_modifiers: false,
   has_variants: false,
   modifier_group_ids: [],
@@ -187,6 +189,7 @@ export default function ProductosPage() {
   const [saving, setSaving] = useState(false)
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [prepAreas, setPrepAreas] = useState<PreparationArea[]>([])
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [imageBustByProductId, setImageBustByProductId] = useState<Record<number, number>>({})
@@ -322,11 +325,19 @@ export default function ProductosPage() {
       .catch(() => setPrepAreas([]))
   }
 
+  const loadUnits = () => {
+    productsService
+      .listUnits()
+      .then(setUnits)
+      .catch(() => setUnits([]))
+  }
+
   useEffect(() => () => revokeImagePreview(), [revokeImagePreview])
 
   useEffect(() => {
     loadCategories()
     loadPrepAreas()
+    loadUnits()
   }, [])
 
   useOnBranchChange(() => {
@@ -352,7 +363,7 @@ export default function ProductosPage() {
     // SUNAT exige código por línea del comprobante: se sugiere uno libre para que el producto
     // no nazca sin él. El usuario puede reemplazarlo por el suyo o escanear el de barras.
     // Se genera aquí mismo: si dependiera del backend, un fallo de red dejaría el campo vacío.
-    setForm({ ...emptyForm(), code: generateEan13() })
+    setForm({ ...emptyForm(units.find((u) => u.code === 'NIU')?.id ?? null), code: generateEan13() })
     setEditing(null)
     setNewCategoryName('')
     setShowMoreOptions(false)
@@ -386,7 +397,8 @@ export default function ProductosPage() {
           purchase_price: purchasePrice > 0 ? purchasePrice : undefined,
           image_url: data.image_url ?? '',
           sale_price: data.sale_price,
-          unit: 'NIU',
+          unit: data.unit ?? 'NIU',
+          unit_id: data.unit_id ?? null,
           has_modifiers: data.has_modifiers ?? false,
           has_variants: data.has_variants ?? false,
           presentations: (presentations ?? []).map((p) => ({
@@ -1311,6 +1323,19 @@ export default function ProductosPage() {
                       ...prepAreas.map((a) => ({ value: a.id, label: a.name })),
                     ]}
                     searchable={prepAreas.length > 8}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-stone-700 mb-1">Unidad de medida</label>
+                  <SearchableSelect
+                    value={form.unit_id == null ? '' : form.unit_id}
+                    onChange={(v) => {
+                      const selected = units.find((u) => u.id === Number(v))
+                      setForm((f) => ({ ...f, unit_id: selected?.id ?? null, unit: selected?.code ?? f.unit }))
+                    }}
+                    options={units.map((u) => ({ value: u.id, label: `${u.code} - ${u.name}` }))}
+                    searchable={units.length > 8}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
                   />
                 </div>
