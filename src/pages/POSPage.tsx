@@ -2141,6 +2141,11 @@ export default function POSPage() {
                     {o.order_type === 'delivery' && o.delivery_address && (
                       <p className="text-xs text-stone-500 line-clamp-2">{o.delivery_address}</p>
                     )}
+                    {/* customer_name puede venir con el fallback "Clientes Varios" del contacto
+                        de facturación aunque el pedido no tenga nombre propio — mostrar notas
+                        igual, sin condicionarlo a que falte nombre/teléfono, evita que un dato
+                        cargado ahí (p. ej. un teléfono puesto por error) parezca perdido. */}
+                    {o.notes && <p className="text-xs text-stone-500 line-clamp-2">{o.notes}</p>}
                   </button>
                   {allowCancelOrder && (
                     <button
