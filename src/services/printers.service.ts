@@ -1,4 +1,4 @@
-import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
+import { resolveLogoForPrint } from '@/lib/companyLogo'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
@@ -686,8 +686,9 @@ export async function buildSaleDocumentEscPos(
   const out: number[] = []
   out.push(...escposInit())
 
-  // El logo es del emisor, no de la venta: sale de la config, no del print_data.
-  const logoUrl = await ensureCompanyLogoForPrint()
+  // El logo es del emisor: prioriza el de la sucursal emisora (printData.company.logo_url,
+  // ya resuelto por el backend) y cae al logo global cacheado si la sucursal no tiene uno propio.
+  const logoUrl = await resolveLogoForPrint(printData.company)
   const showLogo = !nvLayout || nvLayout.showLogo
   if (logoUrl && showLogo) {
     const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)

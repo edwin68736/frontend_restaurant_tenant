@@ -1,11 +1,19 @@
-import { useEffect, useState } from 'react'
-import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ImagePlus, MapPin, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { companyService, type BranchRow } from '@/services/company.service'
+import { resolvePublicAssetUrl } from '@/services/api'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import { FIXED_OVERLAY_SAFE } from '@/utils/safeAreaClasses'
 
 const empty = (): Partial<BranchRow> => ({ name: '', address: '', phone: '', fiscal_domicile_code: '', is_main: false })
+
+/** logo_data_url ya viene embebido (data:) por el backend; logo_url es una ruta /uploads relativa. */
+function branchLogoSrc(v?: string | null): string {
+  const s = String(v ?? '').trim()
+  if (!s) return ''
+  return s.startsWith('data:') ? s : resolvePublicAssetUrl(s)
+}
 
 export function RestaurantBranchesSettings() {
   const [branches, setBranches] = useState<BranchRow[]>([])
@@ -14,6 +22,8 @@ export function RestaurantBranchesSettings() {
   const [editing, setEditing] = useState<BranchRow | null>(null)
   const [form, setForm] = useState<Partial<BranchRow>>(empty())
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const load = () =>
     companyService
@@ -34,8 +44,58 @@ export function RestaurantBranchesSettings() {
 
   const openEdit = (b: BranchRow) => {
     setEditing(b)
-    setForm({ name: b.name, address: b.address, phone: b.phone, fiscal_domicile_code: b.fiscal_domicile_code ?? '', is_main: b.is_main })
+    setForm({
+      name: b.name,
+      address: b.address,
+      phone: b.phone,
+      fiscal_domicile_code: b.fiscal_domicile_code ?? '',
+      is_main: b.is_main,
+      logo_url: b.logo_url,
+      logo_data_url: b.logo_data_url,
+    })
     setModalOpen(true)
+  }
+
+  const handleBranchLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !editing) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecciona una imagen (PNG, JPG, etc.)')
+      return
+    }
+    setUploadingLogo(true)
+    void companyService
+      .uploadBranchLogo(editing.id, file)
+      .then((res) => {
+        const logo_url = res.logo_url ?? res.data?.logo_url ?? ''
+        setForm((f) => ({ ...f, logo_url, logo_data_url: res.data?.logo_data_url }))
+        toast.success('Logo de la sucursal guardado')
+        void load()
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al guardar el logo')
+      })
+      .finally(() => {
+        setUploadingLogo(false)
+        if (logoInputRef.current) logoInputRef.current.value = ''
+      })
+  }
+
+  const clearBranchLogo = () => {
+    if (!editing) return
+    setUploadingLogo(true)
+    void companyService
+      .deleteBranchLogo(editing.id)
+      .then(() => {
+        setForm((f) => ({ ...f, logo_url: '', logo_data_url: '' }))
+        if (logoInputRef.current) logoInputRef.current.value = ''
+        toast.success('Logo de la sucursal eliminado')
+        void load()
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al quitar el logo')
+      })
+      .finally(() => setUploadingLogo(false))
   }
 
   const handleSave = async () => {
@@ -203,6 +263,60 @@ export function RestaurantBranchesSettings() {
               />
               Sucursal principal
             </label>
+
+            <div>
+              <label className="block text-xs font-medium text-stone-600 mb-1">Logo de la sucursal</label>
+              {editing ? (
+                <div className="flex items-center gap-3">
+                  {form.logo_data_url || form.logo_url ? (
+                    <img
+                      src={branchLogoSrc(form.logo_data_url || form.logo_url)}
+                      alt="Logo de la sucursal"
+                      className="h-12 w-12 rounded-lg object-contain border border-stone-200 bg-white"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg border border-dashed border-stone-300 flex items-center justify-center text-stone-300">
+                      <ImagePlus size={18} />
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={uploadingLogo}
+                      className="px-3 py-1.5 border border-stone-200 rounded-lg text-xs font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-50"
+                    >
+                      {form.logo_url ? 'Cambiar logo' : 'Cargar logo'}
+                    </button>
+                    {form.logo_url && (
+                      <button
+                        type="button"
+                        onClick={clearBranchLogo}
+                        disabled={uploadingLogo}
+                        className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                        title="Quitar logo"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBranchLogoFile}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-stone-500">Guarde la sucursal primero para poder cargarle un logo propio.</p>
+              )}
+              <p className="text-xs text-stone-500 mt-1">
+                Opcional. Si no se configura, los comprobantes de esta sucursal usan el logo general de la empresa
+                (Ajustes → Empresa).
+              </p>
+            </div>
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"

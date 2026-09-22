@@ -73,3 +73,19 @@ export async function ensureCompanyLogoForPrint(): Promise<string | null> {
     })
   return inFlight
 }
+
+/**
+ * Logo para imprimir UN comprobante puntual. Si `preferred` trae logo_url/logo_data_url ya
+ * resuelto (ej. printData.company, que desde la Fase de logo-por-sucursal puede traer el logo
+ * propio de la sucursal emisora — ver pkg/branchlogo.ResolveURL en el backend), se usa ESE,
+ * sin pasar por el caché global de un solo slot (que es por-tenant, no por-sucursal, y se
+ * pisaría si se guardara ahí un logo de sucursal). Si no viene nada resoluble, cae al logo
+ * global cacheado de siempre.
+ */
+export async function resolveLogoForPrint(
+  preferred?: { logo_data_url?: string; logo_url?: string } | null,
+): Promise<string | null> {
+  const picked = pickLogo(preferred)
+  if (picked) return picked
+  return ensureCompanyLogoForPrint()
+}

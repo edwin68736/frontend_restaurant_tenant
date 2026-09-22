@@ -1,5 +1,5 @@
 import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
-import { ensureCompanyLogoForPrint } from '@/lib/companyLogo'
+import { resolveLogoForPrint } from '@/lib/companyLogo'
 import { jsPDF } from 'jspdf'
 import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
 import { sumAffectationByGroup } from '@/constants/igvAffectation'
@@ -235,8 +235,9 @@ export async function generateReceiptPdf(
       doc.setFontSize(ticketDetailFontPt)
     }
 
-    // El logo es del emisor, no de la venta: sale de la config, no del print_data.
-    const companyLogo = (!nvLayout || nvLayout.showLogo) ? await ensureCompanyLogoForPrint() : null
+    // El logo es del emisor: prioriza el de la sucursal emisora (printData.company.logo_url,
+    // ya resuelto por el backend) y cae al logo global cacheado si la sucursal no tiene uno propio.
+    const companyLogo = (!nvLayout || nvLayout.showLogo) ? await resolveLogoForPrint(data.company) : null
     if (companyLogo) {
       const logoAsset = await resolveReceiptLogoForPdf(companyLogo)
       if (logoAsset) {
