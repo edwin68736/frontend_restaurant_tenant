@@ -423,6 +423,8 @@ export function buildPrecuentaEscPos(input: {
   orderCode?: string | null
   customerName?: string | null
   issueDate?: string | null
+  /** Nota de la mesa (la que se escribe al abrirla). */
+  notes?: string | null
   items: PrecuentaPrintItem[]
   total: number
   currency?: string
@@ -438,6 +440,8 @@ export function buildPrecuentaEscPos(input: {
   if (input.orderCode) headerLines.push(`Pedido: ${input.orderCode}`)
   if (input.issueDate) headerLines.push(`Fecha: ${input.issueDate}`)
   if (input.customerName) wrapText(`Cliente: ${input.customerName}`, cols).forEach((x) => headerLines.push(x))
+  const tableNote = normalizeTextForTicketPrint(String(input.notes ?? '').trim())
+  if (tableNote) wrapText(`Nota: ${tableNote}`, cols).forEach((x) => headerLines.push(x))
 
   const detailLines: string[] = []
   detailLines.push('-'.repeat(cols))
@@ -831,6 +835,7 @@ export async function printPrecuentaAuto(input: {
   orderCode?: string | null
   customerName?: string | null
   issueDate?: string | null
+  notes?: string | null
   items: PrecuentaPrintItem[]
   total: number
   currency?: string

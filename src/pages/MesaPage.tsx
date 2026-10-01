@@ -919,6 +919,7 @@ export default function MesaPage() {
       const msg = await printPrecuentaAuto({
         tableName: s.table_name ?? null,
         issueDate: formatPrecuentaIssueDate(s.opened_at),
+        notes: s.notes ?? null,
         items,
         total: totalToPay,
       })
@@ -1172,6 +1173,11 @@ export default function MesaPage() {
               En mesa {formatSoles(sessionTotal)}
               {cart.length > 0 && <> · Nuevo {formatSoles(cartTotal)}</>}
             </p>
+            {session.notes?.trim() ? (
+              <p className="text-xs text-amber-700 italic truncate" title={session.notes.trim()}>
+                Nota: {session.notes.trim()}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -1589,6 +1595,11 @@ export default function MesaPage() {
             </div>
             <div className="p-4 overflow-y-auto flex-1">
               <p className="text-sm text-stone-500 mb-3">Detalle para que el cliente revise antes de pagar.</p>
+              {session?.notes?.trim() ? (
+                <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <span className="font-semibold">Nota de la mesa:</span> {session.notes.trim()}
+                </p>
+              ) : null}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 text-left text-stone-500 text-xs">
