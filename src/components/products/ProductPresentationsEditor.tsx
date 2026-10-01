@@ -92,9 +92,9 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm tabular-nums"
               />
             </div>
-            {showInitialStock && !row.id && (
+            {showInitialStock && (
               <div className="w-full sm:w-24 shrink-0">
-                <label className="block text-[10px] font-medium text-stone-500 mb-0.5">Stock inicial</label>
+                <label className="block text-[10px] font-medium text-stone-500 mb-0.5">{row.id ? 'Stock actual' : 'Stock inicial'}</label>
                 <input
                   type="number"
                   inputMode="decimal"

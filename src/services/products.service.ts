@@ -42,6 +42,8 @@ export interface ProductPresentation {
   /** Solo para presentaciones NUEVAS (sin id) de un producto con control de stock. Las existentes
    * ya tienen su stock y se corrigen con "Ajustar". */
   initial_stock?: number
+  /** Stock actual (solo edición): sirve para calcular el ajuste al guardar. */
+  current_stock?: number
 }
 
 export interface ModifierGroup {

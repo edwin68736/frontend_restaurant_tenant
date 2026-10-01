@@ -43,6 +43,7 @@ import {
 } from '@/services/products.service'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { PageShell } from '@/components/layout/PageShell'
+import { inventoryService } from '@/services/inventory.service'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ProductCategoriesPanel } from '@/components/products/ProductCategoriesPanel'
 import { ProductPreparationAreasPanel } from '@/components/products/ProductPreparationAreasPanel'
@@ -375,8 +376,12 @@ export default function ProductosPage() {
 
   const openEdit = (p: Product) => {
     setEditing(p)
-    Promise.all([productsService.get(p.id), productsService.listModifierGroups()])
-      .then(([{ data, modifier_group_ids, presentations }, groups]) => {
+    Promise.all([
+      productsService.get(p.id),
+      productsService.listModifierGroups(),
+      inventoryService.getStock(p.id, activeBranchId || undefined).catch(() => []),
+    ])
+      .then(([{ data, modifier_group_ids, presentations }, groups, stockRows]) => {
         setModifierGroups(groups)
         let ids = modifier_group_ids ?? []
         if (data.has_modifiers && ids.length === 0 && groups.length > 0) {
@@ -405,6 +410,12 @@ export default function ProductosPage() {
             id: p.id,
             name: p.name,
             sale_price: Number(p.sale_price) || 0,
+            ...(data.manage_stock
+              ? (() => {
+                  const q = stockRows.find((r) => r.presentation_id === p.id)?.quantity ?? 0
+                  return { current_stock: q, initial_stock: q }
+                })()
+              : {}),
           })),
           modifier_group_ids: ids,
           category_id: data.category_id ?? null,
@@ -579,6 +590,22 @@ export default function ProductosPage() {
           igv_affectation_type: form.igv_affectation_type ?? '10',
           price_includes_igv: isGravadoIgv(form.igv_affectation_type ?? '10') ? form.price_includes_igv : false,
         })
+        // Stock por presentación editado: se ajusta la diferencia contra el que tenía al abrir.
+        if (form.manage_stock && form.has_variants) {
+          for (const row of presentationRows) {
+            if (!row.id || row.current_stock == null || row.initial_stock == null) continue
+            const diff = Math.round((Number(row.initial_stock) - row.current_stock) * 1000) / 1000
+            if (diff === 0) continue
+            await inventoryService.adjustment({
+              product_id: editing.id,
+              presentation_id: row.id,
+              branch_id: activeBranchId,
+              type: diff > 0 ? 'in' : 'out',
+              quantity: Math.abs(diff),
+              notes: 'Ajuste desde edición del producto',
+            })
+          }
+        }
         const n = (form.modifier_group_ids ?? []).length
         toast.success(
           form.has_modifiers && n > 0
@@ -1502,8 +1529,14 @@ export default function ProductosPage() {
               )}
               {form.manage_stock && modal === 'edit' && (
                 <p className="text-xs text-stone-600 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
-                  El stock no se edita aquí. Use{' '}
-                  <span className="font-medium">Ajustar</span> en la columna Stock del listado de productos.
+                  {form.has_variants ? (
+                    <>El stock de cada presentación se edita en <span className="font-medium">Gestionar presentaciones</span>.</>
+                  ) : (
+                    <>
+                      El stock no se edita aquí. Use <span className="font-medium">Ajustar</span> en la columna Stock del
+                      listado de productos.
+                    </>
+                  )}
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
