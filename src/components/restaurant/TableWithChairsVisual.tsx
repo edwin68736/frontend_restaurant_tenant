@@ -119,9 +119,12 @@ type TableCardFooterProps = {
   waiterName?: string
   totalAmount?: number | null
   amountClassName?: string
+  /** Nota de la mesa: una sola línea truncada, el texto completo va en el tooltip. */
+  notes?: string
 }
 
-export function TableCardFooter({ floorName, waiterName, totalAmount, amountClassName }: TableCardFooterProps) {
+export function TableCardFooter({ floorName, waiterName, totalAmount, amountClassName, notes }: TableCardFooterProps) {
+  const note = notes?.trim()
   return (
     <div className="mt-2 space-y-1 text-center min-w-0 px-1">
       {waiterName && (
@@ -131,6 +134,11 @@ export function TableCardFooter({ floorName, waiterName, totalAmount, amountClas
         </p>
       )}
       {floorName && <p className="text-[11px] text-stone-500 truncate">{floorName}</p>}
+      {note && (
+        <p className="text-[11px] italic text-amber-800 truncate" title={note}>
+          {note}
+        </p>
+      )}
       {totalAmount != null && totalAmount > 0 && (
         <p className={clsx('text-sm font-semibold', amountClassName ?? 'text-amber-900')}>
           S/ {Number(totalAmount).toFixed(2)}

@@ -254,6 +254,7 @@ export default function SalasPage() {
                   <TableCardFooter
                     floorName={t.floor_name}
                     waiterName={effectiveStatus === 'ocupada' ? t.waiter_name : undefined}
+                    notes={effectiveStatus === 'ocupada' ? t.session_notes : undefined}
                     totalAmount={effectiveStatus === 'ocupada' ? t.total_amount : undefined}
                     amountClassName={st.amount}
                   />

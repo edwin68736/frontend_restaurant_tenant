@@ -18,6 +18,8 @@ export interface RestaurantTable {
   session_id?: number | null
   total_amount?: number
   waiter_name?: string
+  /** Nota escrita al abrir la mesa. */
+  session_notes?: string
 }
 
 export interface StaffOption {
