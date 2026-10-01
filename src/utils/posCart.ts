@@ -34,6 +34,11 @@ export type CatalogCartLine = {
    * (impuestos, fusión y precio acordado funcionan igual) en vez de ser un tipo aparte.
    */
   combo?: ComboCartState
+  /**
+   * Stock disponible de la presentación elegida al agregar (productos con control de stock y
+   * presentaciones): tope de cantidad en el carrito. El backend valida igual al pedir y al cobrar.
+   */
+  stock_limit?: number
 }
 
 export type ManualCartLine = {
@@ -163,6 +168,7 @@ export function createCatalogCartLine(
     modifiers?: CartModifierEntry[]
     base_price?: number
     combo?: ComboCartState
+    stock_limit?: number
   },
 ): CatalogCartLine {
   const base = partial?.base_price ?? (Number(product.sale_price) || 0)
@@ -184,6 +190,7 @@ export function createCatalogCartLine(
     modifiers,
     configureKey: buildCatalogConfigureKey(modifiers, notes, unit_price, combo),
     ...(combo ? { combo } : {}),
+    ...(partial?.stock_limit !== undefined ? { stock_limit: partial.stock_limit } : {}),
   }
 }
 
@@ -206,17 +213,32 @@ export function catalogLinesMatch(a: CatalogCartLine, b: CatalogCartLine): boole
   return a.product.id === b.product.id && a.configureKey === b.configureKey
 }
 
-export type AppendCatalogResult = { cart: PosCartLine[]; merged: boolean }
+export type AppendCatalogResult = { cart: PosCartLine[]; merged: boolean; capped?: boolean }
 
-/** Agrega o incrementa cantidad si producto, modificadores, nota y precio coinciden. */
+/** Cantidad permitida para una línea: respeta su tope de stock (si lo tiene). */
+export function clampToStockLimit(line: CatalogCartLine, qty: number): { qty: number; capped: boolean } {
+  if (line.stock_limit === undefined || qty <= line.stock_limit) return { qty, capped: false }
+  return { qty: Math.max(0, line.stock_limit), capped: true }
+}
+
+/**
+ * Agrega o incrementa cantidad si producto, modificadores, nota y precio coinciden.
+ * Si la línea tiene tope de stock (presentación con stock controlado) no lo supera: `capped`
+ * indica que se recortó para avisar al cajero.
+ */
 export function appendCatalogLine(cart: PosCartLine[], line: CatalogCartLine): AppendCatalogResult {
   const i = cart.findIndex((x) => x.kind === 'catalog' && catalogLinesMatch(x, line))
   if (i >= 0) {
+    let capped = false
     return {
-      cart: cart.map((x, j) =>
-        j === i && x.kind === 'catalog' ? { ...x, quantity: x.quantity + line.quantity } : x,
-      ),
+      cart: cart.map((x, j) => {
+        if (j !== i || x.kind !== 'catalog') return x
+        const r = clampToStockLimit(x, x.quantity + line.quantity)
+        capped = r.capped
+        return { ...x, quantity: r.qty }
+      }),
       merged: true,
+      capped,
     }
   }
   return { cart: [...cart, line], merged: false }

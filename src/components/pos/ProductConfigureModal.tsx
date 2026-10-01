@@ -12,6 +12,8 @@ import {
   type Product,
   type ProductPresentation,
 } from '@/services/products.service'
+import { inventoryService } from '@/services/inventory.service'
+import { useBranch } from '@/contexts/BranchContext'
 import {
   calcComboUnitPrice,
   componentsToSelections,
@@ -54,6 +56,11 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
   const [comboGroups, setComboGroups] = useState<ComboGroup[]>([])
   const [comboPicks, setComboPicks] = useState<ComboPicks>({})
   const [kitchenNote, setKitchenNote] = useState('')
+  // Stock disponible por presentación en la sucursal activa (id de presentación → cantidad).
+  // Solo se llena para productos con control de stock; vacío = sin dato (no se bloquea nada).
+  const [presentationStock, setPresentationStock] = useState<Record<number, number>>({})
+  const { activeBranch } = useBranch()
+  const activeBranchId = activeBranch?.id
   const degradedRef = useRef(false)
   const loadGenRef = useRef(0)
   const loadedProductIdRef = useRef<number | null>(null)
@@ -71,6 +78,7 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       setOptionsLoaded(false)
       setModifierGroupIds([])
       setPresentations([])
+      setPresentationStock({})
       setAllGroups([])
       setSelected([])
       setComboGroups([])
@@ -83,6 +91,7 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
     setLoading(true)
     setModifierGroupIds([])
     setPresentations([])
+    setPresentationStock({})
     setAllGroups([])
     setSelected([])
     setComboGroups([])
@@ -105,6 +114,22 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
           auto.push(selectionFromProductPresentation(pres[0]))
         }
         setSelected(auto)
+        // Stock por presentación (la tarjeta del POS solo muestra el total sumado, que no dice
+        // si la presentación elegida alcanza). Si falla la consulta no se bloquea nada: el
+        // backend valida igual al pedir y al cobrar.
+        if (product?.manage_stock && pres.length > 0) {
+          inventoryService
+            .getStock(productId, activeBranchId)
+            .then((rows) => {
+              if (loadGenRef.current !== gen) return
+              const map: Record<number, number> = {}
+              for (const r of rows) {
+                if (r.presentation_id) map[r.presentation_id] = (map[r.presentation_id] ?? 0) + Number(r.quantity || 0)
+              }
+              setPresentationStock(map)
+            })
+            .catch(() => {})
+        }
       })
       .catch(() => {
         if (loadGenRef.current === gen) toast.error('No se pudieron cargar las opciones del producto')
@@ -114,6 +139,8 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
         setLoading(false)
         setOptionsLoaded(true)
       })
+  // activeBranchId/manage_stock se leen al abrir el producto; incluirlos reiniciaría la carga.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId])
 
   const extraGroups = useMemo(() => {
@@ -216,13 +243,23 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       toast.error(err)
       return
     }
+    const chosen = selected.find((m) => m.type === 'variant')
+    if (chosen) {
+      const stock = presentationStock[Number(chosen.option_id)]
+      if (stock !== undefined && stock <= 0) {
+        toast.error(`«${chosen.option_name}» está agotada en esta sucursal`)
+        return
+      }
+    }
     degradedRef.current = true
+    const chosenStock = chosen ? presentationStock[Number(chosen.option_id)] : undefined
     onConfirmRef.current(
       createCatalogCartLine(productWithPres, {
         quantity: 1,
         notes: kitchenNote,
         modifiers: selected,
         base_price: basePrice,
+        ...(chosenStock !== undefined ? { stock_limit: chosenStock } : {}),
         ...(isCombo
           ? {
               combo: {
@@ -422,10 +459,13 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
                           (pres.id ? s.option_id === pres.id : s.option_name === pres.name.trim()),
                       )
                       const salePrice = Number(pres.sale_price) || 0
+                      const stock = pres.id ? presentationStock[pres.id] : undefined
+                      const soldOut = stock !== undefined && stock <= 0
                       return (
                         <button
                           key={pres.id ?? pres.name}
                           type="button"
+                          disabled={soldOut}
                           onClick={() =>
                             setSelected((prev) => [
                               ...prev.filter((s) => s.type !== 'variant'),
@@ -433,15 +473,26 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
                             ])
                           }
                           className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
-                            active
-                              ? 'bg-sky-600 text-white border-sky-600'
-                              : 'bg-white text-stone-800 border-sky-200 hover:border-sky-400'
+                            soldOut
+                              ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
+                              : active
+                                ? 'bg-sky-600 text-white border-sky-600'
+                                : 'bg-white text-stone-800 border-sky-200 hover:border-sky-400'
                           }`}
                         >
                           {pres.name}
                           {salePrice > 0 ? (
                             <span className="block text-[11px] font-normal opacity-90 tabular-nums">
                               S/ {formatAmountDisplay(salePrice)}
+                            </span>
+                          ) : null}
+                          {stock !== undefined ? (
+                            <span
+                              className={`block text-[10px] font-semibold tabular-nums ${
+                                soldOut ? 'text-red-500' : active ? 'text-sky-100' : 'text-stone-500'
+                              }`}
+                            >
+                              {soldOut ? 'Agotado' : `Stock: ${formatAmountDisplay(stock).replace(/\.00$/, '')}`}
                             </span>
                           ) : null}
                         </button>

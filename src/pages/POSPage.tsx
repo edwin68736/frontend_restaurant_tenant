@@ -950,11 +950,14 @@ export default function POSPage() {
       setConfigureProduct(null)
       const imageUrl = getProductImageUrl(line.product.image_url)
       let merged = false
+      let capped = false
       setCart((c) => {
         const result = appendCatalogLine(c, line)
         merged = result.merged
+        capped = !!result.capped
         return result.cart
       })
+      if (capped) toast.warning(`Stock máximo de «${line.product.name}»: ${line.stock_limit}`)
       if (!merged && source) flyToCart(source, imageUrl)
       playCartAddSound()
     },
@@ -1050,7 +1053,15 @@ export default function POSPage() {
     if (qty <= 0) {
       playCartRemoveSound()
       setCart((c) => c.filter((_, i) => i !== index))
-    } else setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
+    } else {
+      // Líneas con tope de stock (presentación con stock controlado): no pasar de lo disponible.
+      const target = cart[index]
+      if (target && target.kind === 'catalog' && target.stock_limit !== undefined && qty > target.stock_limit) {
+        toast.warning(`Stock máximo de «${target.product.name}»: ${target.stock_limit}`)
+        qty = Math.max(1, target.stock_limit)
+      }
+      setCart((c) => c.map((x, i) => (i === index ? { ...x, quantity: qty } : x)))
+    }
   }
 
   const setCartNotes = (index: number, notes: string) => {

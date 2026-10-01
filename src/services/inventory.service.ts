@@ -3,6 +3,9 @@ import api from './api'
 export interface StockByBranch {
   product_id: number
   branch_id: number
+  /** Presente cuando el producto vende por presentación: el saldo es de esa presentación. */
+  presentation_id?: number
+  presentation_name?: string
   quantity: number
   updated_at?: string
 }
