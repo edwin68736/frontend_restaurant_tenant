@@ -10,7 +10,16 @@ import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
-import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
+import {
+  calcPaymentChange,
+  formatAmountDisplay,
+  isCashPaymentCode,
+  nonCashOverpay,
+  paidCoversTotal,
+  roundDisplay,
+  roundSunat,
+  sumMoney,
+} from '@/utils/money'
 import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -194,10 +203,16 @@ export function POSCheckoutModal({
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
   const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
-  const change = Math.max(0, roundDisplay(paid - payableTotal))
+  const change = calcPaymentChange(paid, payableTotal)
+  const blockedOverpay = nonCashOverpay(payments, payableTotal)
   const exactPayment =
     Math.abs(roundDisplay(paid) - roundDisplay(payableTotal)) < 0.02 && paid > 0
-  const canSubmit = paidCoversTotal(paid, payableTotal) && seriesId > 0 && !loading && !confirmDisabled
+  const canSubmit =
+    paidCoversTotal(paid, payableTotal) &&
+    seriesId > 0 &&
+    !loading &&
+    !confirmDisabled &&
+    blockedOverpay <= 0
 
   const defaultMethodCode = methodOptions[0]?.code ?? 'cash'
 
@@ -216,7 +231,18 @@ export function POSCheckoutModal({
   }
 
   const updateLine = (index: number, patch: Partial<CheckoutPaymentLine>) => {
-    onPaymentsChange(payments.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+    const next = payments.map((p, i) => (i === index ? { ...p, ...patch } : p))
+    // Cobro de una sola línea: al pasar de efectivo (con vuelto) a un método electrónico, el monto
+    // se ajusta al total — Yape/Plin/tarjeta/transferencia no admiten vuelto.
+    if (
+      next.length === 1 &&
+      patch.method !== undefined &&
+      !isCashPaymentCode(patch.method) &&
+      (next[0].amount ?? 0) > roundSunat(payableTotal) + 0.009
+    ) {
+      next[0] = { ...next[0], amount: roundSunat(payableTotal) }
+    }
+    onPaymentsChange(next)
   }
 
   const parseDiscountInput = (raw: string) => {
@@ -502,6 +528,12 @@ export function POSCheckoutModal({
                   <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-900">
                     <span className="text-[10px] font-bold uppercase tracking-wide">Vuelto</span>
                     <span className="text-sm font-bold">{formatMoney(change)}</span>
+                  </div>
+                )}
+                {blockedOverpay > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                    Los métodos electrónicos no admiten vuelto — reduce el monto en{' '}
+                    {formatMoney(blockedOverpay)} o agrega ese excedente como efectivo.
                   </div>
                 )}
                 {!change && exactPayment && (

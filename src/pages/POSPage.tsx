@@ -110,7 +110,7 @@ import {
   buildRestaurantBillDiscount,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
-import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import { nonCashOverpay, paidCoversTotal, roundSunat, sumMoney, syncSinglePaymentAmount } from '@/utils/money'
 import { formatMoney, formatSoles } from '@/utils/format'
 import {
   orderStatusBadgeClasses,
@@ -1289,14 +1289,7 @@ export default function POSPage() {
 
   useEffect(() => {
     if (!checkoutOpen || payments.length !== 1) return
-    setPayments((prev) => {
-      if (prev.length !== 1) return prev
-      const cur = prev[0]?.amount ?? 0
-      const nextAmount = payableTotal
-      if (cur > nextAmount + 0.009) return prev
-      if (Math.abs(cur - nextAmount) < 0.009) return prev
-      return [{ ...prev[0], amount: nextAmount }]
-    })
+    setPayments((prev) => syncSinglePaymentAmount(prev, payableTotal))
   }, [checkoutOpen, payableTotal, payments.length])
 
   const doCheckout = async () => {
@@ -1304,6 +1297,10 @@ export default function POSPage() {
     const paid = payments.reduce((s, p) => s + p.amount, 0)
     if (!paidCoversTotal(paid, payableTotal)) {
       toast.error('El monto pagado debe ser al menos el total')
+      return
+    }
+    if (nonCashOverpay(payments, payableTotal) > 0) {
+      toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
       return
     }
     if (branchSeriesMissing) return
@@ -1413,6 +1410,10 @@ export default function POSPage() {
         )
         if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
           toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+          return
+        }
+        if (nonCashOverpay(payments, billDiscount.payableTotal) > 0) {
+          toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
           return
         }
         billRes = await restaurantService.billSession(sid, {

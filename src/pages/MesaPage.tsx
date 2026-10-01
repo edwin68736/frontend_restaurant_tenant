@@ -101,7 +101,7 @@ import {
   buildRestaurantBillDiscount,
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
-import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import { nonCashOverpay, paidCoversTotal, roundSunat, sumMoney, syncSinglePaymentAmount } from '@/utils/money'
 import { formatMoney, formatSoles } from '@/utils/format'
 import { canApplyCheckoutDiscount, canCancelComanda } from '@/utils/restaurantPermissions'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
@@ -646,6 +646,10 @@ export default function MesaPage() {
       toast.error('El monto pagado debe ser al menos el total de lo seleccionado')
       return
     }
+    if (nonCashOverpay(payments, splitTotal) > 0) {
+      toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
+      return
+    }
     if (branchSeriesMissing) return
     if (!seriesId) return
     if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries?.sunat_code)) {
@@ -751,6 +755,10 @@ export default function MesaPage() {
       toast.error('El monto pagado debe ser al menos el total')
       return
     }
+    if (nonCashOverpay(payments, payableTotal) > 0) {
+      toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
+      return
+    }
     if (branchSeriesMissing) return
     if (!seriesId) return
     if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries?.sunat_code)) {
@@ -809,6 +817,10 @@ export default function MesaPage() {
       )
       if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
         toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+        return
+      }
+      if (nonCashOverpay(payments, billDiscount.payableTotal) > 0) {
+        toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
         return
       }
       if (needsCashSession) {
@@ -959,14 +971,7 @@ export default function MesaPage() {
 
   useEffect(() => {
     if (!checkoutOpen || payments.length !== 1 || splitComandaIds) return
-    setPayments((prev) => {
-      if (prev.length !== 1) return prev
-      const cur = prev[0]?.amount ?? 0
-      const nextAmount = payableTotal
-      if (cur > nextAmount + 0.009) return prev
-      if (Math.abs(cur - nextAmount) < 0.009) return prev
-      return [{ ...prev[0], amount: nextAmount }]
-    })
+    setPayments((prev) => syncSinglePaymentAmount(prev, payableTotal))
   }, [checkoutOpen, payableTotal, payments.length, splitComandaIds])
 
   const confirmAnulComanda = async () => {

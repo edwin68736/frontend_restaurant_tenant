@@ -54,3 +54,52 @@ export function parseMoneyInput(raw: string): number {
 export function paidCoversTotal(paid: number, expected: number): boolean {
   return roundDisplay(paid) + PAYMENT_TOLERANCE >= roundDisplay(expected)
 }
+
+/** Vuelto cuando el cliente entrega más del monto a pagar. */
+export function calcPaymentChange(paid: number, payable: number): number {
+  return Math.max(0, roundDisplay(paid - payable))
+}
+
+/** El vuelto solo puede salir de efectivo — mismo código que usa el catálogo de métodos de pago. */
+export function isCashPaymentCode(code: string | null | undefined): boolean {
+  return String(code ?? '').trim().toLowerCase() === 'cash'
+}
+
+/**
+ * Excedente que ningún método no-efectivo puede cubrir por sí solo (no existe "vuelto" real por
+ * Yape/Plin/tarjeta/transferencia, tenga el cobro una o varias líneas). Devuelve 0 si los métodos
+ * no-efectivo no superan el total a pagar; en otro caso, el excedente que hay que corregir
+ * (agregando efectivo o reduciendo el monto) antes de poder guardar la venta. Mismo criterio que
+ * el backend (restaurant_service.go::sumNonCashPayments).
+ */
+export function nonCashOverpay(
+  payments: Array<{ method: string; amount: number | string }>,
+  payable: number,
+): number {
+  const nonCash = sumMoney(
+    ...payments.filter((p) => !isCashPaymentCode(p.method)).map((p) => Number(p.amount) || 0),
+  )
+  const excess = roundDisplay(nonCash) - roundDisplay(payable)
+  return excess > PAYMENT_TOLERANCE ? roundDisplay(excess) : 0
+}
+
+/**
+ * Mantiene el monto del pago ÚNICO alineado con el total a pagar cuando este cambia (p. ej. al
+ * aplicar un descuento con el cobro abierto).
+ * - Efectivo: si el monto ya es MAYOR al total se conserva (el cliente puede dar un billete más
+ *   grande y recibir vuelto).
+ * - No efectivo: siempre igual al total — no hay vuelto posible por Yape/Plin/tarjeta/transferencia
+ *   y el backend rechaza el cobro si lo excede.
+ * Con 0 o varias líneas no toca nada (cada monto lo define el cajero).
+ */
+export function syncSinglePaymentAmount<T extends { method: string; amount: number }>(
+  prev: T[],
+  payable: number,
+): T[] {
+  if (prev.length !== 1) return prev
+  const cur = prev[0]?.amount ?? 0
+  const next = roundSunat(payable)
+  if (Math.abs(cur - next) < 0.009) return prev
+  if (isCashPaymentCode(prev[0].method) && cur > next + 0.009) return prev
+  return [{ ...prev[0], amount: next }]
+}
