@@ -134,6 +134,12 @@ export interface KitchenComanda extends Comanda {
   session_opened_at?: string
 }
 
+/** Comanda anulada con contexto de pedido/mesa (GET /comandas/cancelled). */
+export interface CancelledComanda extends KitchenComanda {
+  cancel_reason?: string
+  cancelled_by_name?: string
+}
+
 export interface OrderItemInput {
   product_id?: number
   product_code?: string
@@ -389,6 +395,11 @@ export const restaurantService = {
     api.post(`/api/restaurant/table-orders/${tableOrderId}/printed`).then((r) => r.data),
   cancelComanda: (comandaId: number, reason: string, pin: string) =>
     api.delete(`/api/restaurant/comandas/${comandaId}`, { data: { reason, pin } }).then((r) => r.data),
+
+  listCancelledComandas: (params: { from?: string; to?: string; q?: string; page?: number; per_page?: number }) =>
+    api
+      .get<{ data: CancelledComanda[]; total: number }>('/api/restaurant/comandas/cancelled', { params })
+      .then((r) => ({ data: r.data.data ?? [], total: r.data.total ?? 0 })),
 
   getKitchen: () =>
     api.get<{ data: KitchenComanda[] }>('/api/restaurant/kitchen').then((r) => r.data.data ?? r.data ?? []),

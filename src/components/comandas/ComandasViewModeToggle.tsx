@@ -1,7 +1,7 @@
-import { LayoutGrid, List } from 'lucide-react'
+import { Ban, LayoutGrid, List } from 'lucide-react'
 import { clsx } from 'clsx'
 
-export type ComandasViewMode = 'items' | 'orders'
+export type ComandasViewMode = 'items' | 'orders' | 'cancelled'
 
 type Props = {
   value: ComandasViewMode
@@ -44,6 +44,21 @@ export function ComandasViewModeToggle({ value, onChange }: Props) {
       >
         <LayoutGrid size={16} className="shrink-0" />
         Por pedido (cocina)
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={value === 'cancelled'}
+        onClick={() => onChange('cancelled')}
+        className={clsx(
+          'flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-[10px] px-3 py-2 text-xs sm:text-sm font-semibold transition-colors touch-manipulation',
+          value === 'cancelled'
+            ? 'bg-orange-600 text-white shadow-sm'
+            : 'text-stone-600 hover:bg-white/80',
+        )}
+      >
+        <Ban size={16} className="shrink-0" />
+        Anuladas
       </button>
     </div>
   )

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ComandasViewModeToggle, type ComandasViewMode } from '@/components/comandas/ComandasViewModeToggle'
 import { ComandasItemsView } from '@/components/comandas/ComandasItemsView'
+import { ComandasCancelledView } from '@/components/comandas/ComandasCancelledView'
 import { ComandasKitchenBoardView } from '@/components/comandas/ComandasKitchenBoardView'
 import { restaurantService, type KitchenComanda } from '@/services/restaurant.service'
 import { useBranch } from '@/contexts/BranchContext'
@@ -11,7 +12,7 @@ const VIEW_STORAGE_KEY = 'tukichef-comandas-view'
 function readStoredView(): ComandasViewMode {
   try {
     const v = localStorage.getItem(VIEW_STORAGE_KEY)
-    if (v === 'orders' || v === 'items') return v
+    if (v === 'orders' || v === 'items' || v === 'cancelled') return v
   } catch {
     /* ignore */
   }
@@ -57,7 +58,9 @@ export default function ComandasPage() {
             <p className="text-sm text-stone-500 mt-0.5">
               {viewMode === 'items'
                 ? 'Cada línea enviada a cocina. Cambia el estado por ítem.'
-                : 'Pedidos agrupados por mesa, delivery o llevar. Filtra mesas y cambia estados.'}
+                : viewMode === 'cancelled'
+                  ? 'Historial de comandas anuladas, con su motivo y quién las anuló.'
+                  : 'Pedidos agrupados por mesa, delivery o llevar. Filtra mesas y cambia estados.'}
             </p>
           </div>
           <ComandasViewModeToggle value={viewMode} onChange={setViewMode} />
@@ -67,6 +70,8 @@ export default function ComandasPage() {
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
         {viewMode === 'items' ? (
           <ComandasItemsView {...kitchenProps} />
+        ) : viewMode === 'cancelled' ? (
+          <ComandasCancelledView />
         ) : (
           <ComandasKitchenBoardView {...kitchenProps} />
         )}
