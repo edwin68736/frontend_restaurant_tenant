@@ -78,6 +78,7 @@ import {
   resolveManualBillingStatus,
 } from '@/utils/manualBilling'
 import { clsx } from 'clsx'
+import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
 import {
   BILLING_FILTER_GROUPS,
@@ -1961,6 +1962,13 @@ export default function VentasPage() {
                           <tr key={it.id} className="border-b border-stone-100">
                             <td className="px-4 py-2">
                               <div className="text-sm font-medium text-stone-800">{it.description}</div>
+                              {formatModifierLines(
+                                parseStoredModifiers(it.modifiers_json).filter((m) => m.type !== 'variant'),
+                              ).map((line) => (
+                                <div key={line} className="text-xs text-stone-500 pl-2">
+                                  {line}
+                                </div>
+                              ))}
                               {it.code ? <div className="text-xs text-stone-500 font-mono">{it.code}</div> : null}
                             </td>
                             <td className="px-4 py-2 text-right text-stone-700">{formatQty(it.quantity)}</td>

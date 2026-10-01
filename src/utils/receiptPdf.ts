@@ -323,9 +323,11 @@ export async function generateReceiptPdf(
       const desc = ticketText(receiptItemDisplayDescription(it))
       const pu = receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency))
       const imp = receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency))
+      // La fuente debe fijarse ANTES de medir: con la del encabezado (negrita) el corte de línea
+      // salía más ancho que el texto real y la descripción pisaba la columna de P.U.
+      setTicketDetailFont(false)
       const descLines = doc.splitTextToSize(desc, lay.wDescFirst) as string[]
 
-      setTicketDetailFont(false)
       doc.text(String(it.quantity), lay.xCant, y, { maxWidth: lay.wCant })
       doc.text(descLines[0] ?? '—', lay.xDesc, y, { maxWidth: lay.wDescFirst })
       doc.text(pu, lay.xEndPUnit, y, { align: 'right', maxWidth: lay.wMoney })

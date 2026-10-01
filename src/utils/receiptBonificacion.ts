@@ -15,6 +15,7 @@
 
 import { isGravadoOperacionNoOnerosa } from '@/constants/igvAffectation'
 import type { PrintItem } from '@/types/printData'
+import { parseStoredModifiers } from '@/utils/productModifiers'
 
 export function receiptItemIsOperacionGratuita(it: Pick<PrintItem, 'igv_affectation_type'>): boolean {
   return isGravadoOperacionNoOnerosa(it.igv_affectation_type ?? '')
@@ -24,8 +25,14 @@ export function receiptItemIsBonificacion(it: Pick<PrintItem, 'igv_affectation_t
   return receiptItemIsOperacionGratuita(it)
 }
 
+/** Descripción de la línea; si lleva extras/modificadores los lista entre paréntesis para que el
+ *  cliente vea por qué cambia el precio. La presentación ya viene en `description`. */
 export function receiptItemDisplayDescription(it: PrintItem): string {
-  return (it.description || '').trim() || '—'
+  const base = (it.description || '').trim() || '—'
+  const extras = parseStoredModifiers(it.modifiers_json)
+    .filter((m) => m.type !== 'variant' && m.option_name)
+    .map((m) => m.option_name)
+  return extras.length > 0 ? `${base} (+ ${extras.join(', + ')})` : base
 }
 
 export function receiptItemDisplayTotal(it: PrintItem, formatAmount: (n: number) => string): string {

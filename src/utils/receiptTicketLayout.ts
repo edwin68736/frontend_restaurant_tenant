@@ -29,7 +29,9 @@ export function ticketDetailLayout4Col(options: {
   const xEndPUnit = xEndImporte - wMoney - gap
   const xCant = margin
   const xDesc = xCant + wCant + gap
-  const wDescFirst = Math.max(10, xEndPUnit - gap - xDesc)
+  // La descripción termina donde empieza el texto de P.U. (que ocupa wMoney hacia la izquierda de
+  // xEndPUnit), no en xEndPUnit: si no, descripciones largas pisan el precio unitario.
+  const wDescFirst = Math.max(10, xEndPUnit - wMoney - gap - xDesc)
   const wDescCont = xEndImporte - xDesc
 
   return {
