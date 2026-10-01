@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { ComandasCancelledView } from '@/components/comandas/ComandasCancelledView'
 import { RestaurantBranchesSettings } from './restaurant/RestaurantBranchesSettings'
 import { RestaurantCompanySettings } from './restaurant/RestaurantCompanySettings'
 import { RestaurantOperationSettings } from './restaurant/RestaurantOperationSettings'
@@ -7,7 +8,7 @@ import { RestaurantReceiptWalletSettings } from './restaurant/RestaurantReceiptW
 import { RestaurantSeriesSettings } from './restaurant/RestaurantSeriesSettings'
 import { RestaurantTaxSettings } from './restaurant/RestaurantTaxSettings'
 
-type RestTab = 'operacion' | 'empresa' | 'impuestos' | 'sucursales' | 'series' | 'comprobantes'
+type RestTab = 'operacion' | 'empresa' | 'impuestos' | 'sucursales' | 'series' | 'comprobantes' | 'anuladas'
 
 const TABS: { id: RestTab; label: string }[] = [
   { id: 'operacion', label: 'Operación' },
@@ -16,6 +17,7 @@ const TABS: { id: RestTab; label: string }[] = [
   { id: 'impuestos', label: 'Impuestos' },
   { id: 'sucursales', label: 'Sucursales' },
   { id: 'series', label: 'Series' },
+  { id: 'anuladas', label: 'Comandas anuladas' },
 ]
 
 export function RestaurantSettingsTab() {
@@ -52,6 +54,7 @@ export function RestaurantSettingsTab() {
       {tab === 'sucursales' && <RestaurantBranchesSettings />}
       {tab === 'series' && <RestaurantSeriesSettings />}
       {tab === 'comprobantes' && <RestaurantReceiptWalletSettings />}
+      {tab === 'anuladas' && <ComandasCancelledView />}
     </div>
   )
 }
