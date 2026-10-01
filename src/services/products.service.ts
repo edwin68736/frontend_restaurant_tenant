@@ -39,6 +39,9 @@ export interface ProductPresentation {
   name: string
   sale_price: number
   sort_order?: number
+  /** Solo para presentaciones NUEVAS (sin id) de un producto con control de stock. Las existentes
+   * ya tienen su stock y se corrigen con "Ajustar". */
+  initial_stock?: number
 }
 
 export interface ModifierGroup {

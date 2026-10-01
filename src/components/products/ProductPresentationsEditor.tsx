@@ -6,13 +6,17 @@ type Props = {
   onChange: (rows: ProductPresentation[]) => void
   /** Sin borde exterior cuando va dentro de otro modal */
   embedded?: boolean
+  /** Solo con «Controlar stock» activo. Se muestra por fila NUEVA (sin id), al crear el producto o
+   *  al agregar una presentación en una edición; las existentes ya tienen su stock y se corrigen
+   *  con «Ajustar». */
+  showInitialStock?: boolean
 }
 
 function emptyRow(): ProductPresentation {
   return { name: '', sale_price: 0 }
 }
 
-export function ProductPresentationsEditor({ presentations, onChange, embedded }: Props) {
+export function ProductPresentationsEditor({ presentations, onChange, embedded, showInitialStock }: Props) {
   const rows = presentations.length > 0 ? presentations : [emptyRow()]
 
   const setRow = (index: number, patch: Partial<ProductPresentation>) => {
@@ -88,6 +92,24 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded }
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm tabular-nums"
               />
             </div>
+            {showInitialStock && !row.id && (
+              <div className="w-full sm:w-24 shrink-0">
+                <label className="block text-[10px] font-medium text-stone-500 mb-0.5">Stock inicial</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  value={row.initial_stock ?? ''}
+                  onChange={(e) =>
+                    setRow(index, {
+                      initial_stock: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0),
+                    })
+                  }
+                  placeholder="0"
+                  className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm tabular-nums"
+                />
+              </div>
+            )}
             <div className="flex sm:items-end">
               <button
                 type="button"

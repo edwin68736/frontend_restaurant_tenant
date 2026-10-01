@@ -501,10 +501,16 @@ export default function ProductosPage() {
         return
       }
     }
+    // Se reenvía el id de las presentaciones existentes: sin él el backend las trata como nuevas y
+    // el stock de cada una se pierde al editar el producto. El stock inicial solo aplica a las nuevas.
     const presentationsPayload = form.has_variants
       ? presentationRows.map((p) => ({
+          ...(p.id ? { id: p.id } : {}),
           name: p.name.trim(),
           sale_price: Math.round((Number(p.sale_price) || 0) * 100) / 100,
+          ...(!p.id && form.manage_stock && Number(p.initial_stock) > 0
+            ? { initial_stock: Number(p.initial_stock) }
+            : {}),
         }))
       : []
     const selectedFile = fileInputRef.current?.files?.[0] ?? null
@@ -525,8 +531,10 @@ export default function ProductosPage() {
           category_id: form.category_id ?? null,
           preparation_area_id: form.preparation_area_id ?? null,
           manage_stock: form.manage_stock ?? false,
+          // Con presentaciones el stock inicial va por presentación (presentations[].initial_stock):
+          // uno global quedaba en una fila "agregada" que ningún total ni venta lee.
           initial_stock:
-            form.manage_stock && form.initial_stock != null && form.initial_stock > 0
+            form.manage_stock && !presentationsPayload.length && form.initial_stock != null && form.initial_stock > 0
               ? form.initial_stock
               : undefined,
           igv_affectation_type: form.igv_affectation_type ?? '10',
@@ -1460,7 +1468,12 @@ export default function ProductosPage() {
                   <div />
                 )}
               </div>
-              {form.manage_stock && modal === 'create' && (
+              {form.manage_stock && modal === 'create' && form.has_variants && (
+                <p className="text-xs text-sky-800 rounded-xl border border-sky-200 bg-sky-50/50 px-3 py-2.5">
+                  Con presentaciones, el stock inicial se define en cada una (botón «Gestionar presentaciones»).
+                </p>
+              )}
+              {form.manage_stock && modal === 'create' && !form.has_variants && (
                 <div className="rounded-xl border border-sky-200 bg-sky-50/50 px-3 py-3 space-y-2">
                   <label className="block text-sm font-medium text-stone-700">
                     Stock inicial
@@ -1729,6 +1742,7 @@ export default function ProductosPage() {
         open={presentationsModalOpen}
         productName={form.name.trim() || undefined}
         presentations={form.presentations ?? []}
+        manageStock={!!form.manage_stock}
         onClose={() => setPresentationsModalOpen(false)}
         onSave={(presentations) => setForm((f) => ({ ...f, presentations }))}
       />
