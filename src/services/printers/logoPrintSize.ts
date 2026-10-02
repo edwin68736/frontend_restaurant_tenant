@@ -17,17 +17,18 @@ export const LOGO_PRINT_SIZE_OPTIONS: { value: LogoPrintSize; label: string; hin
  * físico en cualquier papel.
  *
  * Por eso el ancho máximo (46 mm) cabe en el imprimible del rollo de 58 mm (~48 mm) y ninguna
- * medida se recorta por papel. La altura es la que más separa los tres tamaños en un logo
- * cuadrado o apaisado típico (12 / 18 / 26 mm); un logo muy ancho queda limitado por el ancho.
+ * medida se recorta por papel. Como el ancho ya no puede crecer, la altura es la que separa los
+ * tres tamaños en un logo cuadrado o apaisado típico (16 / 24 / 34 mm); un logo muy ancho queda
+ * limitado por el ancho.
  *
  * Antes cada papel y cada impresión tenían su propia cuenta (PDF 42×19 mm igual en los dos
  * rollos, ESC/POS 512×150 px en 80 mm y 360×120 px en 58 mm): el mismo ajuste no se veía igual,
  * y los tres tamaños quedaban demasiado juntos y chicos.
  */
 export const TICKET_LOGO_BOX_MM: Record<LogoPrintSize, { w: number; h: number }> = {
-  pequeno: { w: 30, h: 12 },
-  mediano: { w: 40, h: 18 },
-  grande: { w: 46, h: 26 },
+  pequeno: { w: 34, h: 16 },
+  mediano: { w: 42, h: 24 },
+  grande: { w: 46, h: 34 },
 }
 
 /** Resolución de la ticketera térmica: 8 puntos por mm (58 mm ≈ 384 px, 80 mm ≈ 576 px). */
@@ -40,8 +41,8 @@ export const ESCPOS_PX_PER_MM = 8
  */
 const A4_SCALE: Record<LogoPrintSize, number> = {
   pequeno: 1,
-  mediano: 1.4,
-  grande: 1.8,
+  mediano: 1.5,
+  grande: 2,
 }
 
 export function readLogoPrintSize(): LogoPrintSize {
