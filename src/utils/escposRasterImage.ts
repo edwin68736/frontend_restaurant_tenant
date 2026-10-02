@@ -1,4 +1,4 @@
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { ESCPOS_PX_PER_MM, ticketLogoBoxMm } from '@/services/printers/logoPrintSize'
 import QRCode from 'qrcode'
 
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
@@ -17,15 +17,16 @@ export function clearEscPosImageRasterCache(): void {
   imageRasterCache.clear()
 }
 
-// Tope del logo en la ticketera. El ancho no puede superar el imprimible del papel
-// (escposPrintWidthPx: 384 / 576) o la imagen se corta; se deja un margen para que no
-// quede pegado al borde.
+// Tope del logo en la ticketera, derivado del MISMO cuadro en milímetros que usa el PDF
+// (ticketLogoBoxMm) y igual para 58 y 80 mm: el ajuste da el mismo tamaño físico en cualquier
+// papel. El ancho nunca supera el imprimible del rollo (escposPrintWidthPx: 384 / 576) o la
+// imagen se cortaría; con los cuadros actuales (≤ 46 mm) ni siquiera el de 58 mm lo alcanza.
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return Math.min(scaleLogoDimension(paperWidthMm === 58 ? 360 : 512), escposPrintWidthPx(paperWidthMm))
+  return Math.min(Math.round(ticketLogoBoxMm().w * ESCPOS_PX_PER_MM), escposPrintWidthPx(paperWidthMm))
 }
 
-function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return scaleLogoDimension(paperWidthMm === 58 ? 120 : 150)
+function escposLogoMaxHeightPx(_paperWidthMm: 58 | 80): number {
+  return Math.round(ticketLogoBoxMm().h * ESCPOS_PX_PER_MM)
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {

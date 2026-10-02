@@ -1,4 +1,4 @@
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { scaleA4LogoDimension } from '@/services/printers/logoPrintSize'
 import { resolveLogoForPrint } from '@/lib/companyLogo'
 import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -39,7 +39,7 @@ function fitLogoMm(
   maxW: number,
   maxH: number,
 ): { w: number; h: number } {
-  return fitReceiptLogoMm(naturalW, naturalH, Math.min(maxW, scaleLogoDimension(LOGO_MAX_MM)), scaleLogoDimension(maxH))
+  return fitReceiptLogoMm(naturalW, naturalH, Math.min(maxW, scaleA4LogoDimension(LOGO_MAX_MM)), scaleA4LogoDimension(maxH))
 }
 
 type A4Col = { header: string; w: number; align: 'left' | 'center' | 'right' }
@@ -192,6 +192,9 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
 
   // El logo es del emisor: prioriza el de la sucursal emisora (printData.company.logo_url,
   // ya resuelto por el backend) y cae al logo global cacheado si la sucursal no tiene uno propio.
+  // Un logo grande puede ser más alto que la cabecera: el contenido que sigue debe empezar
+  // debajo del logo (logoBottom), o se solaparía.
+  let logoBottom = headerTopY
   const companyLogo = (!nvLayout || nvLayout.showLogo) ? await resolveLogoForPrint(data.company) : null
   if (companyLogo) {
     const logoAsset = await resolveReceiptLogoForPdf(companyLogo)
@@ -199,12 +202,13 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
       const maxLogoH = Math.max(20, headerBottom - headerTopY - 4)
       const size = fitLogoMm(logoAsset.naturalW, logoAsset.naturalH, col1W - 6, maxLogoH)
       const logoX = col1X + (col1W - size.w) / 2
-      const logoY = headerTopY + (headerBottom - headerTopY - size.h) / 2
+      const logoY = headerTopY + Math.max(0, (headerBottom - headerTopY - size.h) / 2)
       doc.addImage(logoAsset.dataUrl, logoAsset.format, logoX, logoY, size.w, size.h)
+      logoBottom = logoY + size.h
     }
   }
 
-  y = headerBottom + 3
+  y = Math.max(headerBottom, logoBottom) + 3
 
   y = fieldRow(doc, y, 'FECHA DE EMISIÓN:', data.issue_date, MARGIN + 2)
   y = fieldRow(doc, y, 'FECHA DE VENCIMIENTO:', '', MARGIN + 2)
