@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
@@ -21,6 +21,13 @@ type Props = {
   onCreated: (contact: Contact) => void
   /** Tipo de documento inicial (p. ej. "6" para factura). */
   defaultDocType?: string
+  /**
+   * Precarga el documento: p. ej. el que se tecleó en el buscador de cliente y no existe. Si ya tiene
+   * el largo de su tipo (8 DNI / 11 RUC) se consulta solo, sin pulsar "Consultar".
+   */
+  defaultDocNumber?: string
+  /** Igual, pero cuando lo escrito no parece un documento (se buscó por nombre). */
+  defaultBusinessName?: string
 }
 
 const emptyForm = (docType = '6') => ({
@@ -30,16 +37,48 @@ const emptyForm = (docType = '6') => ({
   address: '',
 })
 
-export function QuickContactCreateModal({ open, onClose, onCreated, defaultDocType = '6' }: Props) {
+export function QuickContactCreateModal({
+  open,
+  onClose,
+  onCreated,
+  defaultDocType = '6',
+  defaultDocNumber,
+  defaultBusinessName,
+}: Props) {
   const [form, setForm] = useState(() => emptyForm(defaultDocType))
   const [consultaLoading, setConsultaLoading] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
 
-  useEffect(() => {
-    if (open) setForm(emptyForm(defaultDocType))
-  }, [open, defaultDocType])
+  /** Evita reconsultar mientras el modal sigue abierto; se reinicia al cerrar. */
+  const autoConsultedRef = useRef(false)
 
-  const handleConsulta = async () => {
+  useEffect(() => {
+    if (!open) {
+      autoConsultedRef.current = false
+      return
+    }
+    setForm({
+      ...emptyForm(defaultDocType),
+      doc_number: defaultDocNumber?.trim() || '',
+      business_name: defaultBusinessName?.trim() || '',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultDocType, defaultDocNumber, defaultBusinessName])
+
+  useEffect(() => {
+    if (!open || autoConsultedRef.current) return
+    const code = toContactDocCode(defaultDocType)
+    const num = (defaultDocNumber ?? '').trim()
+    const ok = (code === '6' && num.length === 11) || (code === '1' && num.length === 8)
+    if (!ok) return
+    autoConsultedRef.current = true
+    void runConsulta(code, num)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultDocType, defaultDocNumber])
+
+  const handleConsulta = () => runConsulta(toContactDocCode(form.doc_type), form.doc_number)
+
+  const runConsulta = async (docCode: string, docNumber: string) => {
     const ruc = (await companyService.getConfig()).ruc
     if (!ruc) {
       toast.error('No se pudo obtener RUC de la empresa')
@@ -47,9 +86,8 @@ export function QuickContactCreateModal({ open, onClose, onCreated, defaultDocTy
     }
     setConsultaLoading(true)
     try {
-      const docCode = toContactDocCode(form.doc_type)
       if (docCode === '6') {
-        const res = await consultaService.ruc(ruc, form.doc_number)
+        const res = await consultaService.ruc(ruc, docNumber)
         if (res.success) {
           setForm((q) => ({
             ...q,
@@ -59,7 +97,7 @@ export function QuickContactCreateModal({ open, onClose, onCreated, defaultDocTy
           toast.success('Datos obtenidos')
         } else toast.error('RUC no encontrado')
       } else {
-        const res = await consultaService.dni(ruc, form.doc_number)
+        const res = await consultaService.dni(ruc, docNumber)
         if (res.success) {
           setForm((q) => ({
             ...q,

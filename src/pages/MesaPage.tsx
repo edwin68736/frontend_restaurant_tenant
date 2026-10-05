@@ -26,10 +26,8 @@ import { companyService, pickDefaultCheckoutSeries } from '@/services/company.se
 import { resolveTaxRatePercent } from '@/constants/tax'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { BranchCheckoutSeriesEmptyState } from '@/components/pos/BranchCheckoutSeriesEmptyState'
-import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
+import { contactsService, type Contact } from '@/services/contacts.service'
 import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
-import { consultaService } from '@/services/consulta.service'
-import { SearchableSelect } from '@/components/SearchableSelect'
 import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, printDocumentAuto, printPrecuentaAuto } from '@/services/printers.service'
 import {
   cartLineToPrecuentaPrintItem,
@@ -86,14 +84,6 @@ import {
   BILLING_NOT_ENABLED_MESSAGE,
   isElectronicBillingSunatCode,
 } from '@/utils/restaurantCheckoutSeries'
-import {
-  contactDocConsultMinLength,
-  contactDocNumberPlaceholder,
-  contactDocSelectOptions,
-  contactDocSupportsConsulta,
-  sanitizeContactDocNumber,
-  toContactDocCode,
-} from '@/utils/contactDocTypes'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import {
@@ -106,7 +96,7 @@ import { formatMoney, formatSoles } from '@/utils/format'
 import { canApplyCheckoutDiscount, canCancelComanda } from '@/utils/restaurantPermissions'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
 import { MobileCartDrawer } from '@/components/restaurant/MobileCartDrawer'
-import { PortalModal } from '@/components/ui/PortalModal'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import { FIXED_OVERLAY_SAFE, MAX_H_PANEL_85 } from '@/utils/safeAreaClasses'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
@@ -182,9 +172,7 @@ export default function MesaPage() {
   const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
-  const [clientQuickAdd, setClientQuickAdd] = useState({ doc_type: '6', doc_number: '', business_name: '', address: '' })
-  const [consultaLoading, setConsultaLoading] = useState(false)
-  const [createContactLoading, setCreateContactLoading] = useState(false)
+  const [newClientQuery, setNewClientQuery] = useState('')
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false)
   const cartBtnRef = useRef<HTMLButtonElement>(null)
   const desktopCartRef = useRef<HTMLDivElement>(null)
@@ -1559,7 +1547,10 @@ export default function MesaPage() {
         contactId={effectiveContactId}
         contacts={contacts}
         onContactChange={setContactId}
-        onAddContact={() => setClientQuickAddOpen(true)}
+        onAddContact={(q) => {
+          setNewClientQuery(q ?? '')
+          setClientQuickAddOpen(true)
+        }}
         onPreferVariosContact={() => {
           const variosId = pickVariosContactId(contacts)
           if (variosId) setContactId(variosId)
@@ -1851,150 +1842,31 @@ export default function MesaPage() {
         </div>
       )}
 
-      <PortalModal open={clientQuickAddOpen} onClose={() => setClientQuickAddOpen(false)} className="max-w-md" stacked>
-          <div className="bg-white rounded-2xl shadow-xl w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-stone-800">Registrar cliente</h3>
-              <button type="button" onClick={() => setClientQuickAddOpen(false)} className="p-1 rounded-lg hover:bg-stone-100">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <div className="min-w-[9.5rem] shrink-0">
-                  <SearchableSelect
-                    value={toContactDocCode(clientQuickAdd.doc_type)}
-                    onChange={(v) =>
-                      setClientQuickAdd((q) => ({
-                        ...q,
-                        doc_type: String(v ?? '6'),
-                        doc_number: '',
-                      }))
-                    }
-                    options={contactDocSelectOptions()}
-                    searchable={false}
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
-                  />
-                </div>
-                <input
-                  type="text"
-                  value={clientQuickAdd.doc_number}
-                  onChange={(e) =>
-                    setClientQuickAdd((q) => ({
-                      ...q,
-                      doc_number: sanitizeContactDocNumber(q.doc_type, e.target.value),
-                    }))
-                  }
-                  placeholder={contactDocNumberPlaceholder(clientQuickAdd.doc_type)}
-                  className="flex-1 min-w-[6rem] border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                />
-                {contactDocSupportsConsulta(clientQuickAdd.doc_type) && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const ruc = (await companyService.getConfig()).ruc
-                      if (!ruc) {
-                        toast.error('No se pudo obtener RUC de la empresa')
-                        return
-                      }
-                      setConsultaLoading(true)
-                      try {
-                        const docCode = toContactDocCode(clientQuickAdd.doc_type)
-                        if (docCode === '6') {
-                          const res = await consultaService.ruc(ruc, clientQuickAdd.doc_number)
-                          if (res.success) {
-                            setClientQuickAdd((q) => ({
-                              ...q,
-                              business_name: res.razon_social ?? '',
-                              address: res.direccion_completa ?? res.direccion ?? '',
-                            }))
-                            toast.success('Datos obtenidos')
-                          } else toast.error('RUC no encontrado')
-                        } else {
-                          const res = await consultaService.dni(ruc, clientQuickAdd.doc_number)
-                          if (res.success) {
-                            setClientQuickAdd((q) => ({
-                              ...q,
-                              business_name: res.nombre_completo ?? '',
-                              address: '',
-                            }))
-                            toast.success('Datos obtenidos')
-                          } else toast.error('DNI no encontrado')
-                        }
-                      } catch {
-                        toast.error('Error al consultar')
-                      } finally {
-                        setConsultaLoading(false)
-                      }
-                    }}
-                    disabled={
-                      consultaLoading ||
-                      clientQuickAdd.doc_number.length < contactDocConsultMinLength(clientQuickAdd.doc_type)
-                    }
-                    className="px-3 py-2 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200 disabled:opacity-50"
-                  >
-                    {consultaLoading ? '...' : 'Consultar'}
-                  </button>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Razón social / Nombre</label>
-                <input
-                  value={clientQuickAdd.business_name}
-                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, business_name: e.target.value }))}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                  placeholder="Obligatorio"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-stone-600 mb-1">Dirección (opcional)</label>
-                <input
-                  value={clientQuickAdd.address}
-                  onChange={(e) => setClientQuickAdd((q) => ({ ...q, address: e.target.value }))}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button type="button" onClick={() => setClientQuickAddOpen(false)} className="flex-1 py-2 border border-stone-200 rounded-xl text-sm">
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={
-                  createContactLoading ||
-                  !clientQuickAdd.business_name.trim() ||
-                  !clientQuickAdd.doc_number.trim()
-                }
-                onClick={async () => {
-                  setCreateContactLoading(true)
-                  try {
-                    const data: CreateContactInput = {
-                      type: 'customer',
-                      doc_type: toContactDocCode(clientQuickAdd.doc_type),
-                      doc_number: clientQuickAdd.doc_number.trim(),
-                      business_name: clientQuickAdd.business_name.trim(),
-                      address: clientQuickAdd.address || undefined,
-                    }
-                    const created = await contactsService.create(data)
-                    setContacts((c) => [...c, created])
-                    setContactId(created.id)
-                    toast.success('Cliente registrado')
-                    setClientQuickAddOpen(false)
-                    setClientQuickAdd({ doc_type: '6', doc_number: '', business_name: '', address: '' })
-                  } catch (e: unknown) {
-                    toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
-                  } finally {
-                    setCreateContactLoading(false)
-                  }
-                }}
-                className="flex-1 py-2 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
-              >
-                {createContactLoading ? 'Guardando...' : 'Registrar'}
-              </button>
-            </div>
-          </div>
-      </PortalModal>
+      <QuickContactCreateModal
+        open={clientQuickAddOpen}
+        onClose={() => {
+          setClientQuickAddOpen(false)
+          setNewClientQuery('')
+        }}
+        defaultDocType={
+          /^\d{11}$/.test(newClientQuery.trim())
+            ? '6'
+            : /^\d{8}$/.test(newClientQuery.trim())
+              ? '1'
+              : isFacturaDocType(docType, selectedSeries?.sunat_code)
+                ? '6'
+                : '1'
+        }
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined}
+        defaultBusinessName={
+          newClientQuery.trim() && !/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined
+        }
+        onCreated={(contact) => {
+          setContacts((c) => [...c, contact])
+          setContactId(contact.id)
+          setNewClientQuery('')
+        }}
+      />
 
       <KitchenRoundHistoryModal
         open={kitchenHistoryOpen}
