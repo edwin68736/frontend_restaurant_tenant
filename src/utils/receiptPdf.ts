@@ -43,6 +43,26 @@ const A4_WIDTH = 210
 /** Espacio extra arriba del ticket PDF (correo / descarga / vista previa). */
 const TICKET_TOP_PADDING_MM = 5
 
+/**
+ * Engrosa el texto del PDF: el trazo fino de Helvetica en gris (antialiasing) sale opaco/borroso en
+ * térmica de 58 mm al imprimir desde el navegador (el driver lo tramea), mientras que la impresión
+ * directa ESC/POS usa la fuente bitmap gruesa de la impresora. Se dibuja cada texto con relleno +
+ * un trazo fino negro (negrita sintética) sin tocar el grosor de línea que usan los separadores.
+ */
+function thickenTicketText(doc: jsPDF, strokeMm = 0.14) {
+  const original = doc.text.bind(doc) as (...args: unknown[]) => jsPDF
+  ;(doc as unknown as { text: (...args: unknown[]) => jsPDF }).text = (...args: unknown[]) => {
+    const prevWidth = doc.getLineWidth()
+    doc.setLineWidth(strokeMm)
+    doc.setDrawColor(0, 0, 0)
+    // text(texto, x, y, opciones?) — se mezclan las opciones con renderingMode.
+    const opts = (typeof args[3] === 'object' && args[3] !== null ? args[3] : {}) as Record<string, unknown>
+    const res = original(args[0], args[1], args[2], { ...opts, renderingMode: 'fillThenStroke' })
+    doc.setLineWidth(prevWidth)
+    return res
+  }
+}
+
 export type ReceiptPdfOptions = {
   /** Ancho de rollo (58 o 80 mm). Por defecto 80. */
   paperWidthMm?: TicketPaperWidthMm
@@ -132,6 +152,8 @@ export async function generateReceiptPdf(
     unit: 'mm',
     format: isTicket ? [pageW, TICKET_PAGE_HEIGHT] : 'a4',
   })
+  // Maqueta nativa de 58 mm (impresión desde el navegador): texto engrosado.
+  if (isTicket && options?.layoutWidthMm) thickenTicketText(doc)
 
   let y = margin + (isTicket ? TICKET_TOP_PADDING_MM : 0)
   const lineH = 5
@@ -365,7 +387,7 @@ export async function generateReceiptPdf(
       // palabra: la fila queda sin descripción y el texto baja completo al ancho de las líneas siguientes.
       const firstWord = desc.trim().split(/\s+/)[0] ?? ''
       const descLines: string[] =
-        doc.getTextWidth(firstWord) <= lay.wDescFirst
+        doc.getTextWidth(firstWord) <= lay.xEndPUnit - lay.wMoney - lay.gap - lay.xDesc
           ? (doc.splitTextToSize(desc, lay.wDescFirst) as string[])
           : ['', ...(doc.splitTextToSize(desc, lay.wDescCont) as string[])]
 
