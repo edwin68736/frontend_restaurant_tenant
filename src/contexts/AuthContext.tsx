@@ -3,7 +3,7 @@ import { authService, decodeJWT, type AuthUser, type LoginPayload, type LoginRes
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { resetReloginGuard, SESSION_EXPIRED_EVENT } from '@/services/api'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
-import { featureAllowed, type RestaurantFeature } from '@/utils/restaurantPermissions'
+import { canAccessFeature, type RestaurantFeature } from '@/utils/restaurantPermissions'
 import { toast } from 'sonner'
 
 const PERMS_KEY = 'restaurant_permissions'
@@ -177,8 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.isAuthenticated, state.token])
 
   const canAccess = useCallback(
-    (feature: RestaurantFeature) => featureAllowed(state.restaurantPermissions, feature),
-    [state.restaurantPermissions],
+    (feature: RestaurantFeature) =>
+      canAccessFeature(state.restaurantPermissions, feature, state.employeeType),
+    [state.restaurantPermissions, state.employeeType],
   )
 
   const hasModule = useCallback(

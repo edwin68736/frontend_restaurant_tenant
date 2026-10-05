@@ -5,7 +5,7 @@ import { Delete } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { restaurantAuthService, type PinLoginPayload } from '@/services/restaurantAuth.service'
-import { defaultRouteForPermissions, featureAllowed } from '@/utils/restaurantPermissions'
+import { defaultRouteForPermissions } from '@/utils/restaurantPermissions'
 import { AuthSplitLayout } from '@/components/auth/AuthSplitLayout'
 import { pinStationCharacter } from '@/config/branding'
 
@@ -50,15 +50,8 @@ export default function PinLoginPage() {
       setFromLogin(data.active_branch ?? null, !!data.can_switch_branch, data.allowed_branches)
       const employeeType = (data.user as { employee_type?: string } | undefined)?.employee_type
       const route = defaultRouteForPermissions(data.restaurant_permissions, employeeType)
-      if (station === 'kitchen') {
-        navigate('/comandas', { replace: true })
-      } else if (station === 'admin') {
-        navigate(featureAllowed(data.restaurant_permissions ?? [], 'dashboard') ? '/dashboard' : route, {
-          replace: true,
-        })
-      } else {
-        navigate(route, { replace: true })
-      }
+      // Todos los roles entran por Inicio (accesos según su rol); el Dashboard es solo de administración.
+      navigate(route, { replace: true })
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'PIN incorrecto'
       toast.error(msg)

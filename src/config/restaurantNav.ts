@@ -11,9 +11,11 @@ import {
   Bike,
   BarChart3,
   LayoutDashboard,
+  Home,
 } from 'lucide-react'
 
 export type NavFeature =
+  | 'inicio'
   | 'productos'
   | 'modificadores'
   | 'mesas'
@@ -49,6 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'operations',
     label: 'Operaciones',
     items: [
+      { to: '/inicio', label: 'Inicio', icon: Home, feature: 'inicio' },
       { to: '/pos', label: 'POS', icon: Receipt, feature: 'pos', emphasis: true },
       { to: '/salas', label: 'Mesas', icon: LayoutGrid, feature: 'salas', emphasis: true },
       { to: '/comandas', label: 'Comandas', icon: ChefHat, feature: 'comandas', emphasis: true },

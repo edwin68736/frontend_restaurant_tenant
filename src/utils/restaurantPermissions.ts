@@ -1,6 +1,7 @@
 import { isNativePrintAvailable } from '@/services/printers.service'
 
 export type RestaurantFeature =
+  | 'inicio'
   | 'productos'
   | 'modificadores'
   | 'mesas'
@@ -18,6 +19,7 @@ export type RestaurantFeature =
 
 /** Mapeo feature UI → permiso corto backend. */
 const FEATURE_PERM: Record<RestaurantFeature, string> = {
+  inicio: '',
   productos: 'g.p',
   modificadores: 'g.p',
   mesas: 'g.p',
@@ -36,7 +38,12 @@ const FEATURE_PERM: Record<RestaurantFeature, string> = {
 
 export function featureAllowed(permissions: string[] | null | undefined, feature: RestaurantFeature): boolean {
   if (!permissions || permissions.length === 0) return false
-  if (feature === 'ventas' || feature === 'reportes' || feature === 'dashboard') {
+  // Inicio es la pantalla de entrada de TODO usuario con acceso a la app.
+  if (feature === 'inicio') return true
+  // Dashboard: solo administración (s.m); admin/supervisor por tipo de empleado se resuelve en
+  // canAccessFeature, que conoce employeeType.
+  if (feature === 'dashboard') return permissions.includes('s.m')
+  if (feature === 'ventas' || feature === 'reportes') {
     return (
       permissions.includes('o.ch') ||
       permissions.includes('c.v') ||
@@ -45,6 +52,27 @@ export function featureAllowed(permissions: string[] | null | undefined, feature
   }
   const need = FEATURE_PERM[feature]
   return permissions.includes(need)
+}
+
+/** El Dashboard (métricas de toda la sucursal) es solo de administrador y supervisor. */
+export function canViewDashboard(
+  permissions: string[] | null | undefined,
+  employeeType?: string | null,
+): boolean {
+  if (hasPermission(permissions, 's.m')) return true
+  const et = String(employeeType ?? '').toLowerCase()
+  return et === 'admin' || et === 'supervisor'
+}
+
+/** Como featureAllowed, pero con las reglas que dependen del tipo de empleado (Dashboard). */
+export function canAccessFeature(
+  permissions: string[] | null | undefined,
+  feature: RestaurantFeature,
+  employeeType?: string | null,
+): boolean {
+  if (!permissions || permissions.length === 0) return false
+  if (feature === 'dashboard') return canViewDashboard(permissions, employeeType)
+  return featureAllowed(permissions, feature)
 }
 
 export function hasPermission(permissions: string[] | null | undefined, perm: string): boolean {
@@ -181,16 +209,21 @@ export function canViewAllCashSessions(
   return canManageCashSettings(permissions, employeeType)
 }
 
-/** Ruta inicial tras login según rol restaurante y permisos efectivos. */
+/** Ruta inicial tras login: la pantalla Inicio, igual para todos los roles. */
 export function defaultRouteForPermissions(
+  _permissions?: string[] | null,
+  _employeeType?: string | null,
+): string {
+  return '/inicio'
+}
+
+/** Pantalla principal de trabajo del rol (la tarjeta destacada de Inicio). */
+export function primaryRouteForPermissions(
   permissions: string[] | null | undefined,
   employeeType?: string | null,
 ): string {
   const et = String(employeeType ?? '').toLowerCase()
-  const isAdminLike =
-    hasPermission(permissions, 's.m') || et === 'admin' || et === 'supervisor'
-
-  if (isAdminLike && featureAllowed(permissions, 'dashboard')) {
+  if (canViewDashboard(permissions, employeeType)) {
     return '/dashboard'
   }
 
@@ -236,6 +269,7 @@ export function defaultRouteForPermissions(
 
 function featureToRoute(feature: RestaurantFeature): string {
   const map: Record<RestaurantFeature, string> = {
+    inicio: '/inicio',
     productos: '/productos',
     modificadores: '/modificadores',
     mesas: '/mesas',

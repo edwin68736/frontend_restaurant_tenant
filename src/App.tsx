@@ -6,6 +6,7 @@ import RestaurantModuleUpsell from '@/components/RestaurantModuleUpsell'
 import RestaurantLayout from '@/layouts/RestaurantLayout'
 import LoginPage from '@/pages/LoginPage'
 import HomePage from '@/pages/HomePage'
+import InicioPage from '@/pages/InicioPage'
 import PinLoginPage from '@/pages/PinLoginPage'
 import RucPage from '@/pages/RucPage'
 import { defaultRouteForPermissions } from '@/utils/restaurantPermissions'
@@ -68,7 +69,7 @@ function DefaultEntryRedirect() {
   return <Navigate to={isBound ? '/home' : '/ruc'} replace />
 }
 
-function RequireFeature({ feature, children }: { feature: 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'reportes' | 'dashboard' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
+function RequireFeature({ feature, children }: { feature: 'inicio' | 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'reportes' | 'dashboard' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
   const { canAccess } = useAuth()
   if (!canAccess(feature)) return <Navigate to="/" replace />
   return <>{children}</>
@@ -120,6 +121,7 @@ export default function App() {
           }
         >
           <Route index element={<DefaultRedirect />} />
+          <Route path="inicio" element={<RequireFeature feature="inicio"><InicioPage /></RequireFeature>} />
           <Route path="productos" element={<RequireFeature feature="productos"><ProductosPage /></RequireFeature>} />
           <Route path="modificadores" element={<RequireFeature feature="modificadores"><ModificadoresPage /></RequireFeature>} />
           <Route path="mesas" element={<RequireFeature feature="mesas"><MesasPage /></RequireFeature>} />
