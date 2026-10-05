@@ -224,8 +224,34 @@ export async function generateReceiptPdf(
     const ticketLineH = 4.2
     /** Mismo tono legible que cabecera/fecha (Helvetica 8pt); Courier pequeño se ve opaco al imprimir. */
     const ticketDetailFontPt = FONT_SIZE_SM
-    const lay = ticketDetailLayout4Col({ pageW, margin })
     const descHeader = pageW <= 62 ? 'Desc.' : 'Descripción'
+    const importeHeader = pageW <= 62 ? 'Total' : 'Importe'
+
+    // Columnas Cant./P.U./Importe dimensionadas por lo que miden de verdad (cabecera en negrita y los
+    // importes reales de esta venta): con anchos fijos "Cant." y los montos grandes se partían o
+    // se cortaban en 58 mm.
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(ticketDetailFontPt)
+    const wHdrCant = doc.getTextWidth('Cant.')
+    const wHdrMoney = Math.max(doc.getTextWidth('P.U.'), doc.getTextWidth(importeHeader))
+    doc.setFont('helvetica', 'normal')
+    const wBodyCant = Math.max(
+      doc.getTextWidth('00'),
+      ...data.items.map((it) => doc.getTextWidth(String(it.quantity))),
+    )
+    const wBodyMoney = Math.max(
+      0,
+      ...data.items.flatMap((it) => [
+        doc.getTextWidth(receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency))),
+        doc.getTextWidth(receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency))),
+      ]),
+    )
+    const lay = ticketDetailLayout4Col({
+      pageW,
+      margin,
+      wCantMm: Math.max(wHdrCant, wBodyCant) + 0.6,
+      wMoneyMm: Math.max(wHdrMoney, wBodyMoney) + 0.6,
+    })
 
     doc.setTextColor(0, 0, 0)
     doc.setFont('helvetica', 'normal')
@@ -317,7 +343,7 @@ export async function generateReceiptPdf(
     doc.text('Cant.', lay.xCant, y, { maxWidth: lay.wCant })
     doc.text(descHeader, lay.xDesc, y, { maxWidth: lay.wDescFirst })
     doc.text('P.U.', lay.xEndPUnit, y, { align: 'right', maxWidth: lay.wMoney })
-    doc.text('Importe', lay.xEndImporte, y, { align: 'right', maxWidth: lay.wMoney })
+    doc.text(importeHeader, lay.xEndImporte, y, { align: 'right', maxWidth: lay.wMoney })
     y += ticketLineH
     dash()
 
@@ -328,7 +354,13 @@ export async function generateReceiptPdf(
       // La fuente debe fijarse ANTES de medir: con la del encabezado (negrita) el corte de línea
       // salía más ancho que el texto real y la descripción pisaba la columna de P.U.
       setTicketDetailFont(false)
-      const descLines = doc.splitTextToSize(desc, lay.wDescFirst) as string[]
+      // Si la 1ª palabra no cabe en la columna angosta (58 mm), jsPDF la partiría a mitad de
+      // palabra: la fila queda sin descripción y el texto baja completo al ancho de las líneas siguientes.
+      const firstWord = desc.trim().split(/s+/)[0] ?? ''
+      const descLines: string[] =
+        doc.getTextWidth(firstWord) <= lay.wDescFirst
+          ? (doc.splitTextToSize(desc, lay.wDescFirst) as string[])
+          : ['', ...(doc.splitTextToSize(desc, lay.wDescCont) as string[])]
 
       doc.text(String(it.quantity), lay.xCant, y, { maxWidth: lay.wCant })
       doc.text(descLines[0] ?? '—', lay.xDesc, y, { maxWidth: lay.wDescFirst })
