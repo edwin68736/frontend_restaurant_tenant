@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PageShell } from '@/components/layout/PageShell'
+import { MiTurnoBlock } from '@/components/inicio/MiTurnoBlock'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
@@ -224,6 +225,8 @@ export default function InicioPage() {
             })}
           </section>
         ) : null}
+
+        <MiTurnoBlock role={group} />
 
         {featured.length > 0 ? (
           <section aria-label="Accesos principales">

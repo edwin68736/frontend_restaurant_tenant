@@ -82,6 +82,9 @@ export interface RestaurantOrderSummary {
   contact_id?: number | null
   delivery_driver_id?: number | null
   estimated_minutes?: number
+  /** Mozo que abrió el pedido (staff). */
+  staff_id?: number | null
+  waiter_name?: string
 }
 
 export interface PrecuentaPayload {
