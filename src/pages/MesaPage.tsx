@@ -2020,7 +2020,6 @@ export default function MesaPage() {
         saleNumber={lastSale?.number}
         total={lastSale?.total}
         defaultEmail={lastSale?.clientEmail}
-        openInReceiptView
       />
 
       <ManualProductModal

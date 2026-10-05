@@ -1,3 +1,5 @@
+import { loadStoredPrinterSettings } from '@/services/printers/storage'
+
 /** Ancho de rollo térmico (config impresoras Windows / Android). */
 export type TicketPaperWidthMm = 58 | 80
 
@@ -8,6 +10,18 @@ export function escposColumnsForPaper(mm: TicketPaperWidthMm): number {
 
 export function normalizeTicketPaperWidth(mm: unknown): TicketPaperWidthMm {
   return mm === 58 ? 58 : 80
+}
+
+/**
+ * Ancho de rollo configurado en Ajustes → Impresoras (documentos). Es el valor por defecto de todo
+ * ticket cuyo llamador no indica ancho.
+ */
+export function configuredTicketPaperMm(): TicketPaperWidthMm {
+  try {
+    return normalizeTicketPaperWidth(loadStoredPrinterSettings().documentos.paperWidthMm)
+  } catch {
+    return 80
+  }
 }
 
 export function ticketPageWidthMm(mm: TicketPaperWidthMm): number {

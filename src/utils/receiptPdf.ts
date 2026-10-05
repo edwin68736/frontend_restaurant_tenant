@@ -26,6 +26,7 @@ import {
 } from '@/utils/receiptLogoPdf'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
 import {
+  configuredTicketPaperMm,
   normalizeTicketPaperWidth,
   ticketMarginMm,
   ticketPageWidthMm,
@@ -116,7 +117,7 @@ export async function generateReceiptPdf(
   options?: ReceiptPdfOptions,
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
-  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm)
+  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
   const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
   const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
   const doc = new jsPDF({

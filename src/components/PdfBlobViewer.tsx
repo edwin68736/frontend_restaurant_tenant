@@ -33,13 +33,15 @@ type Props = {
   url: string
   title?: string
   className?: string
+  /** toolbar=false oculta la barra del visor nativo (su botón de imprimir no respeta el ticket). */
+  embedOptions?: { toolbar?: boolean }
 }
 
 /**
  * WebView de Android no muestra PDF en iframe con blob: — se rasteriza con pdf.js.
  * En escritorio/navegador se usa el visor nativo del iframe.
  */
-export function PdfBlobViewer({ url, title = 'Comprobante PDF', className }: Props) {
+export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embedOptions }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef(1)
@@ -204,7 +206,7 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className }: Pro
   if (!useCanvas) {
     return (
       <iframe
-        src={pdfEmbedSrc(url)}
+        src={pdfEmbedSrc(url, embedOptions)}
         title={title}
         className={className ?? 'h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white'}
       />

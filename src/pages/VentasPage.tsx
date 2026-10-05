@@ -60,6 +60,7 @@ import type { PrintData } from '@/types/printData'
 import { getConfiguredPrinter, isAutoPrintEnabled, isNativePrintAvailable, printDocumentAuto } from '@/services/printers.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
+import { printTicketAsPage } from '@/utils/receiptPrintTicket'
 import {
   downloadReceiptPdf,
   generateReceiptPdf,
@@ -672,6 +673,30 @@ export default function VentasPage() {
       setLocalPdfFormatBarVisible(false)
     } finally {
       setLocalPdfPreviewBusy(null)
+    }
+  }
+
+  /**
+   * Imprimir el ticket local abierto en el visor. La barra del visor nativo imprimiría el PDF
+   * escalado a la hoja de la impresora; aquí va directo a la ticketera configurada (app) o como
+   * hoja del tamaño exacto del rollo (navegador).
+   */
+  const [localTicketPrintBusy, setLocalTicketPrintBusy] = useState(false)
+  const printLocalTicketFromViewer = async () => {
+    const pd = localPdfPreviewDataRef.current
+    if (!pd) return
+    setLocalTicketPrintBusy(true)
+    try {
+      if (isNativePrintAvailable() && getConfiguredPrinter('documentos')) {
+        const msg = await printDocumentAuto(pd)
+        toast.success(msg || 'Comprobante enviado a la impresora')
+      } else {
+        await printTicketAsPage(pd, localTicketPdfOptions())
+      }
+    } catch (e: unknown) {
+      toast.error((e as Error)?.message ?? 'No se pudo imprimir')
+    } finally {
+      setLocalTicketPrintBusy(false)
     }
   }
 
@@ -2019,14 +2044,28 @@ export default function VentasPage() {
                     : 'PDF local (A4 · representación impresa)'
                   : 'PDF oficial SUNAT / PSE'}
               </h3>
-              <button
-                type="button"
-                onClick={closePdfViewer}
-                className="p-1 rounded-lg hover:bg-stone-100 text-stone-600"
-                aria-label="Cerrar"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {pdfViewerSource === 'local' && localPdfViewerFormat === 'ticket' && pdfViewerUrl ? (
+                  <button
+                    type="button"
+                    disabled={localTicketPrintBusy}
+                    onClick={() => void printLocalTicketFromViewer()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                    aria-label="Imprimir ticket"
+                  >
+                    <Printer size={15} />
+                    Imprimir
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closePdfViewer}
+                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-600"
+                  aria-label="Cerrar"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
             {pdfViewerSource === 'local' && localPdfFormatBarVisible && (
               <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-stone-200 bg-stone-50">
@@ -2060,6 +2099,9 @@ export default function VentasPage() {
                 url={pdfViewerUrl}
                 title="Comprobante PDF"
                 className="h-[75vh] min-h-[320px]"
+                // Ticket local: sin la barra nativa (su "imprimir" no respeta 58/80 mm); se usa el
+                // botón Imprimir de arriba.
+                embedOptions={pdfViewerSource === 'local' && localPdfViewerFormat === 'ticket' ? { toolbar: false } : undefined}
               />
             ) : (
               <div className="flex justify-center py-12">
