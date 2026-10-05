@@ -1,4 +1,5 @@
 import api from './api'
+import { idempotencyKeyFor, releaseIdempotencyKey } from '@/utils/idempotencyKey'
 
 export interface Floor {
   id: number
@@ -350,7 +351,20 @@ export const restaurantService = {
     payments: { method: string; amount: number; reference?: string; notes?: string }[]
     /** Dividir cuenta: factura solo estas comandas (deben estar pendientes). Vacío = todo lo pendiente. */
     comanda_ids?: number[]
-  }) => api.post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(`/api/restaurant/sessions/${sessionId}/bill`, data).then((r) => r.data),
+  }) => {
+    // Clave por intento de cobro: si la respuesta se pierde y el cajero reintenta, el servidor
+    // devuelve la venta ya creada en vez de registrar otra (ver utils/idempotencyKey.ts).
+    const scope = `bill:${sessionId}`
+    return api
+      .post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(
+        `/api/restaurant/sessions/${sessionId}/bill`,
+        { ...data, idempotency_key: idempotencyKeyFor(scope, data) },
+      )
+      .then((r) => {
+        releaseIdempotencyKey(scope)
+        return r.data
+      })
+  },
 
   // Checkout compuesto del POS de venta rápida: 1 request en vez de openSession→addOrder→getSession→billSession.
   posCheckout: (data: {
@@ -380,9 +394,14 @@ export const restaurantService = {
     api
       .post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(
         `/api/restaurant/pos/checkout`,
-        data,
+        // Clave por intento de cobro (ver utils/idempotencyKey.ts): un reintento tras respuesta
+        // perdida devuelve la venta ya creada, no una segunda.
+        { ...data, idempotency_key: idempotencyKeyFor('pos-checkout', data) },
       )
-      .then((r) => r.data),
+      .then((r) => {
+        releaseIdempotencyKey('pos-checkout')
+        return r.data
+      }),
 
   closeSession: (sessionId: number) =>
     api.post(`/api/restaurant/sessions/${sessionId}/close`).then((r) => r.data),

@@ -110,6 +110,7 @@ import { PortalModal } from '@/components/ui/PortalModal'
 import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import { FIXED_OVERLAY_SAFE, MAX_H_PANEL_85 } from '@/utils/safeAreaClasses'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
+import { checkoutErrorMessage } from '@/utils/networkErrors'
 
 export default function MesaPage() {
   const { canAccess, employeeType, restaurantPermissions } = useAuth()
@@ -740,17 +741,18 @@ export default function MesaPage() {
         if (!cfg) {
           toast.error('Configura la impresora de documentos en Ajustes')
         } else {
-          try {
-            const msg = await printDocumentAuto(res.print_data)
-            toast.success(msg || 'Comprobante enviado a la impresora')
-          } catch (e) {
-            console.error('[document print error]', e)
-            toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
-          }
+          // Sin await: la venta ya está registrada; esperar a la impresora dejaba la pantalla
+          // bloqueada y empuja al cajero a cobrar de nuevo.
+          printDocumentAuto(res.print_data)
+            .then((msg) => toast.success(msg || 'Comprobante enviado a la impresora'))
+            .catch((e: unknown) => {
+              console.error('[document print error]', e)
+              toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+            })
         }
       }
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+      toast.error(checkoutErrorMessage(e), { duration: 8000 })
     } finally {
       setAdding(false)
     }
@@ -882,18 +884,18 @@ export default function MesaPage() {
         if (!cfg) {
           toast.error('Configura la impresora de documentos en Ajustes')
         } else {
-          try {
-            const msg = await printDocumentAuto(res.print_data)
-            toast.success(msg || 'Comprobante enviado a la impresora')
-          } catch (e) {
-            console.error('[document print error]', e)
-            toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
-          }
+          // Sin await: ver el cobro parcial de arriba.
+          printDocumentAuto(res.print_data)
+            .then((msg) => toast.success(msg || 'Comprobante enviado a la impresora'))
+            .catch((e: unknown) => {
+              console.error('[document print error]', e)
+              toast.error('No se pudo imprimir el comprobante. Revisa la consola de Tauri (cargo).')
+            })
         }
       }
       // Navegar al cerrar el modal
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+      toast.error(checkoutErrorMessage(e), { duration: 8000 })
     } finally {
       setAdding(false)
     }

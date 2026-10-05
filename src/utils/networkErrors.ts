@@ -27,3 +27,17 @@ export function networkErrorMessage(err: unknown): string {
   }
   return 'No se pudo conectar con el servidor. Verifique su red o que el sistema esté en línea.'
 }
+
+/**
+ * Mensaje para un cobro que falló. Sin respuesta HTTP (red lenta, timeout, WebView) el servidor
+ * pudo haber guardado la venta igualmente: se avisa que reintentar es seguro (el cobro lleva una
+ * clave de idempotencia, ver utils/idempotencyKey.ts) para que el cajero no la dé por perdida ni
+ * la rehaga cambiando el carrito.
+ */
+export function checkoutErrorMessage(err: unknown): string {
+  if (isNetworkOrTimeoutError(err)) {
+    return 'No se recibió respuesta del servidor. Es posible que el cobro sí se haya registrado: vuelve a pulsar «Finalizar venta» (no se duplicará) o revisa en Ventas.'
+  }
+  const apiError = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+  return apiError ?? 'Error'
+}

@@ -112,6 +112,7 @@ import {
 } from '@/utils/checkoutDiscount'
 import { nonCashOverpay, paidCoversTotal, roundSunat, sumMoney, syncSinglePaymentAmount } from '@/utils/money'
 import { formatMoney, formatSoles } from '@/utils/format'
+import { checkoutErrorMessage } from '@/utils/networkErrors'
 import {
   orderStatusBadgeClasses,
   orderTypeCardAccentClasses,
@@ -1483,24 +1484,26 @@ export default function POSPage() {
         if (!cfg) {
           toast.error('Configura la impresora de documentos en Ajustes')
         } else {
-          try {
-            const msg = await printDocumentAuto(billRes.print_data)
-            toast.success(msg || 'Comprobante enviado a la impresora')
-          } catch (e) {
-            console.error('[document print error]', e)
-            // La venta ya está registrada: el fallo de impresora se informa, no se dramatiza.
-            const detail = e instanceof Error ? e.message : ''
-            toast.error(
-              detail
-                ? `${detail} La venta se registró; puedes reimprimir el comprobante.`
-                : 'No se pudo imprimir el comprobante. La venta se registró; puedes reimprimirlo.',
-              { duration: 6000 },
-            )
-          }
+          // Sin await: la venta ya está registrada y el modal de comprobante ya se abrió. Esperar
+          // a la impresora dejaba `loading` activo (pantalla "congelada") mientras ella respondía;
+          // ese tiempo muerto es justo lo que lleva al cajero a cobrar otra vez.
+          printDocumentAuto(billRes.print_data)
+            .then((msg) => toast.success(msg || 'Comprobante enviado a la impresora'))
+            .catch((e: unknown) => {
+              console.error('[document print error]', e)
+              // La venta ya está registrada: el fallo de impresora se informa, no se dramatiza.
+              const detail = e instanceof Error ? e.message : ''
+              toast.error(
+                detail
+                  ? `${detail} La venta se registró; puedes reimprimir el comprobante.`
+                  : 'No se pudo imprimir el comprobante. La venta se registró; puedes reimprimirlo.',
+                { duration: 6000 },
+              )
+            })
         }
       }
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
+      toast.error(checkoutErrorMessage(e), { duration: 8000 })
     } finally {
       setLoading(false)
     }
