@@ -14,7 +14,7 @@ export type TurnoRole = 'admin' | 'cashier' | 'waiter' | 'cook' | 'driver' | 'ot
 
 type Tone = 'neutral' | 'good' | 'warn' | 'alert'
 
-type Tile = { key: string; label: string; value: string; hint?: string; icon: LucideIcon; tone: Tone; to?: string }
+export type Tile = { key: string; label: string; value: string; hint?: string; icon: LucideIcon; tone: Tone; to?: string }
 
 const REFRESH_MS = 30_000
 
@@ -29,11 +29,9 @@ export type TurnoData = {
   orders: RestaurantOrderSummary[] | null
   kitchen: KitchenComanda[] | null
   openCashes: OpenCashSessionRow[] | null
-  /** Cobrado por el usuario en su caja abierta (reporte de su sesión). */
-  myCashSales: number | null
 }
 
-const EMPTY: TurnoData = { orders: null, kitchen: null, openCashes: null, myCashSales: null }
+const EMPTY: TurnoData = { orders: null, kitchen: null, openCashes: null }
 
 function minutesSince(iso: string | undefined): number | null {
   if (!iso) return null
@@ -54,7 +52,6 @@ function needs(role: TurnoRole) {
     orders: role !== 'cook',
     kitchen: role === 'cook' || role === 'waiter' || role === 'admin',
     openCashes: role === 'admin',
-    myCash: role === 'cashier',
   }
 }
 
@@ -65,25 +62,22 @@ export function MiTurnoBlock({ role }: { role: TurnoRole }) {
   const { session, canOperateCash } = useCashSession()
   const [data, setData] = useState<TurnoData>(EMPTY)
   const [loading, setLoading] = useState(true)
-  const sessionId = session?.id ?? null
 
   const load = useCallback(async () => {
     const n = needs(role)
-    const [orders, kitchen, openCashes, report] = await Promise.allSettled([
+    const [orders, kitchen, openCashes] = await Promise.allSettled([
       n.orders ? restaurantService.listOpenOrders('all') : Promise.resolve(null),
       n.kitchen ? restaurantService.getKitchen() : Promise.resolve(null),
       n.openCashes && activeBranchId > 0 ? cashbankService.listOpenSessionsInBranch(activeBranchId) : Promise.resolve(null),
-      n.myCash && sessionId ? cashbankService.getSessionReport(sessionId) : Promise.resolve(null),
     ])
     const val = <T,>(r: PromiseSettledResult<T | null>): T | null => (r.status === 'fulfilled' ? r.value : null)
     setData({
       orders: val(orders),
       kitchen: val(kitchen),
       openCashes: val(openCashes),
-      myCashSales: val(report)?.totals?.total_sales ?? null,
     })
     setLoading(false)
-  }, [role, activeBranchId, sessionId])
+  }, [role, activeBranchId])
 
   useEffect(() => {
     void load()
@@ -122,30 +116,37 @@ export function MiTurnoBlock({ role }: { role: TurnoRole }) {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9.5rem),1fr))] gap-2.5">
-          {tiles.map((t) => {
-            const Icon = t.icon
-            const body = (
-              <div className={clsx('h-full rounded-xl border px-3.5 py-3 transition-colors', TONE[t.tone], t.to && 'hover:shadow-sm')}>
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide opacity-70">
-                  <Icon size={13} className="shrink-0" />
-                  <span className="truncate">{t.label}</span>
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums leading-tight">{t.value}</p>
-                {t.hint ? <p className="mt-0.5 text-[11px] leading-snug opacity-70">{t.hint}</p> : null}
-              </div>
-            )
-            return t.to ? (
-              <Link key={t.key} to={t.to} className="block touch-manipulation">
-                {body}
-              </Link>
-            ) : (
-              <div key={t.key}>{body}</div>
-            )
-          })}
-        </div>
+        <TileGrid tiles={tiles} />
       )}
     </section>
+  )
+}
+
+/** Cuadrícula de tarjetas de estado (se reparte en el ancho disponible). */
+export function TileGrid({ tiles }: { tiles: Tile[] }) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9.5rem),1fr))] gap-2.5">
+      {tiles.map((t) => {
+        const Icon = t.icon
+        const body = (
+          <div className={clsx('h-full rounded-xl border px-3.5 py-3 transition-colors', TONE[t.tone], t.to && 'hover:shadow-sm')}>
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide opacity-70">
+              <Icon size={13} className="shrink-0" />
+              <span className="truncate">{t.label}</span>
+            </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums leading-tight">{t.value}</p>
+            {t.hint ? <p className="mt-0.5 text-[11px] leading-snug opacity-70">{t.hint}</p> : null}
+          </div>
+        )
+        return t.to ? (
+          <Link key={t.key} to={t.to} className="block touch-manipulation">
+            {body}
+          </Link>
+        ) : (
+          <div key={t.key}>{body}</div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -175,9 +176,6 @@ export function buildTiles(
         tone: 'good',
         to: '/caja',
       })
-      if (d.myCashSales !== null) {
-        tiles.push({ key: 'sales', label: 'Cobrado en mi turno', value: formatMoney(d.myCashSales), icon: Receipt, tone: 'neutral', to: '/ventas' })
-      }
     }
     if (d.orders) {
       tiles.push({

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { PageShell } from '@/components/layout/PageShell'
 import { MiTurnoBlock } from '@/components/inicio/MiTurnoBlock'
+import { ResumenHoyBlock, showsResumenHoy } from '@/components/inicio/ResumenHoyBlock'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
@@ -227,6 +228,8 @@ export default function InicioPage() {
         ) : null}
 
         <MiTurnoBlock role={group} />
+
+        {showsResumenHoy(group) ? <ResumenHoyBlock role={group} /> : null}
 
         {featured.length > 0 ? (
           <section aria-label="Accesos principales">
