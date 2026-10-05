@@ -363,7 +363,7 @@ export async function generateReceiptPdf(
       setTicketDetailFont(false)
       // Si la 1ª palabra no cabe en la columna angosta (58 mm), jsPDF la partiría a mitad de
       // palabra: la fila queda sin descripción y el texto baja completo al ancho de las líneas siguientes.
-      const firstWord = desc.trim().split(/s+/)[0] ?? ''
+      const firstWord = desc.trim().split(/\s+/)[0] ?? ''
       const descLines: string[] =
         doc.getTextWidth(firstWord) <= lay.wDescFirst
           ? (doc.splitTextToSize(desc, lay.wDescFirst) as string[])
@@ -417,6 +417,13 @@ export async function generateReceiptPdf(
     }
 
     addFooter()
+
+    // TICKET_PAGE_HEIGHT (520 mm) es un alto holgado para dibujar sin cortes; se recorta el borde
+    // INFERIOR al contenido real (mover el superior dejaría la página en blanco: jsPDF fija las Y
+    // al dibujar). Sin esto el ticket salía en una hoja de ~50 cm.
+    const finalHeight = Math.max(y + margin, margin * 4)
+    const mediaBox = doc.getPageInfo(1).pageContext.mediaBox
+    mediaBox.bottomLeftY = mediaBox.topRightY - finalHeight * doc.internal.scaleFactor
     return doc
   }
 

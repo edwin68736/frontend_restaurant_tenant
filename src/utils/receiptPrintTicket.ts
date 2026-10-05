@@ -41,9 +41,59 @@ function binarizeCanvas(canvas: HTMLCanvasElement, threshold = 170) {
  * imagen con `@page { size: <ancho>mm <alto>mm; margin: 0 }`, que Chromium (navegador, WebView2 de
  * Tauri) respeta como tamaño de papel.
  */
+function printPdfBlobInIframe(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob)
+  return new Promise<void>((resolve, reject) => {
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+    iframe.src = url
+    let settled = false
+    const finish = (err?: Error) => {
+      if (settled) return
+      settled = true
+      window.setTimeout(() => {
+        iframe.remove()
+        URL.revokeObjectURL(url)
+      }, 2_000)
+      if (err) reject(err)
+      else resolve()
+    }
+    iframe.onload = () => {
+      const win = iframe.contentWindow
+      if (!win) {
+        finish(new Error('No se pudo abrir el visor de impresión'))
+        return
+      }
+      try {
+        win.focus()
+        win.print()
+      } catch (e) {
+        finish(e instanceof Error ? e : new Error(String(e)))
+        return
+      }
+      // El diálogo es modal para la pestaña: se libera tras un tope razonable.
+      window.setTimeout(() => finish(), 4_000)
+    }
+    iframe.onerror = () => finish(new Error('No se pudo cargar el ticket para imprimir'))
+    document.body.appendChild(iframe)
+  })
+}
+
 export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOptions): Promise<void> {
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
   const spec = TICKET_PRINT_SPEC[paperMm]
+  if (paperMm === 58) {
+    // 58 mm: PDF vectorial maquetado a 48 mm (hoja del driver). Como imagen, Chromium la reescalaba
+    // a la resolución del driver y salía borrosa; el texto vectorial lo dibuja el driver nativo.
+    const vdoc = await generateReceiptPdf(data, 'ticket', {
+      ...options,
+      paperWidthMm: paperMm,
+      layoutWidthMm: spec.layoutMm,
+    })
+    await printPdfBlobInIframe(vdoc.output('blob'))
+    return
+  }
   const pdfjs = await import('pdfjs-dist')
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
