@@ -46,6 +46,8 @@ const TICKET_TOP_PADDING_MM = 5
 export type ReceiptPdfOptions = {
   /** Ancho de rollo (58 o 80 mm). Por defecto 80. */
   paperWidthMm?: TicketPaperWidthMm
+  /** Ancho real de la página en mm (por defecto el del rollo). Permite maquetar a 48 mm nativos. */
+  layoutWidthMm?: number
 }
 
 function docClientLabel(docType: string): string {
@@ -118,8 +120,13 @@ export async function generateReceiptPdf(
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
-  const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
-  const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
+  const pageW = isTicket ? (options?.layoutWidthMm ?? ticketPageWidthMm(paperMm)) : A4_WIDTH
+  // Con maqueta propia (48 mm) el margen es mayor: la térmica recorta los bordes del área imprimible.
+  const margin = isTicket
+    ? options?.layoutWidthMm
+      ? Math.max(ticketMarginMm(paperMm), 1.5)
+      : ticketMarginMm(paperMm)
+    : MARGIN
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
