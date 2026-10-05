@@ -91,14 +91,16 @@ function NavGroupSection({
 
   return (
     <div>
-      <p
-        className={clsx(
-          'mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider',
-          hasActive ? 'text-rest-700' : 'text-stone-400',
-        )}
-      >
-        {group.label}
-      </p>
+      {group.label ? (
+        <p
+          className={clsx(
+            'mb-1.5 px-3 text-[10px] font-bold uppercase tracking-wider',
+            hasActive ? 'text-rest-700' : 'text-stone-400',
+          )}
+        >
+          {group.label}
+        </p>
+      ) : null}
       <div className="space-y-0.5">
         {group.items.map((item) => (
           <NavEntry key={item.to} item={item} collapsed={false} mini={false} onClose={onClose} />

@@ -11,7 +11,8 @@ export default function MobileBottomNav() {
   const { canAccess } = useAuth()
 
   const items = useMemo(() => {
-    const ops = NAV_GROUPS.find((g) => g.id === 'operations')?.items ?? []
+    // Inicio + operaciones diarias (en móvil no hay header con navegación).
+    const ops = ['home', 'operations'].flatMap((id) => NAV_GROUPS.find((g) => g.id === id)?.items ?? [])
     return ops.filter((item) => canAccess(item.feature))
   }, [canAccess])
 

@@ -157,7 +157,7 @@ export default function InicioPage() {
 
   return (
     <PageShell title="Inicio" fill={false}>
-      <div className="space-y-4 pb-6 max-w-5xl">
+      <div className="space-y-4 pb-6 w-full">
         <section className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
           <p className="text-xs sm:text-sm text-stone-500 capitalize flex items-center gap-1.5">
             <CalendarDays size={14} className="shrink-0" />
@@ -230,7 +230,13 @@ export default function InicioPage() {
 
         {featured.length > 0 ? (
           <section aria-label="Accesos principales">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Columnas según cuántas hay: con 3 en 2 columnas la última quedaba sola y con hueco. */}
+            <div
+              className={clsx(
+                'grid grid-cols-1 gap-3',
+                featured.length >= 3 ? 'sm:grid-cols-3' : featured.length === 2 ? 'sm:grid-cols-2' : '',
+              )}
+            >
               {featured.map((c) => {
                 const Icon = c.icon
                 return (
@@ -256,7 +262,7 @@ export default function InicioPage() {
         {more.length > 0 ? (
           <section aria-label="Más accesos">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-400">Más accesos</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] gap-2.5">
               {more.map((c) => {
                 const Icon = c.icon
                 return (

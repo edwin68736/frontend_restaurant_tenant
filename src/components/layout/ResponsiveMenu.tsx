@@ -92,9 +92,11 @@ export default function ResponsiveMenu({ open, onClose, groups }: Props) {
           )}
           {groups.map((group) => (
             <div key={group.id}>
-              <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                {group.label}
-              </p>
+              {group.label ? (
+                <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                  {group.label}
+                </p>
+              ) : null}
               <div className="space-y-1">
                 {group.items.map((item) => (
                   <SheetLink key={item.to} item={item} onClose={onClose} />

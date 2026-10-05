@@ -118,10 +118,13 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
           <button
             type="button"
             onClick={() => void openExternalUrl(supportHref)}
+            title="Soporte por WhatsApp"
+            aria-label="Soporte por WhatsApp"
             className="hidden lg:inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs xl:text-sm font-semibold transition-colors shrink-0 touch-manipulation"
           >
             <WhatsAppGlyph className="w-4 h-4" />
-            Soporte
+            {/* Solo ícono hasta xl: a ~1024 px el texto tapaba la navegación central. */}
+            <span className="hidden xl:inline">Soporte</span>
           </button>
         )}
         <CashSessionBadge />

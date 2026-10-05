@@ -116,13 +116,13 @@ export function MiTurnoBlock({ role }: { role: TurnoRole }) {
         </button>
       </div>
       {loading && tiles.length === 0 ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5" aria-hidden>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9.5rem),1fr))] gap-2.5" aria-hidden>
           {[0, 1, 2].map((i) => (
             <div key={i} className="h-[4.5rem] rounded-xl border border-stone-200 bg-stone-50 animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,9.5rem),1fr))] gap-2.5">
           {tiles.map((t) => {
             const Icon = t.icon
             const body = (

@@ -48,10 +48,16 @@ export type NavGroup = {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
+    // Inicio va en el menú lateral (y en la barra inferior móvil), no en el header: el header
+    // solo muestra el grupo 'operations'. Sin etiqueta: es un acceso suelto, no una sección.
+    id: 'home',
+    label: '',
+    items: [{ to: '/inicio', label: 'Inicio', icon: Home, feature: 'inicio' }],
+  },
+  {
     id: 'operations',
     label: 'Operaciones',
     items: [
-      { to: '/inicio', label: 'Inicio', icon: Home, feature: 'inicio' },
       { to: '/pos', label: 'POS', icon: Receipt, feature: 'pos', emphasis: true },
       { to: '/salas', label: 'Mesas', icon: LayoutGrid, feature: 'salas', emphasis: true },
       { to: '/comandas', label: 'Comandas', icon: ChefHat, feature: 'comandas', emphasis: true },
