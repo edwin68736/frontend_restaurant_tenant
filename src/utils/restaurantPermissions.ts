@@ -43,7 +43,9 @@ export function featureAllowed(permissions: string[] | null | undefined, feature
   // Dashboard: solo administración (s.m); admin/supervisor por tipo de empleado se resuelve en
   // canAccessFeature, que conoce employeeType.
   if (feature === 'dashboard') return permissions.includes('s.m')
-  if (feature === 'ventas' || feature === 'reportes') {
+  // Reportes: solo administración (s.m); admin por tipo de empleado se resuelve en canAccessFeature.
+  if (feature === 'reportes') return permissions.includes('s.m')
+  if (feature === 'ventas') {
     return (
       permissions.includes('o.ch') ||
       permissions.includes('c.v') ||
@@ -72,6 +74,7 @@ export function canAccessFeature(
 ): boolean {
   if (!permissions || permissions.length === 0) return false
   if (feature === 'dashboard') return canViewDashboard(permissions, employeeType)
+  if (feature === 'reportes') return canViewRestaurantReports(permissions, employeeType)
   return featureAllowed(permissions, feature)
 }
 
@@ -190,15 +193,16 @@ export function canViewCashSettings(
   return canManageCashSettings(permissions, employeeType) || hasPermission(permissions, 'c.v')
 }
 
-/** Sección Reportes del panel restaurante (admin, supervisor, cajero con c.v u o.ch). */
+/**
+ * Sección Reportes del panel restaurante: solo el administrador (permiso de administración «s.m» o
+ * empleado de tipo admin). El cajero, el mozo y el supervisor no la ven.
+ */
 export function canViewRestaurantReports(
   permissions: string[] | null | undefined,
   employeeType?: string | null,
 ): boolean {
   if (hasPermission(permissions, 's.m')) return true
-  const et = String(employeeType ?? '').toLowerCase()
-  if (et === 'admin' || et === 'supervisor') return true
-  return hasPermission(permissions, 'o.ch') || hasPermission(permissions, 'c.v')
+  return String(employeeType ?? '').toLowerCase() === 'admin'
 }
 
 /** Historial y reportes de todas las sesiones de la sucursal. */
