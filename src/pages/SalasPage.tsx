@@ -30,7 +30,7 @@ export default function SalasPage() {
   const [floorId, setFloorId] = useState<number | ''>('')
   const [loading, setLoading] = useState(true)
   const [openModal, setOpenModal] = useState<RestaurantTable | null>(null)
-  const [openForm, setOpenForm] = useState({ staff_id: '', guests: 2, notes: '' })
+  const [openForm, setOpenForm] = useState({ staff_id: '', guests: '2', notes: '' })
   const [search, setSearch] = useState('')
   const [moveModalTable, setMoveModalTable] = useState<RestaurantTable | null>(null)
 
@@ -72,7 +72,7 @@ export default function SalasPage() {
     try {
       const payload: Parameters<typeof restaurantService.openSession>[0] = {
         table_id: openModal.id,
-        guests: openForm.guests || 1,
+        guests: Math.max(1, Math.floor(Number(openForm.guests)) || 1),
         notes: openForm.notes,
       }
       if (canReassign && openForm.staff_id) {
@@ -206,7 +206,7 @@ export default function SalasPage() {
                       navigate(`/mesa/${t.session_id}`)
                     } else if (effectiveStatus === 'libre') {
                       setOpenModal(t)
-                      setOpenForm({ staff_id: '', guests: 2, notes: '' })
+                      setOpenForm({ staff_id: '', guests: '2', notes: '' })
                     }
                   }}
                   onKeyDown={(e) => {
@@ -296,7 +296,7 @@ export default function SalasPage() {
                   type="number"
                   min={1}
                   value={openForm.guests}
-                  onChange={(e) => setOpenForm((f) => ({ ...f, guests: Number(e.target.value) || 1 }))}
+                  onChange={(e) => setOpenForm((f) => ({ ...f, guests: e.target.value }))}
                   className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
                 />
               </div>
