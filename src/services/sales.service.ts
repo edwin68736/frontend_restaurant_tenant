@@ -237,6 +237,8 @@ export const salesService = {
       status?: string
       billing_status?: string
       sunat_code?: string
+      /** active = vigentes, cancelled = solo anuladas; vacío = todas */
+      sale_status?: string
     },
     options?: ApiRequestOptions,
   ) =>

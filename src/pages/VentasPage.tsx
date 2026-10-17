@@ -201,6 +201,8 @@ export default function VentasPage() {
   }, [])
 
   const billingStatus = searchParams.get('status') || undefined
+  // Filtro de anulación: '' = todas, 'active' = vigentes, 'cancelled' = solo anuladas.
+  const [saleStatus, setSaleStatus] = useState<'' | 'active' | 'cancelled'>('')
 
   const setBillingStatusFilter = (status: string) => {
     setSearchParams((p) => {
@@ -225,13 +227,14 @@ export default function VentasPage() {
   } = useDebouncedApiSearch<{ data: Sale[]; total: number; summary: SaleListSummary }>({
     cacheScope: 'restaurant-ventas',
     enabled: !((tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === false),
-    deps: [tab, page, perPage, sunatEnabled, billingStatus, dateRange.from, dateRange.to],
+    deps: [tab, page, perPage, sunatEnabled, billingStatus, saleStatus, dateRange.from, dateRange.to],
     fetcher: (query, signal) => {
       const params: Parameters<typeof salesService.list>[0] = {
         page,
         per_page: perPage,
         from: dateRange.from || undefined,
         to: dateRange.to || undefined,
+        sale_status: saleStatus || undefined,
       }
       if (query) params.q = query
       if (tab === 'notas') {
@@ -275,6 +278,7 @@ export default function VentasPage() {
       from: dateRange.from || undefined,
       to: dateRange.to || undefined,
       q: searchInput.trim() || undefined,
+      sale_status: saleStatus || undefined,
     }
     if (tab === 'notas') params.sunat_code = '00'
     else if (tab === 'credit_notes') params.doc_type = 'NOTA_CREDITO'
@@ -1460,6 +1464,23 @@ export default function VentasPage() {
                   className="w-full min-w-0 sm:w-[9.5rem] border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white"
                 />
               </label>
+            </div>
+            <div className="w-full sm:w-auto sm:min-w-[9rem] sm:max-w-xs min-w-0 shrink-0">
+              <SearchableSelect
+                value={saleStatus}
+                onChange={(v) => {
+                  setSaleStatus((String(v ?? '') as '' | 'active' | 'cancelled'))
+                  setPage(1)
+                }}
+                options={[
+                  { value: '', label: 'Todas' },
+                  { value: 'active', label: 'Vigentes' },
+                  { value: 'cancelled', label: 'Anuladas' },
+                ]}
+                placeholder="Anulación"
+                searchable={false}
+                className="w-full min-w-0 border border-stone-200 rounded-lg sm:rounded-xl px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm bg-white text-left flex items-center justify-between gap-1"
+              />
             </div>
             {tab === 'facturacion' && sunatEnabled && (
               <div className="w-full sm:w-auto sm:min-w-[10.5rem] sm:max-w-xs min-w-0 shrink-0">
