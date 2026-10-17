@@ -1564,11 +1564,8 @@ export default function ProductosPage() {
                       setForm((f) => ({
                         ...f,
                         has_modifiers: on,
-                        modifier_group_ids: on
-                          ? modifierGroups.length > 0
-                            ? modifierGroups.map((g) => g.id)
-                            : (f.modifier_group_ids ?? [])
-                          : [],
+                        // Al activar nace sin grupos marcados: el usuario elige cuáles vincular.
+                        modifier_group_ids: on ? (f.modifier_group_ids ?? []) : [],
                       }))
                     }}
                     className="rounded border-stone-300"
