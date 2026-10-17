@@ -1,3 +1,5 @@
+import { useAuth } from '@/contexts/AuthContext'
+import { canAdministerCashSessions } from '@/utils/restaurantPermissions'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -119,6 +121,9 @@ type Tab = 'notas' | 'facturacion' | 'credit_notes'
 export default function VentasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { canFactura } = useBranchCheckoutSeries()
+  const { user, restaurantPermissions, employeeType } = useAuth()
+  // Los totales del período (ventas acumuladas) solo los ve el administrador.
+  const canViewPeriodTotals = canAdministerCashSessions(restaurantPermissions, employeeType, user?.role)
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [tab, setTab] = useState<Tab>(() => {
     const t = searchParams.get('tab')
@@ -1787,7 +1792,7 @@ export default function VentasPage() {
                       </tr>
                     ))}
                   </tbody>
-                  {summaryDocCount > 0 && (
+                  {summaryDocCount > 0 && canViewPeriodTotals && (
                     <tfoot className="sticky bottom-0 z-[5] bg-stone-100 border-t-2 border-stone-300 shadow-[0_-1px_0_0_rgba(0,0,0,0.04)]">
                       <tr>
                         <td colSpan={20} className="px-2 sm:px-4 py-2.5 sm:py-3 text-center">
