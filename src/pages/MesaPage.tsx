@@ -43,6 +43,9 @@ import {
   groupedComandaLineTaxTotals,
   groupedComandaLineTotal,
   pendingComandas,
+  applySplitSelection,
+  splitCoversAllPending,
+  type SplitSelection,
   sumSessionComandaQty,
   type KitchenRound,
 } from '@/utils/posOrderHelpers'
@@ -139,7 +142,7 @@ export default function MesaPage() {
   const [ordersModalOpen, setOrdersModalOpen] = useState(false)
   const [splitBillOpen, setSplitBillOpen] = useState(false)
   /** null = checkout normal (carrito + toda la sesión). No-null = cobro parcial de estas comandas. */
-  const [splitComandaIds, setSplitComandaIds] = useState<number[] | null>(null)
+  const [splitSelection, setSplitSelection] = useState<SplitSelection[] | null>(null)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [seriesId, setSeriesId] = useState(0)
   const [docType, setDocType] = useState('NOTA DE VENTA')
@@ -414,14 +417,10 @@ export default function MesaPage() {
   const pendingForSplit = useMemo(() => pendingComandas(session), [session])
   const splitLineTax = useMemo(
     () =>
-      splitComandaIds
-        ? groupedComandaLineTaxTotals(
-            pendingForSplit.filter((c) => splitComandaIds.includes(c.id)),
-            taxRate,
-            taxConfig,
-          )
+      splitSelection
+        ? groupedComandaLineTaxTotals(applySplitSelection(pendingForSplit, splitSelection), taxRate, taxConfig)
         : null,
-    [splitComandaIds, pendingForSplit, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+    [splitSelection, pendingForSplit, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
   const splitTotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.total)) : 0
   const splitSubtotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.subtotal)) : 0
@@ -637,8 +636,8 @@ export default function MesaPage() {
     }
   }
 
-  /** Cobro parcial (dividir cuenta): factura solo splitComandaIds, la sesión puede seguir abierta. */
-  const doSplitCheckout = async (comandaIds: number[]) => {
+  /** Cobro parcial (dividir cuenta): factura solo splitSelection, la sesión puede seguir abierta. */
+  const doSplitCheckout = async (selection: SplitSelection[]) => {
     const s = session
     if (!s) { toast.error('No hay una mesa cargada'); return }
     const paid = payments.reduce((sum, p) => sum + p.amount, 0)
@@ -695,7 +694,7 @@ export default function MesaPage() {
 
     setAdding(true)
     try {
-      const willCloseSession = comandaIds.length === pendingForSplit.length
+      const willCloseSession = splitCoversAllPending(pendingForSplit, selection)
       const res = await restaurantService.billSession(id, {
         series_id: seriesId,
         doc_type: docType,
@@ -703,7 +702,7 @@ export default function MesaPage() {
         contact_id: selectedContactId,
         cash_session_id: myCashSession?.id ?? null,
         close_session: true, // el servidor lo recalcula según si la selección cubre todo lo pendiente
-        comanda_ids: comandaIds,
+        comanda_splits: selection,
         payments: payments.map((p) => ({
           method: p.method,
           amount: roundSunat(p.amount),
@@ -713,7 +712,7 @@ export default function MesaPage() {
       })
       toast.success(willCloseSession ? 'Venta generada. Mesa cerrada.' : 'Cobro parcial registrado. La mesa sigue abierta.')
       setCheckoutOpen(false)
-      setSplitComandaIds(null)
+      setSplitSelection(null)
       setReceiptClosesTable(willCloseSession)
       setPrintData(res.print_data ?? null)
       const saleContact = contacts.find((c) => c.id === selectedContactId)
@@ -747,7 +746,7 @@ export default function MesaPage() {
   }
 
   const doCheckout = async () => {
-    if (splitComandaIds) return doSplitCheckout(splitComandaIds)
+    if (splitSelection) return doSplitCheckout(splitSelection)
     const s = session
     if (!s) { toast.error('No hay una mesa cargada'); return }
     if (blockIfMissingCartPrices()) return
@@ -929,7 +928,7 @@ export default function MesaPage() {
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (!canGenerarVenta) return
-    setSplitComandaIds(null)
+    setSplitSelection(null)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
@@ -944,15 +943,15 @@ export default function MesaPage() {
   }
 
   /** Desde SplitBillModal: el mozo eligió qué comandas van en este pago. */
-  const openSplitCheckout = (comandaIds: number[]) => {
+  const openSplitCheckout = (selection: SplitSelection[]) => {
     if (branchSeriesMissing) return
     setSplitBillOpen(false)
-    setSplitComandaIds(comandaIds)
+    setSplitSelection(selection)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
     const total = groupedComandaLineTotal(
-      pendingForSplit.filter((c) => comandaIds.includes(c.id)),
+      applySplitSelection(pendingForSplit, selection),
       taxRate,
       taxConfig,
     )
@@ -972,9 +971,9 @@ export default function MesaPage() {
   }, [checkoutOpen, allowCheckoutDiscount])
 
   useEffect(() => {
-    if (!checkoutOpen || payments.length !== 1 || splitComandaIds) return
+    if (!checkoutOpen || payments.length !== 1 || splitSelection) return
     setPayments((prev) => syncSinglePaymentAmount(prev, payableTotal))
-  }, [checkoutOpen, payableTotal, payments.length, splitComandaIds])
+  }, [checkoutOpen, payableTotal, payments.length, splitSelection])
 
   const confirmAnulComanda = async () => {
     if (!anulComanda) return
@@ -1524,19 +1523,19 @@ export default function MesaPage() {
         open={checkoutOpen}
         onClose={() => {
           setCheckoutOpen(false)
-          setSplitComandaIds(null)
+          setSplitSelection(null)
         }}
         loading={adding}
-        title={splitComandaIds ? 'Cobrar parte de la mesa' : 'Procesar venta'}
-        confirmLabel={splitComandaIds ? 'Confirmar pago' : 'Confirmar venta'}
-        rawTotal={splitComandaIds ? splitTotal : totalToPay}
-        payableTotal={splitComandaIds ? splitTotal : payableTotal}
-        billingSubtotal={splitComandaIds ? splitSubtotal : billingSubtotal}
+        title={splitSelection ? 'Cobrar parte de la mesa' : 'Procesar venta'}
+        confirmLabel={splitSelection ? 'Confirmar pago' : 'Confirmar venta'}
+        rawTotal={splitSelection ? splitTotal : totalToPay}
+        payableTotal={splitSelection ? splitTotal : payableTotal}
+        billingSubtotal={splitSelection ? splitSubtotal : billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
-        igvAmount={splitComandaIds ? splitTaxAmount : checkoutTaxAmount}
+        igvAmount={splitSelection ? splitTaxAmount : checkoutTaxAmount}
         series={checkoutSeries}
         seriesId={seriesId}
         docType={docType}
@@ -1558,7 +1557,7 @@ export default function MesaPage() {
         paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
-        allowDiscount={!splitComandaIds && allowCheckoutDiscount}
+        allowDiscount={!splitSelection && allowCheckoutDiscount}
         onConfirm={doCheckout}
         confirmDisabled={!checkoutContactOk || !seriesId}
         sunatEnabled={sunatEnabled}

@@ -134,6 +134,34 @@ export function pendingComandas(detail: SessionDetail | null): Comanda[] {
   return out
 }
 
+/** Unidades de una comanda que van en un cobro parcial (dividir cuenta). */
+export type SplitSelection = { comanda_id: number; quantity: number }
+
+/**
+ * Comandas pendientes que entran en la selección, con la cantidad reducida a lo elegido
+ * (los totales del cobro parcial se calculan sobre estas copias).
+ */
+export function applySplitSelection(pending: Comanda[], selection: SplitSelection[]): Comanda[] {
+  const byId = new Map(selection.map((s) => [s.comanda_id, s.quantity]))
+  const out: Comanda[] = []
+  for (const c of pending) {
+    const q = byId.get(c.id)
+    if (q == null) continue
+    const full = Number(c.quantity) || 0
+    out.push(!c.combo_parent_key && q > 0 && q < full ? { ...c, quantity: q } : c)
+  }
+  return out
+}
+
+/** true si la selección cubre todas las unidades de todo lo pendiente (el servidor cierra la mesa). */
+export function splitCoversAllPending(pending: Comanda[], selection: SplitSelection[]): boolean {
+  const byId = new Map(selection.map((s) => [s.comanda_id, s.quantity]))
+  return pending.every((c) => {
+    const q = byId.get(c.id)
+    return q != null && (Boolean(c.combo_parent_key) || q >= (Number(c.quantity) || 0) - 0.0005)
+  })
+}
+
 /** @deprecated Use PosCartLine from @/utils/posCart */
 export type PosCartItem = PosCartLine
 

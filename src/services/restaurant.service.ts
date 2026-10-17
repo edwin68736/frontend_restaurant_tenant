@@ -351,6 +351,8 @@ export const restaurantService = {
     payments: { method: string; amount: number; reference?: string; notes?: string }[]
     /** Dividir cuenta: factura solo estas comandas (deben estar pendientes). Vacío = todo lo pendiente. */
     comanda_ids?: number[]
+    /** Dividir cuenta con cantidades parciales por línea (una comanda no puede ir también en comanda_ids). */
+    comanda_splits?: { comanda_id: number; quantity: number }[]
   }) => {
     // Clave por intento de cobro: si la respuesta se pierde y el cajero reintenta, el servidor
     // devuelve la venta ya creada en vez de registrar otra (ver utils/idempotencyKey.ts).
