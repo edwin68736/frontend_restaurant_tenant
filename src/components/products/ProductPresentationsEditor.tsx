@@ -57,14 +57,14 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
       <div
         className={
           embedded
-            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-1 min-h-[120px] max-h-[min(55dvh,520px)]'
+            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y space-y-2 pr-1 sm:min-h-[120px] max-h-[min(55dvh,520px)]'
             : 'space-y-2 max-h-[min(50vh,420px)] overflow-y-auto overscroll-contain touch-pan-y pr-1'
         }
       >
         {rows.map((row, index) => (
           <div
             key={index}
-            className="flex flex-col sm:flex-row gap-2 p-2 rounded-xl border border-sky-100 bg-white"
+            className="flex flex-row items-end gap-1.5 sm:gap-2 p-2 rounded-xl border border-sky-100 bg-white"
           >
             <div className="flex-1 min-w-0">
               <label className="block text-[10px] font-medium text-stone-500 mb-0.5">Nombre</label>
@@ -76,7 +76,7 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm"
               />
             </div>
-            <div className="w-full sm:w-28 shrink-0">
+            <div className="w-20 sm:w-28 shrink-0">
               <label className="block text-[10px] font-medium text-stone-500 mb-0.5">Precio S/</label>
               <input
                 type="number"
@@ -93,7 +93,7 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
               />
             </div>
             {showInitialStock && (
-              <div className="w-full sm:w-24 shrink-0">
+              <div className="w-16 sm:w-24 shrink-0">
                 <label className="block text-[10px] font-medium text-stone-500 mb-0.5">{row.id ? 'Stock actual' : 'Stock inicial'}</label>
                 <input
                   type="number"
@@ -110,11 +110,11 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
                 />
               </div>
             )}
-            <div className="flex sm:items-end">
+            <div className="flex shrink-0 items-end">
               <button
                 type="button"
                 onClick={() => removeRow(index)}
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50"
+                className="min-h-[44px] min-w-[40px] sm:min-w-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50"
                 aria-label="Quitar presentación"
               >
                 <Trash2 size={18} />

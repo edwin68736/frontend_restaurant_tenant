@@ -44,13 +44,13 @@ export function ProductPresentationsModal({
   return (
     <PortalModal open={open} onClose={onClose} className="max-w-lg">
       <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(90dvh,900px)] flex flex-col min-h-0 overflow-hidden">
-        <div className="p-4 border-b border-stone-200 shrink-0">
+        <div className="px-3 py-2.5 sm:p-4 border-b border-stone-200 shrink-0">
           <h3 className="font-bold text-stone-900 text-lg">Presentaciones</h3>
           {productName ? (
             <p className="text-sm text-stone-500 mt-0.5 truncate">{productName}</p>
           ) : null}
         </div>
-        <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="p-3 sm:p-4 flex-1 min-h-0 flex flex-col overflow-hidden">
           {!manageStock && (
             <p className="mb-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 shrink-0">
               Para cargar stock por presentación, cierra esto y activa «Controlar stock» en el producto.
@@ -58,7 +58,7 @@ export function ProductPresentationsModal({
           )}
           <ProductPresentationsEditor presentations={draft} onChange={setDraft} embedded showInitialStock={manageStock} />
         </div>
-        <div className="p-4 border-t border-stone-200 flex gap-2 shrink-0">
+        <div className="p-3 sm:p-4 border-t border-stone-200 flex gap-2 shrink-0">
           <button
             type="button"
             onClick={onClose}
