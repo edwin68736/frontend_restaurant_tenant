@@ -251,14 +251,14 @@ export default function ModificadoresPage() {
 
       <PortalModal open={modal != null} onClose={() => setModal(null)} className="max-w-lg">
         <div className="bg-white rounded-2xl shadow-xl w-full max-h-[min(90dvh,900px)] flex flex-col min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between p-4 border-b border-stone-200 shrink-0">
+          <div className="flex items-center justify-between px-3 py-2.5 sm:p-4 border-b border-stone-200 shrink-0">
             <h3 className="font-bold text-stone-800 text-lg">
               {modal === 'edit' ? 'Editar grupo de extras' : 'Nuevo grupo de extras'}
             </h3>
           </div>
 
-          <div className="p-4 flex-1 min-h-0 flex flex-col overflow-hidden gap-4">
-            <div className="shrink-0 space-y-4">
+          <div className="p-3 sm:p-4 flex-1 min-h-0 flex flex-col overflow-hidden gap-3 sm:gap-4">
+            <div className="shrink-0 space-y-3 sm:space-y-4">
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">Nombre del grupo *</label>
                 <input
@@ -269,7 +269,7 @@ export default function ModificadoresPage() {
                 />
               </div>
 
-              <div className="rounded-xl border border-stone-200 p-3 space-y-2 bg-white">
+              <div className="rounded-xl border border-stone-200 px-3 py-2 sm:p-3 space-y-1.5 sm:space-y-2 bg-white">
                 <label className="flex items-center gap-2 text-sm text-stone-700">
                   <input
                     type="checkbox"
@@ -296,7 +296,7 @@ export default function ModificadoresPage() {
             </div>
           </div>
 
-          <div className="flex gap-2 p-4 border-t border-stone-200 shrink-0">
+          <div className="flex gap-2 p-3 sm:p-4 border-t border-stone-200 shrink-0">
             <button
               type="button"
               onClick={() => setModal(null)}
