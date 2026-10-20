@@ -46,7 +46,7 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
         {rows.map((row, index) => (
           <div
             key={index}
-            className="flex flex-col sm:flex-row gap-2 p-2.5 rounded-xl border border-stone-200 bg-stone-50/80"
+            className="flex flex-row items-end gap-2 p-2.5 rounded-xl border border-stone-200 bg-stone-50/80"
           >
             <div className="flex-1 min-w-0">
               <label className="block text-[10px] font-medium text-stone-500 mb-0.5 uppercase tracking-wide">
@@ -60,7 +60,7 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
               />
             </div>
-            <div className="w-full sm:w-28 shrink-0">
+            <div className="w-20 sm:w-28 shrink-0">
               <label className="block text-[10px] font-medium text-stone-500 mb-0.5 uppercase tracking-wide">
                 + S/
               </label>
@@ -78,7 +78,7 @@ export function ModifierOptionsEditor({ options, onChange }: Props) {
                 className="w-full min-h-[44px] border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
               />
             </div>
-            <div className="flex sm:flex-col justify-end sm:justify-center sm:pt-5">
+            <div className="flex shrink-0 items-end">
               <button
                 type="button"
                 onClick={() => removeRow(index)}
