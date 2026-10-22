@@ -49,7 +49,7 @@ import {
 import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { billingService } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
-import { getCurrentMonthRange, getTodayPeru } from '@/utils/datesPeru'
+import { clampIssueDatePeru, getCurrentMonthRange, getMinIssueDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import { exportSalesListExcel, exportSalesListPdf } from '@/utils/salesListExport'
 import { PageShell } from '@/components/layout/PageShell'
 import { PortalModal } from '@/components/ui/PortalModal'
@@ -475,7 +475,7 @@ export default function VentasPage() {
     try {
       const res = await salesService.issueElectronicFromNota(emitRow.id, {
         series_id: sid,
-        issue_date: emitIssueDate.trim() || undefined,
+        issue_date: clampIssueDatePeru(emitIssueDate),
         contact_id: emitContactId,
       })
       const sale = res.sale
@@ -2264,7 +2264,10 @@ export default function VentasPage() {
                   <input
                     type="date"
                     value={emitIssueDate}
+                    min={getMinIssueDatePeru()}
+                    max={getTodayPeru()}
                     onChange={(e) => setEmitIssueDate(e.target.value)}
+                    onBlur={() => setEmitIssueDate((v) => clampIssueDatePeru(v))}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
                   />
                 </div>

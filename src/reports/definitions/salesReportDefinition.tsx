@@ -198,6 +198,13 @@ export const salesReportDefinition: TableReportDefinition<Sale> = {
   defaultPerPage: 25,
   columns: COLS,
   excelColumns: COLS,
+  excelTotals: (rows) => {
+    const vigentes = rows.filter(
+      (r) => r.status !== 'cancelled' && r.doc_type !== 'NOTA_CREDITO' && r.doc_type !== 'NOTA_DEBITO',
+    )
+    const sum = (k: 'subtotal' | 'tax_amount' | 'total') => vigentes.reduce((a, r) => a + (Number(r[k]) || 0), 0)
+    return { subtotal: sum('subtotal'), tax_amount: sum('tax_amount'), total: sum('total') }
+  },
   initialFilters: () => {
     const { from, to } = getCurrentMonthRange()
     return { from, to, branch_id: '', doc_type_group: 'all', sale_status: 'all', payment_method: '', q: '' }
