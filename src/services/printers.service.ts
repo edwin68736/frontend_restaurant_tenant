@@ -40,6 +40,7 @@ import {
   normalizeSlot,
 } from '@/services/printers/storage'
 import { sendEscPosPayload, isNativePrintAvailable } from '@/services/printers/transport'
+import { playSaleReceiptSound } from '@/utils/receiptSound'
 import type {
   PrinterConfig,
   PrinterConnectionMode,
@@ -849,9 +850,11 @@ export async function printPrecuentaAuto(input: {
 export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
+  const soundDone = playSaleReceiptSound()
   const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm, {
     openDrawer: Boolean(cfg.openDrawerOnPrint),
   })
+  await soundDone
   return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Documento' })
 }
 
