@@ -205,7 +205,10 @@ export const salesService = {
       sunat_code?: string
       payment_method?: string
       sale_status?: string
-      branch_id?: number
+      /** 'all' = todas las sucursales (sin él, la sucursal activa). */
+      branch_id?: number | 'all'
+      /** commercial: filas y totales cuentan lo mismo que el dashboard (NV convertida = su comprobante). */
+      scope?: 'commercial'
       page?: number
       per_page?: number
       export_all?: string
@@ -239,6 +242,9 @@ export const salesService = {
       sunat_code?: string
       /** active = vigentes, cancelled = solo anuladas; vacío = todas */
       sale_status?: string
+      payment_method?: string
+      branch_id?: number | 'all'
+      scope?: 'commercial'
     },
     options?: ApiRequestOptions,
   ) =>
