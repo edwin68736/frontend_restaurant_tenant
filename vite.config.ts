@@ -68,6 +68,18 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       include: ['@tauri-apps/api/core', '@capacitor/core'],
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // El nginx de producción sirve .mjs como application/octet-stream y el navegador no carga el worker de
+          // pdf.js con ese tipo. Emitirlo como .js lo deja servible como JavaScript en cualquier servidor.
+          assetFileNames: (asset) =>
+            (asset.names ?? [asset.name ?? '']).some((n) => n.endsWith('.mjs'))
+              ? 'assets/[name]-[hash].js'
+              : 'assets/[name]-[hash][extname]',
+        },
+      },
+    },
     server: {
       port: 5175,
       strictPort: true,
