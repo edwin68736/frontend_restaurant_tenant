@@ -26,7 +26,12 @@ const COLS: ExportColumn<Sale>[] = [
   {
     key: 'number',
     label: 'Comprobante',
-    format: (_, r) => `${r.doc_type} ${formatSaleDocumentNumber(r)}`.trim(),
+    // Una nota de venta convertida cuenta (y se muestra) como el comprobante electrónico que originó.
+    format: (_, r) =>
+      `${r.display_doc_type || r.doc_type} ${formatSaleDocumentNumber({
+        series: r.display_series ?? r.series,
+        number: r.display_number ?? r.number,
+      })}`.trim(),
   },
   { key: 'contact_name', label: 'Cliente', format: (v) => String(v ?? '—') },
   { key: 'contact_doc_number', label: 'RUC / DNI', format: (v) => String(v ?? '—') },
@@ -158,7 +163,10 @@ function buildListParams(filters: Record<string, unknown>, page?: number, perPag
   if (filters.from) params.from = filters.from
   if (filters.to) params.to = filters.to
   if (filters.q) params.q = filters.q
-  if (filters.branch_id) params.branch_id = Number(filters.branch_id)
+  // Mismo alcance que el reporte de Tukifac y el dashboard: filas y totales cuentan lo mismo
+  // (NV convertida = su comprobante, sin doble conteo) y sin sucursal elegida son TODAS.
+  params.scope = 'commercial'
+  params.branch_id = filters.branch_id ? Number(filters.branch_id) : 'all'
   if (filters.payment_method) params.payment_method = filters.payment_method
   if (filters.sale_status && filters.sale_status !== 'all') params.sale_status = filters.sale_status
   switch (filters.doc_type_group) {
@@ -190,6 +198,13 @@ export const salesReportDefinition: TableReportDefinition<Sale> = {
   defaultPerPage: 25,
   columns: COLS,
   excelColumns: COLS,
+  excelTotals: (rows) => {
+    const vigentes = rows.filter(
+      (r) => r.status !== 'cancelled' && r.doc_type !== 'NOTA_CREDITO' && r.doc_type !== 'NOTA_DEBITO',
+    )
+    const sum = (k: 'subtotal' | 'tax_amount' | 'total') => vigentes.reduce((a, r) => a + (Number(r[k]) || 0), 0)
+    return { subtotal: sum('subtotal'), tax_amount: sum('tax_amount'), total: sum('total') }
+  },
   initialFilters: () => {
     const { from, to } = getCurrentMonthRange()
     return { from, to, branch_id: '', doc_type_group: 'all', sale_status: 'all', payment_method: '', q: '' }

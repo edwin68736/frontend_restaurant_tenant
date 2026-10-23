@@ -41,6 +41,8 @@ export interface TableReportDefinition<T extends object = Record<string, unknown
   defaultPerPage?: number
   columns: ExportColumn<T>[]
   excelColumns?: ExportColumn<T>[]
+  /** Fila final TOTAL del Excel (por clave de columna) a partir de todas las filas exportadas. */
+  excelTotals?: (rows: T[]) => Record<string, number>
   initialFilters: () => Record<string, unknown>
   FilterPanel: React.ComponentType<ReportFilterPanelProps>
   fetch: (params: ReportFetchParams) => Promise<ReportFetchResult<T>>

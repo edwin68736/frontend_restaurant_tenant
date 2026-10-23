@@ -25,6 +25,17 @@ function toExportRows(sales: Sale[], opts?: { includeBilling?: boolean }): Sales
   }))
 }
 
+/** Total vigente: sin anuladas ni notas de crédito/débito (mismo criterio que las tarjetas del reporte). */
+export function salesActiveTotal(sales: Sale[]): number {
+  return sales.reduce(
+    (acc, s) =>
+      s.status === 'cancelled' || s.doc_type === 'NOTA_CREDITO' || s.doc_type === 'NOTA_DEBITO'
+        ? acc
+        : acc + (Number(s.total) || 0),
+    0,
+  )
+}
+
 function excelColumns(includeBilling: boolean): ExcelExportColumn<SalesExportRow>[] {
   const base: ExcelExportColumn<SalesExportRow>[] = [
     { key: 'fecha', label: 'Fecha' },
@@ -56,7 +67,9 @@ export async function exportSalesListExcel(
   filename: string,
   opts?: { includeBilling?: boolean },
 ): Promise<void> {
-  await exportTableToExcel(title, excelColumns(!!opts?.includeBilling), toExportRows(sales, opts), filename)
+  await exportTableToExcel(title, excelColumns(!!opts?.includeBilling), toExportRows(sales, opts), filename, {
+    total: salesActiveTotal(sales),
+  })
 }
 
 export function exportSalesListPdf(
