@@ -12,6 +12,7 @@ import UserDropdown from './UserDropdown'
 import CashSessionBadge from './CashSessionBadge'
 import SubscriptionHeaderBadge from './SubscriptionHeaderBadge'
 import NotificationsBell from './NotificationsBell'
+import SoundToggle from './SoundToggle'
 import { useTenantDisplay } from '@/hooks/useTenantDisplay'
 
 type Props = {
@@ -128,6 +129,7 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
           </button>
         )}
         <CashSessionBadge />
+        <SoundToggle />
         <NotificationsBell />
         <UserDropdown />
       </div>
