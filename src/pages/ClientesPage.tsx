@@ -129,15 +129,22 @@ export default function ClientesPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (c: Contact) => {
     if (!confirm('¿Eliminar este cliente?')) return
     try {
-      await contactsService.delete(id)
+      await contactsService.delete(c.id)
       toast.success('Cliente eliminado')
       refresh()
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { error?: string } } }
-      toast.error(err?.response?.data?.error ?? 'Error al eliminar')
+      const err = e as { response?: { data?: { error?: string; code?: string } } }
+      const data = err?.response?.data
+      // Con documentos asociados no se elimina (el comprobante perdería a su cliente): se ofrece desactivarlo.
+      if (data?.code === 'contact_in_use') {
+        if (c.active && confirm(`${data.error}\n\n¿Desactivarlo ahora?`)) await handleToggle(c)
+        else if (!c.active) toast.error(data.error)
+        return
+      }
+      toast.error(data?.error ?? 'Error al eliminar')
     }
   }
 
@@ -345,7 +352,7 @@ export default function ClientesPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(c.id)}
+                        onClick={() => handleDelete(c)}
                         className={BTN_ACTION_DELETE}
                         title="Eliminar"
                       >
