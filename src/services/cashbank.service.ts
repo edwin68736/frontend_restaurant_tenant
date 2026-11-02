@@ -114,6 +114,8 @@ export interface IncomeDetailRow {
   reference: string
   amount: number
   payment_method: string
+  /** Motivo/categoría de un movimiento manual (vacío en ventas). */
+  category?: string
   /** Solo en type="cobro_cxc": Caja donde se REGISTRÓ la venta (distinta de esta sesión, que es
    *  donde ocurrió el cobro). Mismo campo que ya usa Tukifac. */
   sale_cash_session_id?: number | null
@@ -126,6 +128,7 @@ export interface ExpenseDetailRow {
   reference: string
   amount: number
   payment_method: string
+  category?: string
 }
 
 export interface CancelledSaleRow {
@@ -256,6 +259,42 @@ export interface SessionProductSoldRow {
   total: number
 }
 
+export type SessionDocKind = 'nota_venta' | 'boleta' | 'factura'
+
+/** Comprobante (vigente o anulado) registrado en una sesión de caja. */
+export interface SessionDocumentRow {
+  sale_id: number
+  kind: SessionDocKind
+  doc_number: string
+  created_at: string
+  contact_name: string
+  total: number
+  currency?: string
+  status: string
+  cancelled: boolean
+  cancel_reason: string
+  /** Método principal, o "mixto" si pagó con varios. */
+  payment_method: string
+  payments: MethodTotal[]
+}
+
+export interface SessionDocumentKindSummary {
+  kind: SessionDocKind
+  count: number
+  total: number
+  cancelled_count: number
+  cancelled_total: number
+}
+
+export interface SessionDocumentsReport {
+  documents: SessionDocumentRow[]
+  by_kind: SessionDocumentKindSummary[]
+  active_count: number
+  active_total: number
+  cancelled_count: number
+  cancelled_total: number
+}
+
 export const cashbankService = {
   listSessions: (branch_id?: number): Promise<CashSession[]> =>
     api.get('/api/cashbank/sessions', { params: { branch_id } }).then((r) => r.data.data ?? []),
@@ -323,6 +362,9 @@ export const cashbankService = {
 
   getSessionProductsReport: (sessionId: number): Promise<SessionProductSoldRow[]> =>
     api.get(`/api/cashbank/sessions/${sessionId}/report/products`).then((r) => r.data.data ?? []),
+
+  getSessionDocumentsReport: (sessionId: number): Promise<SessionDocumentsReport> =>
+    api.get(`/api/cashbank/sessions/${sessionId}/report/documents`).then((r) => r.data.data ?? r.data),
 
   listMovementsReport: async (params?: MovementsReportParams): Promise<MovementsReportResult> => {
     const r = await api.get('/api/cashbank/reports/movements', { params: params ?? {} })

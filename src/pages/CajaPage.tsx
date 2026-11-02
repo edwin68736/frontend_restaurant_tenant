@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
-import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock } from 'lucide-react'
+import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock, Printer } from 'lucide-react'
 import { openCashDrawer } from '@/services/printers.service'
 import {
   cashbankService,
@@ -15,6 +15,7 @@ import {
   type MethodTotal,
 } from '@/services/cashbank.service'
 import { companyService } from '@/services/company.service'
+import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
@@ -244,6 +245,19 @@ export default function CajaPage() {
   const [openingEdit, setOpeningEdit] = useState<{ session: CashSession; amount: number } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
   const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
+
+  // Detalle de caja (ticket): imprimir desde el historial / sesión abierta, y pregunta al cerrar caja.
+  const [printingDetailId, setPrintingDetailId] = useState<number | null>(null)
+  const [printDetailPrompt, setPrintDetailPrompt] = useState<CashSession | null>(null)
+
+  const handlePrintDetail = async (target: CashSession) => {
+    setPrintingDetailId(target.id)
+    try {
+      await printCashSessionDetail(target.id, { sessionRow: target })
+    } finally {
+      setPrintingDetailId(null)
+    }
+  }
 
   const isSessionOpen = session?.status === 'open'
 
@@ -694,8 +708,9 @@ export default function CajaPage() {
         const hasAny = ARQUEO_DENOMINATIONS.some((d) => (closeArqueo[d.value] ?? 0) > 0)
         if (hasAny) payload.arqueo = closeArqueo
       }
-      await cashbankService.closeSession(session.id, payload)
+      const closed = await cashbankService.closeSession(session.id, payload)
       toast.success('Caja cerrada')
+      setPrintDetailPrompt({ ...session, ...closed, id: session.id })
       setCloseModal(false)
       setCloseNotes('')
       setCloseWithArqueo(false)
@@ -904,6 +919,16 @@ export default function CajaPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      onClick={() => void handlePrintDetail(session)}
+                      disabled={printingDetailId === session.id}
+                      title="Reporte parcial a la fecha: ventas, comprobantes, anulados, movimientos y productos"
+                      className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Printer size={16} />
+                      {printingDetailId === session.id ? 'Imprimiendo…' : 'Imprimir detalle'}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void handleOpenDrawer()}
                       disabled={openingDrawer}
                       className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
@@ -1042,6 +1067,16 @@ export default function CajaPage() {
                               className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50"
                             >
                               Reportes
+                            </button>
+                            <button
+                              type="button"
+                              title={s.status === 'open' ? 'Imprimir detalle (reporte parcial, la caja sigue abierta)' : 'Imprimir detalle de caja'}
+                              onClick={() => void handlePrintDetail(s)}
+                              disabled={printingDetailId === s.id}
+                              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50 flex items-center gap-1 disabled:opacity-50"
+                            >
+                              <Printer size={13} />
+                              {printingDetailId === s.id ? 'Imprimiendo…' : 'Imprimir detalle'}
                             </button>
                             {canAdminSessions && (
                               <button
@@ -1923,6 +1958,41 @@ export default function CajaPage() {
               className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium hover:bg-rest-700 disabled:opacity-50"
             >
               {sessionAdminBusy ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </PortalModal>
+
+      {/* Tras cerrar caja: ¿imprimir el detalle? */}
+      <PortalModal open={!!printDetailPrompt} onClose={() => setPrintDetailPrompt(null)} className="max-w-md" overlayClassName="items-end sm:items-center">
+        <div className={clsx('bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 overflow-y-auto', MAX_H_SHEET_PANEL)}>
+          <div className="flex items-center gap-2 mb-2">
+            <Printer size={20} className="text-stone-700" />
+            <h3 className="font-bold text-stone-800 text-lg">¿Imprimir el detalle de caja?</h3>
+          </div>
+          <p className="text-sm text-stone-600">
+            Ticket con el resumen, ventas por método de pago, comprobantes, anulados, movimientos y productos vendidos de la caja que acaba de cerrar.
+          </p>
+          <div className="mt-4 flex flex-col-reverse sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={() => setPrintDetailPrompt(null)}
+              className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm text-stone-600 hover:bg-stone-50"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              disabled={printingDetailId != null}
+              onClick={() => {
+                const target = printDetailPrompt
+                if (!target) return
+                setPrintDetailPrompt(null)
+                void handlePrintDetail(target)
+              }}
+              className="flex-1 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+            >
+              Sí, imprimir
             </button>
           </div>
         </div>

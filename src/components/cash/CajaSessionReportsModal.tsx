@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileSpreadsheet, FileText, Package } from 'lucide-react'
+import { FileSpreadsheet, FileText, Package, Printer } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   cashbankService,
@@ -7,6 +7,7 @@ import {
   type SessionProductSoldRow,
 } from '@/services/cashbank.service'
 import { downloadCajaSessionReportPdf } from '@/utils/cajaSessionReportPdf'
+import { downloadCashSessionDetailPdf, printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { CajaSessionReportView } from '@/components/cash/CajaSessionReportView'
@@ -145,6 +146,24 @@ export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Pr
             >
               <Package size={15} />
               Productos vendidos
+            </button>
+            <button
+              type="button"
+              onClick={() => void printCashSessionDetail(sessionId)}
+              className="px-3 py-2 rounded-xl text-sm font-medium border border-stone-200 hover:bg-stone-50 flex items-center gap-2"
+            >
+              <Printer size={15} />
+              Imprimir detalle (ticket)
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void downloadCashSessionDetailPdf(sessionId).catch(() => toast.error('No se pudo generar el PDF del detalle'))
+              }
+              className="px-3 py-2 rounded-xl text-sm font-medium border border-stone-200 hover:bg-stone-50 flex items-center gap-2"
+            >
+              <FileText size={15} />
+              PDF ticket
             </button>
           </div>
 
