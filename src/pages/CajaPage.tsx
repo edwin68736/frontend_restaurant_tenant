@@ -16,6 +16,8 @@ import {
 } from '@/services/cashbank.service'
 import { companyService } from '@/services/company.service'
 import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
+import type { CashDetailSections } from '@/utils/cashSessionDetailTicket'
+import { CashDetailSectionsModal } from '@/components/cash/CashDetailSectionsModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
@@ -248,12 +250,13 @@ export default function CajaPage() {
 
   // Detalle de caja (ticket): imprimir desde el historial / sesión abierta, y pregunta al cerrar caja.
   const [printingDetailId, setPrintingDetailId] = useState<number | null>(null)
-  const [printDetailPrompt, setPrintDetailPrompt] = useState<CashSession | null>(null)
+  // Modal de secciones del ticket; afterClose = viene de la pregunta posterior al cierre de caja.
+  const [printDetailPrompt, setPrintDetailPrompt] = useState<{ session: CashSession; afterClose: boolean } | null>(null)
 
-  const handlePrintDetail = async (target: CashSession) => {
+  const handlePrintDetail = async (target: CashSession, sections: CashDetailSections) => {
     setPrintingDetailId(target.id)
     try {
-      await printCashSessionDetail(target.id, { sessionRow: target })
+      await printCashSessionDetail(target.id, { sessionRow: target, sections })
     } finally {
       setPrintingDetailId(null)
     }
@@ -710,7 +713,7 @@ export default function CajaPage() {
       }
       const closed = await cashbankService.closeSession(session.id, payload)
       toast.success('Caja cerrada')
-      setPrintDetailPrompt({ ...session, ...closed, id: session.id })
+      setPrintDetailPrompt({ session: { ...session, ...closed, id: session.id }, afterClose: true })
       setCloseModal(false)
       setCloseNotes('')
       setCloseWithArqueo(false)
@@ -919,7 +922,7 @@ export default function CajaPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => void handlePrintDetail(session)}
+                      onClick={() => setPrintDetailPrompt({ session, afterClose: false })}
                       disabled={printingDetailId === session.id}
                       title="Reporte parcial a la fecha: ventas, comprobantes, anulados, movimientos y productos"
                       className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
@@ -1071,7 +1074,7 @@ export default function CajaPage() {
                             <button
                               type="button"
                               title={s.status === 'open' ? 'Imprimir detalle (reporte parcial, la caja sigue abierta)' : 'Imprimir detalle de caja'}
-                              onClick={() => void handlePrintDetail(s)}
+                              onClick={() => setPrintDetailPrompt({ session: s, afterClose: false })}
                               disabled={printingDetailId === s.id}
                               className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50 flex items-center gap-1 disabled:opacity-50"
                             >
@@ -1964,39 +1967,26 @@ export default function CajaPage() {
       </PortalModal>
 
       {/* Tras cerrar caja: ¿imprimir el detalle? */}
-      <PortalModal open={!!printDetailPrompt} onClose={() => setPrintDetailPrompt(null)} className="max-w-md" overlayClassName="items-end sm:items-center">
-        <div className={clsx('bg-white rounded-t-3xl sm:rounded-2xl shadow-xl w-full p-5 overflow-y-auto', MAX_H_SHEET_PANEL)}>
-          <div className="flex items-center gap-2 mb-2">
-            <Printer size={20} className="text-stone-700" />
-            <h3 className="font-bold text-stone-800 text-lg">¿Imprimir el detalle de caja?</h3>
-          </div>
-          <p className="text-sm text-stone-600">
-            Ticket con el resumen, ventas por método de pago, comprobantes, anulados, movimientos y productos vendidos de la caja que acaba de cerrar.
-          </p>
-          <div className="mt-4 flex flex-col-reverse sm:flex-row gap-2">
-            <button
-              type="button"
-              onClick={() => setPrintDetailPrompt(null)}
-              className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm text-stone-600 hover:bg-stone-50"
-            >
-              No
-            </button>
-            <button
-              type="button"
-              disabled={printingDetailId != null}
-              onClick={() => {
-                const target = printDetailPrompt
-                if (!target) return
-                setPrintDetailPrompt(null)
-                void handlePrintDetail(target)
-              }}
-              className="flex-1 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
-            >
-              Sí, imprimir
-            </button>
-          </div>
-        </div>
-      </PortalModal>
+      <CashDetailSectionsModal
+        open={!!printDetailPrompt}
+        onClose={() => setPrintDetailPrompt(null)}
+        busy={printingDetailId != null}
+        title={printDetailPrompt?.afterClose ? '¿Imprimir el detalle de caja?' : 'Imprimir detalle de caja'}
+        description={
+          printDetailPrompt?.afterClose
+            ? 'Caja cerrada. Elige qué secciones llevará el ticket del detalle.'
+            : printDetailPrompt?.session.status === 'open'
+              ? 'Reporte parcial: la caja sigue abierta. Elige qué secciones incluir en el ticket.'
+              : 'Elige qué secciones incluir en el ticket.'
+        }
+        cancelLabel={printDetailPrompt?.afterClose ? 'No' : 'Cancelar'}
+        onConfirm={(sections) => {
+          const target = printDetailPrompt?.session
+          if (!target) return
+          setPrintDetailPrompt(null)
+          void handlePrintDetail(target, sections)
+        }}
+      />
 
       {/* Eliminar caja vacía */}
       <PortalModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} className="max-w-md" overlayClassName="items-end sm:items-center">

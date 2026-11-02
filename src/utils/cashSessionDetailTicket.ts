@@ -25,6 +25,44 @@ export type TicketLine = {
   big?: boolean
 }
 
+/**
+ * Secciones OPCIONALES del ticket. El encabezado, el resumen/cuadre de caja física y las ventas por
+ * método de pago son la base y siempre se imprimen.
+ */
+export type CashDetailSections = {
+  /** Notas de venta, boletas y facturas vigentes con sus subtotales. */
+  documents: boolean
+  /** Ventas anuladas. */
+  cancelled: boolean
+  /** Ingresos y egresos de caja. */
+  movements: boolean
+  /** Productos vendidos. */
+  products: boolean
+}
+
+export const CASH_DETAIL_SECTION_OPTIONS: { key: keyof CashDetailSections; label: string; hint: string }[] = [
+  { key: 'documents', label: 'Comprobantes', hint: 'Notas de venta, boletas y facturas con sus subtotales' },
+  { key: 'cancelled', label: 'Ventas anuladas', hint: 'Comprobantes anulados con su motivo' },
+  { key: 'movements', label: 'Movimientos de caja', hint: 'Ingresos y egresos de la sesión' },
+  { key: 'products', label: 'Productos vendidos', hint: 'Cantidades e importes, sin anulados' },
+]
+
+/** Selección inicial del modal: todo marcado. */
+export function allCashDetailSections(): CashDetailSections {
+  return { documents: true, cancelled: true, movements: true, products: true }
+}
+
+/** Completa una selección parcial/ausente: lo no indicado se incluye. */
+export function resolveCashDetailSections(s?: Partial<CashDetailSections> | null): CashDetailSections {
+  const all = allCashDetailSections()
+  return {
+    documents: s?.documents ?? all.documents,
+    cancelled: s?.cancelled ?? all.cancelled,
+    movements: s?.movements ?? all.movements,
+    products: s?.products ?? all.products,
+  }
+}
+
 export type CashSessionDetailData = {
   company: { name: string; ruc: string }
   /** Fila de la sesión (historial o recién cerrada): cierre, esperado, diferencia, quién cerró. */
@@ -34,6 +72,8 @@ export type CashSessionDetailData = {
   products: SessionProductSoldRow[]
   /** Momento de impresión (inyectable para pruebas). */
   printedAt?: Date
+  /** Secciones opcionales a incluir; por defecto todas. */
+  sections?: Partial<CashDetailSections>
 }
 
 const LIMA = 'America/Lima'
@@ -188,6 +228,7 @@ function movementMotive(r: IncomeDetailRow | ExpenseDetailRow): string {
 
 export function buildCashSessionDetailLines(data: CashSessionDetailData, cols: number): TicketLine[] {
   const { report, documents, products } = data
+  const inc = resolveCashDetailSections(data.sections)
   const s = report.session
   const row = data.session
   const isOpen = (row?.status ?? s.status) === 'open'
@@ -301,9 +342,9 @@ export function buildCashSessionDetailLines(data: CashSessionDetailData, cols: n
     list.push(d)
     byKind.set(d.kind, list)
   }
-  section('COMPROBANTES')
-  if (byKind.size === 0) text('Sin comprobantes vigentes')
-  for (const kind of KIND_ORDER) {
+  if (inc.documents) section('COMPROBANTES')
+  if (inc.documents && byKind.size === 0) text('Sin comprobantes vigentes')
+  for (const kind of inc.documents ? KIND_ORDER : []) {
     const list = byKind.get(kind)
     if (!list?.length) continue
     center(`${KIND_TITLE[kind]} (${list.length})`, true)
@@ -319,9 +360,9 @@ export function buildCashSessionDetailLines(data: CashSessionDetailData, cols: n
 
   // Anulados
   const cancelled = (documents.documents ?? []).filter((d) => d.cancelled)
-  section('VENTAS ANULADAS')
-  if (cancelled.length === 0) text('Sin ventas anuladas')
-  for (const kind of KIND_ORDER) {
+  if (inc.cancelled) section('VENTAS ANULADAS')
+  if (inc.cancelled && cancelled.length === 0) text('Sin ventas anuladas')
+  for (const kind of inc.cancelled ? KIND_ORDER : []) {
     const list = cancelled.filter((d) => d.kind === kind)
     if (!list.length) continue
     center(`${KIND_TITLE[kind]} (${list.length})`, true)
@@ -331,19 +372,21 @@ export function buildCashSessionDetailLines(data: CashSessionDetailData, cols: n
     const sub = documents.by_kind?.find((k) => k.kind === kind)
     pair(`Subtotal ${KIND_TITLE[kind].toLowerCase()}`, ticketMoney(sub?.cancelled_total ?? list.reduce((a, d) => a + Number(d.total), 0)))
   }
-  if (cancelled.length > 0) {
+  if (inc.cancelled && cancelled.length > 0) {
     sep()
     pair('TOTAL ANULADO', ticketMoney(documents.cancelled_total), true)
   }
 
   // 5. Movimientos de caja
-  section('MOVIMIENTOS DE CAJA')
   const movs: { date: string; income: boolean; r: IncomeDetailRow | ExpenseDetailRow }[] = [
     ...manualIncome.map((r) => ({ date: r.date, income: true, r })),
     ...expenses.map((r) => ({ date: r.date, income: false, r })),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  if (movs.length === 0) text('Sin ingresos ni egresos')
-  for (const m of movs) {
+  if (inc.movements) {
+    section('MOVIMIENTOS DE CAJA')
+    if (movs.length === 0) text('Sin ingresos ni egresos')
+  }
+  for (const m of inc.movements ? movs : []) {
     pair(
       `${stamp(m.date)} ${movementTypeLabel(m.r, m.income)}`,
       `${m.income ? '+' : '-'}${ticketMoney(Number(m.r.amount))}`,
@@ -352,17 +395,17 @@ export function buildCashSessionDetailLines(data: CashSessionDetailData, cols: n
     const method = isCashCode(m.r.payment_method) ? '' : ` [${methodLabel(m.r.payment_method)}]`
     if (motive || method) text(`${motive}${method}`.trim(), 2)
   }
-  if (movs.length > 0) {
+  if (inc.movements && movs.length > 0) {
     sep()
     pair('Ingresos en efectivo', ticketMoney(manualCashIncome))
     pair('Egresos en efectivo', ticketMoney(cashExpense))
   }
 
   // 6. Productos vendidos
-  section('PRODUCTOS VENDIDOS')
-  const sorted = sortProductsSold(products)
-  if (sorted.length === 0) text('Sin productos vendidos')
-  else {
+  const sorted = sortProductsSold(inc.products ? products : [])
+  if (inc.products) section('PRODUCTOS VENDIDOS')
+  if (inc.products && sorted.length === 0) text('Sin productos vendidos')
+  else if (inc.products) {
     text('Ordenado por importe (sin anulados)')
     sep()
     for (const p of sorted) {

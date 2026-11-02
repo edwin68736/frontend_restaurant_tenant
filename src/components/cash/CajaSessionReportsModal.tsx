@@ -10,6 +10,7 @@ import { downloadCajaSessionReportPdf } from '@/utils/cajaSessionReportPdf'
 import { downloadCashSessionDetailPdf, printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { CashDetailSectionsModal } from '@/components/cash/CashDetailSectionsModal'
 import { CajaSessionReportView } from '@/components/cash/CajaSessionReportView'
 import { paymentMethodDisplayLabel } from '@/utils/paymentMethodLabels'
 
@@ -22,6 +23,8 @@ type Props = {
 export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Props) {
   const [tab, setTab] = useState<'movements' | 'products'>('movements')
   const [loading, setLoading] = useState(false)
+  // Elección de secciones del ticket: 'print' (impresora) o 'pdf' (PDF ticket).
+  const [ticketAction, setTicketAction] = useState<'print' | 'pdf' | null>(null)
   const [report, setReport] = useState<CashSessionReport | null>(null)
   const [products, setProducts] = useState<SessionProductSoldRow[]>([])
 
@@ -119,6 +122,7 @@ export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Pr
   }
 
   return (
+    <>
     <PortalModal open onClose={onClose} className="max-w-4xl">
       <div className="bg-white rounded-2xl shadow-xl border border-stone-200 overflow-hidden flex flex-col max-h-[min(92dvh,900px)]">
         <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between gap-3">
@@ -149,7 +153,7 @@ export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Pr
             </button>
             <button
               type="button"
-              onClick={() => void printCashSessionDetail(sessionId)}
+              onClick={() => setTicketAction('print')}
               className="px-3 py-2 rounded-xl text-sm font-medium border border-stone-200 hover:bg-stone-50 flex items-center gap-2"
             >
               <Printer size={15} />
@@ -157,9 +161,7 @@ export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Pr
             </button>
             <button
               type="button"
-              onClick={() =>
-                void downloadCashSessionDetailPdf(sessionId).catch(() => toast.error('No se pudo generar el PDF del detalle'))
-              }
+              onClick={() => setTicketAction('pdf')}
               className="px-3 py-2 rounded-xl text-sm font-medium border border-stone-200 hover:bg-stone-50 flex items-center gap-2"
             >
               <FileText size={15} />
@@ -250,5 +252,19 @@ export function CajaSessionReportsModal({ sessionId, sessionLabel, onClose }: Pr
         </div>
       </div>
     </PortalModal>
+    <CashDetailSectionsModal
+      stacked
+      open={ticketAction != null}
+      onClose={() => setTicketAction(null)}
+      title={ticketAction === 'pdf' ? 'PDF ticket del detalle' : 'Imprimir detalle de caja'}
+      confirmLabel={ticketAction === 'pdf' ? 'Generar PDF' : 'Imprimir'}
+      onConfirm={(sections) => {
+        const action = ticketAction
+        setTicketAction(null)
+        if (action === 'print') void printCashSessionDetail(sessionId, { sections })
+        else void downloadCashSessionDetailPdf(sessionId, { sections }).catch(() => toast.error('No se pudo generar el PDF del detalle'))
+      }}
+    />
+    </>
   )
 }
