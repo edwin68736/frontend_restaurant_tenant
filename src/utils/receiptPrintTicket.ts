@@ -1,3 +1,4 @@
+import type { jsPDF } from 'jspdf'
 import type { PrintData } from '@/types/printData'
 import { generateReceiptPdf, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
@@ -80,25 +81,34 @@ function printPdfBlobInIframe(blob: Blob): Promise<void> {
   })
 }
 
+/** Ancho de página (mm) con el que hay que maquetar un ticket para ese rollo (ver TICKET_PRINT_SPEC). */
+export function ticketLayoutWidthMm(paperMm: 58 | 80): number {
+  return TICKET_PRINT_SPEC[paperMm].layoutMm ?? paperMm
+}
+
 export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOptions): Promise<void> {
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
+  const spec = TICKET_PRINT_SPEC[paperMm]
+  const doc = await generateReceiptPdf(data, 'ticket', { ...options, paperWidthMm: paperMm, layoutWidthMm: spec.layoutMm })
+  await printTicketPdfDocument(doc, paperMm)
+}
+
+/**
+ * Imprime un PDF de ticket ya maquetado (ancho = `ticketLayoutWidthMm(paperMm)`) con la hoja del rollo.
+ * Lo comparten los comprobantes y el detalle de caja: mismo trato de 58 mm (vectorial) y 80 mm (imagen).
+ */
+export async function printTicketPdfDocument(doc: jsPDF, paperMm: 58 | 80): Promise<void> {
   const spec = TICKET_PRINT_SPEC[paperMm]
   if (paperMm === 58) {
     // 58 mm: PDF vectorial maquetado a 48 mm (hoja del driver). Como imagen, Chromium la reescalaba
     // a la resolución del driver y salía borrosa; el texto vectorial lo dibuja el driver nativo.
-    const vdoc = await generateReceiptPdf(data, 'ticket', {
-      ...options,
-      paperWidthMm: paperMm,
-      layoutWidthMm: spec.layoutMm,
-    })
-    await printPdfBlobInIframe(vdoc.output('blob'))
+    await printPdfBlobInIframe(doc.output('blob'))
     return
   }
   const pdfjs = await import('pdfjs-dist')
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default
 
-  const doc = await generateReceiptPdf(data, 'ticket', { ...options, paperWidthMm: paperMm, layoutWidthMm: spec.layoutMm })
   const pdfData = new Uint8Array(doc.output('arraybuffer') as ArrayBuffer)
   const pdf = await pdfjs.getDocument({ data: pdfData }).promise
   const page = await pdf.getPage(1)

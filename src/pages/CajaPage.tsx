@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
-import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock } from 'lucide-react'
+import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock, Printer } from 'lucide-react'
 import { openCashDrawer } from '@/services/printers.service'
 import {
   cashbankService,
@@ -15,6 +15,9 @@ import {
   type MethodTotal,
 } from '@/services/cashbank.service'
 import { companyService } from '@/services/company.service'
+import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
+import type { CashDetailSections } from '@/utils/cashSessionDetailTicket'
+import { CashDetailSectionsModal } from '@/components/cash/CashDetailSectionsModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
@@ -244,6 +247,20 @@ export default function CajaPage() {
   const [openingEdit, setOpeningEdit] = useState<{ session: CashSession; amount: number } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
   const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
+
+  // Detalle de caja (ticket): imprimir desde el historial / sesión abierta, y pregunta al cerrar caja.
+  const [printingDetailId, setPrintingDetailId] = useState<number | null>(null)
+  // Modal de secciones del ticket; afterClose = viene de la pregunta posterior al cierre de caja.
+  const [printDetailPrompt, setPrintDetailPrompt] = useState<{ session: CashSession; afterClose: boolean } | null>(null)
+
+  const handlePrintDetail = async (target: CashSession, sections: CashDetailSections) => {
+    setPrintingDetailId(target.id)
+    try {
+      await printCashSessionDetail(target.id, { sessionRow: target, sections })
+    } finally {
+      setPrintingDetailId(null)
+    }
+  }
 
   const isSessionOpen = session?.status === 'open'
 
@@ -694,8 +711,9 @@ export default function CajaPage() {
         const hasAny = ARQUEO_DENOMINATIONS.some((d) => (closeArqueo[d.value] ?? 0) > 0)
         if (hasAny) payload.arqueo = closeArqueo
       }
-      await cashbankService.closeSession(session.id, payload)
+      const closed = await cashbankService.closeSession(session.id, payload)
       toast.success('Caja cerrada')
+      setPrintDetailPrompt({ session: { ...session, ...closed, id: session.id }, afterClose: true })
       setCloseModal(false)
       setCloseNotes('')
       setCloseWithArqueo(false)
@@ -904,6 +922,16 @@ export default function CajaPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      onClick={() => setPrintDetailPrompt({ session, afterClose: false })}
+                      disabled={printingDetailId === session.id}
+                      title="Reporte parcial a la fecha: ventas, comprobantes, anulados, movimientos y productos"
+                      className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <Printer size={16} />
+                      {printingDetailId === session.id ? 'Imprimiendo…' : 'Imprimir detalle'}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void handleOpenDrawer()}
                       disabled={openingDrawer}
                       className="px-3 py-2 border border-stone-200 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-50 flex items-center gap-2 disabled:opacity-50"
@@ -1042,6 +1070,16 @@ export default function CajaPage() {
                               className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50"
                             >
                               Reportes
+                            </button>
+                            <button
+                              type="button"
+                              title={s.status === 'open' ? 'Imprimir detalle (reporte parcial, la caja sigue abierta)' : 'Imprimir detalle de caja'}
+                              onClick={() => setPrintDetailPrompt({ session: s, afterClose: false })}
+                              disabled={printingDetailId === s.id}
+                              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-stone-200 hover:bg-stone-50 flex items-center gap-1 disabled:opacity-50"
+                            >
+                              <Printer size={13} />
+                              {printingDetailId === s.id ? 'Imprimiendo…' : 'Imprimir detalle'}
                             </button>
                             {canAdminSessions && (
                               <button
@@ -1927,6 +1965,28 @@ export default function CajaPage() {
           </div>
         </div>
       </PortalModal>
+
+      {/* Tras cerrar caja: ¿imprimir el detalle? */}
+      <CashDetailSectionsModal
+        open={!!printDetailPrompt}
+        onClose={() => setPrintDetailPrompt(null)}
+        busy={printingDetailId != null}
+        title={printDetailPrompt?.afterClose ? '¿Imprimir el detalle de caja?' : 'Imprimir detalle de caja'}
+        description={
+          printDetailPrompt?.afterClose
+            ? 'Caja cerrada. Elige qué secciones llevará el ticket del detalle.'
+            : printDetailPrompt?.session.status === 'open'
+              ? 'Reporte parcial: la caja sigue abierta. Elige qué secciones incluir en el ticket.'
+              : 'Elige qué secciones incluir en el ticket.'
+        }
+        cancelLabel={printDetailPrompt?.afterClose ? 'No' : 'Cancelar'}
+        onConfirm={(sections) => {
+          const target = printDetailPrompt?.session
+          if (!target) return
+          setPrintDetailPrompt(null)
+          void handlePrintDetail(target, sections)
+        }}
+      />
 
       {/* Eliminar caja vacía */}
       <PortalModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} className="max-w-md" overlayClassName="items-end sm:items-center">
