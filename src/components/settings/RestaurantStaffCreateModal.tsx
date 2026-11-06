@@ -10,6 +10,17 @@ import { companyService } from '@/services/company.service'
 
 const OPERATIVE_ROLES = RESTAURANT_EMPLOYEE_TYPES.filter((r) => r.value !== '')
 
+/** Usuario eliminado que ocupa el correo (respuesta 409 `user_deleted_exists`). */
+type DeletedUser = {
+  id: number
+  name: string
+  email: string
+  role_name?: string
+  deleted_at?: string
+  /** Solo los operativos de Tukichef se restauran aquí; los del ERP, desde Usuarios del ERP. */
+  restorable_here?: boolean
+}
+
 type Props = {
   onClose: () => void
   onSaved: () => void
@@ -24,6 +35,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
   const [pin, setPin] = useState('')
   const [branchIds, setBranchIds] = useState<number[]>([])
   const [saving, setSaving] = useState(false)
+  const [deletedConflict, setDeletedConflict] = useState<DeletedUser | null>(null)
 
   useEffect(() => {
     companyService
@@ -35,6 +47,45 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
       })
       .catch(() => setBranchIds([]))
   }, [])
+
+  const buildBody = () => ({
+    name: name.trim(),
+    email: email.trim(),
+    phone: phone.trim() || undefined,
+    employee_type: employeeType,
+    pin: pin.replace(/\D/g, ''),
+    branch_ids: branchIds,
+  })
+
+  const reportError = (e: unknown) => {
+    const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+    const isDup =
+      msg?.toLowerCase().includes('pin ya está asignado') || msg?.toLowerCase().includes('pin duplicado')
+    toast.error(isDup ? 'Ese PIN ya lo usa otro usuario. Elija otro PIN.' : msg ?? 'Error al crear')
+    onFailed?.()
+  }
+
+  // Resolución del conflicto "correo de un usuario eliminado": restaurar al anterior o crear uno nuevo.
+  const resolveConflict = async (action: 'restore' | 'replace') => {
+    if (!deletedConflict) return
+    setSaving(true)
+    try {
+      if (action === 'restore') {
+        const { email: _email, ...body } = buildBody()
+        await restaurantService.restoreStaffUser(deletedConflict.id, body)
+        toast.success('Usuario restaurado')
+      } else {
+        await restaurantService.createStaffUser({ ...buildBody(), replace_deleted: true })
+        toast.success('Usuario creado')
+      }
+      onSaved()
+      onClose()
+    } catch (e: unknown) {
+      reportError(e)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -68,11 +119,12 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
       onSaved()
       onClose()
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
-      const isDup =
-        msg?.toLowerCase().includes('pin ya está asignado') || msg?.toLowerCase().includes('pin duplicado')
-      toast.error(isDup ? 'Ese PIN ya lo usa otro usuario. Elija otro PIN.' : msg ?? 'Error al crear')
-      onFailed?.()
+      const res = (e as { response?: { status?: number; data?: { code?: string; deleted_user?: DeletedUser } } })?.response
+      if (res?.status === 409 && res.data?.code === 'user_deleted_exists' && res.data.deleted_user) {
+        setDeletedConflict(res.data.deleted_user)
+      } else {
+        reportError(e)
+      }
     } finally {
       setSaving(false)
     }
@@ -155,6 +207,55 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
             />
           </div>
         </div>
+
+        {deletedConflict && (
+          <div className="mx-4 mb-3 p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-stone-700 space-y-2">
+            <p>
+              El correo <b>{deletedConflict.email}</b> pertenece a un usuario eliminado
+              {deletedConflict.name ? <> (<b>{deletedConflict.name}</b>)</> : null}
+              {deletedConflict.deleted_at ? <> el {new Date(deletedConflict.deleted_at).toLocaleDateString()}</> : null}.
+            </p>
+            {deletedConflict.restorable_here !== false ? (
+              <p>
+                <b>Restaurar</b> devuelve al mismo usuario con su historial (usará los datos y el PIN de arriba).{' '}
+                <b>Crear nuevo</b> lo registra como otra persona; el anterior conserva su historial.
+              </p>
+            ) : (
+              <p>
+                Ese usuario es del panel ERP: restáurelo desde <b>Usuarios</b> en el ERP, o cree uno nuevo con este correo
+                (el anterior conserva su historial).
+              </p>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => setDeletedConflict(null)}
+                className="flex-1 py-2 border border-stone-200 bg-white rounded-xl text-stone-600"
+              >
+                Volver
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void resolveConflict('replace')}
+                className="flex-1 py-2 border border-rest-600 text-rest-600 bg-white rounded-xl font-medium disabled:opacity-50"
+              >
+                Crear nuevo
+              </button>
+              {deletedConflict.restorable_here !== false && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void resolveConflict('restore')}
+                  className="flex-1 py-2 bg-rest-600 text-white rounded-xl font-medium disabled:opacity-50"
+                >
+                  Restaurar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="p-4 border-t border-stone-200 flex gap-2">
           <button

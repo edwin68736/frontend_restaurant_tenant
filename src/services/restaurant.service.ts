@@ -175,8 +175,27 @@ export const restaurantService = {
     staff_code?: string
     display_name?: string
     branch_ids: number[]
+    /** El correo es de un usuario eliminado: liberarlo y crear uno nuevo (el eliminado conserva su historial). */
+    replace_deleted?: boolean
   }) =>
     api.post<{ success: boolean; data: RestaurantStaffManagementRow }>('/api/restaurant/staff/users', body).then((r) => r.data),
+
+  /** Reactiva a un usuario operativo eliminado (mismo id e historial). Exige PIN nuevo. */
+  restoreStaffUser: (
+    userId: number,
+    body: {
+      name: string
+      phone?: string
+      employee_type: string
+      pin: string
+      staff_code?: string
+      display_name?: string
+      branch_ids: number[]
+    },
+  ) =>
+    api
+      .post<{ success: boolean; data: RestaurantStaffManagementRow }>(`/api/restaurant/staff/users/${userId}/restore`, body)
+      .then((r) => r.data),
 
   setUserStaff: (
     userId: number,
