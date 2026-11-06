@@ -46,6 +46,10 @@ export interface RestaurantStaffManagementRow {
   branch_ids?: number[]
   branch_names?: string[]
   role_edit_locked?: boolean
+  /** Solo en el listado de eliminados. */
+  deleted_at?: string
+  /** Solo en el listado de eliminados: true si es un operativo de Tukichef (restaurable aquí). */
+  restorable?: boolean
 }
 
 export const RESTAURANT_EMPLOYEE_TYPES = [
@@ -161,9 +165,11 @@ export const restaurantService = {
   updateSettings: (data: { deletion_pin: string }) =>
     api.put<{ success: boolean }>('/api/restaurant/settings', data).then((r) => r.data),
 
-  listStaffManagement: () =>
+  listStaffManagement: (deleted = false) =>
     api
-      .get<{ data: RestaurantStaffManagementRow[] }>('/api/restaurant/staff/management')
+      .get<{ data: RestaurantStaffManagementRow[] }>('/api/restaurant/staff/management', {
+        params: deleted ? { deleted: 1 } : undefined,
+      })
       .then((r) => r.data.data ?? r.data ?? []),
 
   createStaffUser: (body: {

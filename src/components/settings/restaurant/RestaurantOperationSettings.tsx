@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Plus, RefreshCw, Shield, Users } from 'lucide-react'
+import { Pencil, Plus, RefreshCw, RotateCcw, Shield, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { restaurantService, type RestaurantStaffManagementRow } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
@@ -14,13 +14,16 @@ export function RestaurantOperationSettings() {
   const [savingPin, setSavingPin] = useState(false)
   const [editing, setEditing] = useState<RestaurantStaffManagementRow | null>(null)
   const [creating, setCreating] = useState(false)
+  // Vista de usuarios eliminados y el eliminado que se está restaurando.
+  const [showDeleted, setShowDeleted] = useState(false)
+  const [restoring, setRestoring] = useState<RestaurantStaffManagementRow | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [settings, staff] = await Promise.all([
         restaurantService.getSettings(),
-        restaurantService.listStaffManagement(),
+        restaurantService.listStaffManagement(showDeleted),
       ])
       setHasDeletionPin(settings.has_deletion_pin)
       setRows(staff)
@@ -29,7 +32,7 @@ export function RestaurantOperationSettings() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [showDeleted])
 
   useEffect(() => {
     void load()
@@ -55,6 +58,35 @@ export function RestaurantOperationSettings() {
   }
 
   const staffWithAccess = rows.filter((r) => r.employee_type)
+
+  // Acción por fila: Editar (activos) o Restaurar (eliminados; solo operativos de Tukichef).
+  const renderRowAction = (row: RestaurantStaffManagementRow, padding: string) => {
+    if (!showDeleted) {
+      return (
+        <button
+          type="button"
+          onClick={() => setEditing(row)}
+          className={`inline-flex items-center gap-1 ${padding} rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50`}
+        >
+          <Pencil size={14} />
+          Editar
+        </button>
+      )
+    }
+    if (!row.restorable) {
+      return <span className="text-[11px] text-stone-400 max-w-[110px] text-right leading-tight">Restaurar desde el ERP</span>
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => setRestoring(row)}
+        className={`inline-flex items-center gap-1 ${padding} rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50`}
+      >
+        <RotateCcw size={14} />
+        Restaurar
+      </button>
+    )
+  }
 
   const renderStaffRole = (row: RestaurantStaffManagementRow) => {
     if (row.employee_type) {
@@ -124,11 +156,13 @@ export function RestaurantOperationSettings() {
             <div className="min-w-0 flex-1">
               <h2 className="font-bold text-stone-900 text-base sm:text-lg leading-tight">Usuarios del restaurante</h2>
               <p className="text-xs sm:text-sm text-stone-600 mt-0.5">
-                {rows.length} en total · {staffWithAccess.length} con acceso
+                {showDeleted
+                  ? `${rows.length} eliminados`
+                  : `${rows.length} en total · ${staffWithAccess.length} con acceso`}
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-2 sm:shrink-0">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-2 sm:shrink-0">
             <button
               type="button"
               onClick={() => setCreating(true)}
@@ -137,6 +171,17 @@ export function RestaurantOperationSettings() {
               <Plus size={15} className="shrink-0 sm:w-4 sm:h-4" />
               <span className="truncate sm:hidden">Nuevo</span>
               <span className="truncate hidden sm:inline">Nuevo usuario</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleted((v) => !v)}
+              title={showDeleted ? 'Volver a los usuarios activos' : 'Ver usuarios eliminados para restaurarlos'}
+              className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl border text-xs sm:text-sm min-w-0 ${
+                showDeleted ? 'bg-stone-800 text-white border-stone-800' : 'border-stone-200 text-stone-700 hover:bg-stone-50'
+              }`}
+            >
+              <RotateCcw size={15} className="shrink-0 sm:w-4 sm:h-4" />
+              <span className="truncate">{showDeleted ? 'Ver activos' : 'Eliminados'}</span>
             </button>
             <button
               type="button"
@@ -160,20 +205,13 @@ export function RestaurantOperationSettings() {
           <>
           <div className="md:hidden divide-y divide-stone-100">
             {rows.map((row) => (
-              <div key={row.user_id} className={`p-3 space-y-2 ${!row.active ? 'opacity-50' : ''}`}>
+              <div key={row.user_id} className={`p-3 space-y-2 ${!showDeleted && !row.active ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-stone-800 text-sm leading-tight">{row.name}</p>
                     <p className="text-xs text-stone-500 truncate">{row.email}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditing(row)}
-                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50 shrink-0"
-                  >
-                    <Pencil size={14} />
-                    Editar
-                  </button>
+                  {renderRowAction(row, 'px-2 py-1.5 shrink-0')}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {renderStaffRole(row)}
@@ -203,7 +241,7 @@ export function RestaurantOperationSettings() {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {rows.map((row) => (
-                  <tr key={row.user_id} className={!row.active ? 'opacity-50' : undefined}>
+                  <tr key={row.user_id} className={!showDeleted && !row.active ? 'opacity-50' : undefined}>
                     <td className="px-4 py-3">
                       <div className="font-medium text-stone-800">{row.name}</div>
                       <div className="text-xs text-stone-500 truncate max-w-[200px]">{row.email}</div>
@@ -224,14 +262,7 @@ export function RestaurantOperationSettings() {
                       {!row.employee_type ? '—' : row.has_pin ? 'Configurado' : 'Sin PIN'}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(row)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50"
-                      >
-                        <Pencil size={14} />
-                        Editar
-                      </button>
+                      {renderRowAction(row, 'px-2.5 py-1.5')}
                     </td>
                   </tr>
                 ))}
@@ -244,6 +275,14 @@ export function RestaurantOperationSettings() {
 
       {editing && (
         <RestaurantStaffEditModal row={editing} onClose={() => setEditing(null)} onSaved={() => void load()} />
+      )}
+      {restoring && (
+        <RestaurantStaffCreateModal
+          restoreUser={restoring}
+          onClose={() => setRestoring(null)}
+          onSaved={() => void load()}
+          onFailed={() => void load()}
+        />
       )}
       {creating && (
         <RestaurantStaffCreateModal

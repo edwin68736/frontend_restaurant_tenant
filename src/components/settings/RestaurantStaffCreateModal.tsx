@@ -7,6 +7,7 @@ import { REST_PAGE_MODAL_Z } from '@/utils/restaurantUiLayers'
 import { FIXED_OVERLAY_SAFE } from '@/utils/safeAreaClasses'
 import { StaffBranchMultiSelect } from './StaffBranchMultiSelect'
 import { companyService } from '@/services/company.service'
+import type { RestaurantStaffManagementRow } from '@/services/restaurant.service'
 
 const OPERATIVE_ROLES = RESTAURANT_EMPLOYEE_TYPES.filter((r) => r.value !== '')
 
@@ -22,22 +23,25 @@ type DeletedUser = {
 }
 
 type Props = {
+  /** Si se pasa, el modal restaura a este usuario eliminado (correo fijo, PIN nuevo obligatorio). */
+  restoreUser?: RestaurantStaffManagementRow
   onClose: () => void
   onSaved: () => void
   onFailed?: () => void
 }
 
-export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props) {
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+export function RestaurantStaffCreateModal({ restoreUser, onClose, onSaved, onFailed }: Props) {
+  const [name, setName] = useState(restoreUser?.name ?? '')
+  const [email, setEmail] = useState(restoreUser?.email ?? '')
   const [phone, setPhone] = useState('')
-  const [employeeType, setEmployeeType] = useState('waiter')
+  const [employeeType, setEmployeeType] = useState(restoreUser?.employee_type || 'waiter')
   const [pin, setPin] = useState('')
-  const [branchIds, setBranchIds] = useState<number[]>([])
+  const [branchIds, setBranchIds] = useState<number[]>(restoreUser?.branch_ids ?? [])
   const [saving, setSaving] = useState(false)
   const [deletedConflict, setDeletedConflict] = useState<DeletedUser | null>(null)
 
   useEffect(() => {
+    if (restoreUser?.branch_ids?.length) return // conserva las sucursales que tenía
     companyService
       .listBranches()
       .then((rows) => {
@@ -107,15 +111,14 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
     }
     setSaving(true)
     try {
-      await restaurantService.createStaffUser({
-        name: name.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        employee_type: employeeType,
-        pin: pinDigits,
-        branch_ids: branchIds,
-      })
-      toast.success('Usuario creado')
+      if (restoreUser) {
+        const { email: _email, ...body } = buildBody()
+        await restaurantService.restoreStaffUser(restoreUser.user_id, body)
+        toast.success('Usuario restaurado')
+      } else {
+        await restaurantService.createStaffUser(buildBody())
+        toast.success('Usuario creado')
+      }
       onSaved()
       onClose()
     } catch (e: unknown) {
@@ -135,7 +138,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
       <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
         <div className="p-4 border-b border-stone-200 flex items-center justify-between gap-2">
           <div>
-            <h3 className="font-bold text-stone-800">Nuevo usuario</h3>
+            <h3 className="font-bold text-stone-800">{restoreUser ? 'Restaurar usuario' : 'Nuevo usuario'}</h3>
             <p className="text-xs text-stone-500">Operativo Tukichef (mozo, cajero, cocina…)</p>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-stone-100 text-stone-600">
@@ -159,6 +162,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              disabled={restoreUser != null}
               placeholder="juan@empresa.com"
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
             />
@@ -271,7 +275,7 @@ export function RestaurantStaffCreateModal({ onClose, onSaved, onFailed }: Props
             onClick={() => void handleSave()}
             className="flex-1 py-2.5 bg-rest-600 text-white rounded-xl text-sm font-medium disabled:opacity-50"
           >
-            {saving ? 'Creando...' : 'Crear usuario'}
+            {saving ? (restoreUser ? 'Restaurando...' : 'Creando...') : restoreUser ? 'Restaurar usuario' : 'Crear usuario'}
           </button>
         </div>
       </div>
