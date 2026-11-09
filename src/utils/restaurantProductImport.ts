@@ -222,7 +222,15 @@ export async function validateRestaurantProductExcel(file: File): Promise<Import
     return { rows: [], errors: [{ row: 0, column: '', field: '', message: 'El archivo está vacío', value: null }], totalRows: 0 }
   }
 
-  const rawRows = sheet.rows as CellValue[][]
+  return validateRestaurantProductRows(sheet.rows as CellValue[][])
+}
+
+/** Valida las filas de la hoja «Productos» (fila 1 = encabezados). Compartido con la importación avanzada. */
+export function validateRestaurantProductRows(
+  rawRows: CellValue[][],
+  /** Opcional: número de fila real de Excel de cada fila de datos no vacía (la básica asume index+2). */
+  dataRowNumbers?: number[],
+): ImportValidationResult {
   const headerCells = rawRows[0] ?? []
   const normalizedHeaders = headerCells.map((c) => normalizeHeader(String(c ?? '')))
   const missingRequired = ['nombre', 'precio_venta'].filter((col) => !normalizedHeaders.includes(col))
@@ -255,7 +263,7 @@ export async function validateRestaurantProductExcel(file: File): Promise<Import
   const codesInFile = new Map<string, number>()
 
   data.forEach((row, index) => {
-    const rowNumber = index + 2
+    const rowNumber = dataRowNumbers?.[index] ?? index + 2
     const nombre = String(row.nombre ?? '').trim()
     const codigoRaw = String(row.codigo ?? '').trim()
     const codigo = codigoRaw || ''

@@ -23,6 +23,14 @@ import {
   type ImportValidationResult,
   type ParsedImportRow,
 } from '@/utils/restaurantProductImport'
+import {
+  downloadAdvancedRestaurantTemplate,
+  runAdvancedBatches,
+  validateAdvancedRestaurantExcel,
+  type AdvancedParseResult,
+  type AdvancedTotals,
+} from '@/utils/restaurantProductAdvancedImport'
+import { AdvancedDone, AdvancedSummary } from '@/components/products/RestaurantAdvancedImportPanels'
 
 type Props = {
   open: boolean
@@ -32,6 +40,7 @@ type Props = {
 }
 
 type Step = 'select' | 'validated' | 'importing' | 'done'
+type Mode = 'basic' | 'advanced'
 
 export function ProductImportModal({ open, onClose, categories, onImported }: Props) {
   const { activeBranchId, activeBranch, allowedBranches, canSwitchBranch } = useBranch()
@@ -51,6 +60,15 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
+
+  // Importación avanzada (Excel con varias hojas: presentaciones, extras y combos). La básica no usa esto.
+  const [mode, setMode] = useState<Mode>('basic')
+  const [adv, setAdv] = useState<AdvancedParseResult | null>(null)
+  const [advPreview, setAdvPreview] = useState<AdvancedTotals | null>(null)
+  const [advPreviewing, setAdvPreviewing] = useState(false)
+  const [advResult, setAdvResult] = useState<AdvancedTotals | null>(null)
+  const previewSeq = useRef(0)
+  const needsRefresh = useRef(false)
 
   const branchOptions = useMemo(() => {
     if (activeBranchId <= 0) return []
@@ -78,18 +96,107 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     setValidation(null)
     setImportProgress({ done: 0, total: 0 })
     setImportResult(null)
+    setAdv(null)
+    setAdvPreview(null)
+    setAdvPreviewing(false)
+    setAdvResult(null)
+    previewSeq.current++
     if (fileRef.current) fileRef.current.value = ''
   }
 
   const handleClose = () => {
     reset()
+    if (needsRefresh.current) {
+      needsRefresh.current = false
+      onImported() // recarga el listado
+    }
     onClose()
   }
+
+  const changeMode = (m: Mode) => {
+    if (m === mode) return
+    reset()
+    setMode(m)
+  }
+
+  /** Simula la importación en el servidor (se revierte) para mostrar el resumen y los errores reales. */
+  const runPreview = async (parsed: AdvancedParseResult, branchId: number) => {
+    const seq = ++previewSeq.current
+    setAdvPreview(null)
+    if (parsed.errors.length > 0 || parsed.items.length === 0 || branchId <= 0) return
+    setAdvPreviewing(true)
+    try {
+      const totals = await runAdvancedBatches(parsed.items, branchId, true)
+      if (seq === previewSeq.current) setAdvPreview(totals)
+    } finally {
+      if (seq === previewSeq.current) setAdvPreviewing(false)
+    }
+  }
+
+  const handleAdvancedFile = async (file: File) => {
+    setFileName(file.name)
+    setValidating(true)
+    setAdv(null)
+    setAdvPreview(null)
+    setAdvResult(null)
+    try {
+      const parsed = await validateAdvancedRestaurantExcel(file)
+      setAdv(parsed)
+      setStep('validated')
+      if (parsed.errors.length > 0) {
+        toast.warning(`${parsed.errors.length} error(es). Corrige el Excel antes de importar.`)
+      } else if (parsed.items.length === 0) {
+        toast.error('No hay platos para importar')
+      } else {
+        await runPreview(parsed, selectedBranchId)
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo leer el archivo')
+      setStep('select')
+    } finally {
+      setValidating(false)
+    }
+  }
+
+  const handleAdvancedImport = async () => {
+    if (!adv || !advPreview || selectedBranchId <= 0) return
+    flushSync(() => {
+      setStep('importing')
+      setImportProgress({ done: 0, total: adv.items.length, current: 'Iniciando…' })
+    })
+    try {
+      const result = await runAdvancedBatches(adv.items, selectedBranchId, false, (p) =>
+        flushSync(() => setImportProgress(p)),
+      )
+      setAdvResult(result)
+      setStep('done')
+      if (result.created > 0 || result.updated > 0) {
+        toast.success(`${result.created} creado(s), ${result.updated} actualizado(s)`)
+        // El listado se refresca al cerrar (handleClose) para que el reporte siga visible.
+        needsRefresh.current = true
+      }
+      if (result.failed.length > 0) toast.error(`${result.failed.length} plato(s) no se guardaron`)
+    } catch {
+      toast.error('Error durante la importación')
+      setStep('validated')
+    }
+  }
+
+  // Si cambia la sucursal destino, el resumen previo (stock inicial, componentes) se recalcula.
+  useEffect(() => {
+    if (mode !== 'advanced' || !adv || step !== 'validated') return
+    void runPreview(adv, selectedBranchId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId])
 
   const handleFile = async (file: File | undefined) => {
     if (!file) return
     if (!file.name.match(/\.xlsx$/i)) {
       toast.error('Solo se admiten archivos .xlsx')
+      return
+    }
+    if (mode === 'advanced') {
+      await handleAdvancedFile(file)
       return
     }
     setFileName(file.name)
@@ -159,12 +266,23 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     }
   }
 
-  const canImport =
-    validation != null &&
-    validation.errors.length === 0 &&
-    validation.rows.length > 0 &&
+  const advCanImport =
+    adv != null &&
+    adv.errors.length === 0 &&
+    adv.items.length > 0 &&
+    advPreview != null &&
+    advPreview.failed.length === 0 &&
+    !advPreviewing &&
     selectedBranchId > 0 &&
     step === 'validated'
+  const canImport =
+    mode === 'advanced'
+      ? advCanImport
+      : validation != null &&
+        validation.errors.length === 0 &&
+        validation.rows.length > 0 &&
+        selectedBranchId > 0 &&
+        step === 'validated'
   const isImporting = step === 'importing'
   const importPct = importProgressPercent(importProgress.done, importProgress.total)
 
@@ -176,7 +294,9 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-stone-200 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <FileSpreadsheet className="w-5 h-5 text-rest-600 shrink-0" />
-            <h3 className="font-bold text-stone-800 truncate">Importar productos (Excel)</h3>
+            <h3 className="font-bold text-stone-800 truncate">
+              Importar productos (Excel){mode === 'advanced' ? ' — avanzada' : ''}
+            </h3>
           </div>
           <button
             type="button"
@@ -190,11 +310,37 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
         </div>
 
         <div className="relative p-4 sm:p-5 overflow-y-auto min-h-0 space-y-4">
-          <p className="text-sm text-stone-600">
-            Descarga la plantilla, completa los datos y súbela. La columna{' '}
-            <strong>stock_inicial</strong> solo aplica si <strong>control_stock</strong> es{' '}
-            <em>si</em>; el kardex se registra en la sucursal seleccionada.
-          </p>
+          <div className="inline-flex rounded-xl border border-stone-200 p-0.5 bg-stone-50" role="tablist" aria-label="Tipo de importación">
+            {(['basic', 'advanced'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={mode === m}
+                disabled={isImporting}
+                onClick={() => changeMode(m)}
+                className={`px-4 py-1.5 rounded-[10px] text-sm font-medium transition-colors disabled:opacity-40 ${
+                  mode === m ? 'bg-white shadow-sm text-rest-700' : 'text-stone-600 hover:text-stone-800'
+                }`}
+              >
+                {m === 'basic' ? 'Básica' : 'Avanzada'}
+              </button>
+            ))}
+          </div>
+          {mode === 'basic' ? (
+            <p className="text-sm text-stone-600">
+              Descarga la plantilla, completa los datos y súbela. La columna{' '}
+              <strong>stock_inicial</strong> solo aplica si <strong>control_stock</strong> es{' '}
+              <em>si</em>; el kardex se registra en la sucursal seleccionada.
+            </p>
+          ) : (
+            <p className="text-sm text-stone-600">
+              Excel con varias hojas: platos con <strong>presentaciones</strong>, <strong>extras</strong> y{' '}
+              <strong>combos</strong>. El <strong>codigo</strong> es obligatorio y enlaza las hojas. Si el plato ya
+              existe, lo que aparece en cada hoja es la lista final (lo que falte se desactiva o desvincula; nunca se
+              borra). La plantilla trae una hoja «Instrucciones».
+            </p>
+          )}
 
           <div className="rounded-xl border border-stone-200 bg-stone-50/80 p-3 space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-stone-500">
@@ -216,7 +362,7 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
                 ))}
               </select>
             )}
-            {validation && validation.rows.length > 0 && selectedBranchId > 0 && (
+            {mode === 'basic' && validation && validation.rows.length > 0 && selectedBranchId > 0 && (
               <p className="text-sm text-stone-700">
                 Se importarán <strong>{validation.rows.length}</strong> producto(s) a:{' '}
                 <strong>{selectedBranchName}</strong>
@@ -227,10 +373,14 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => void downloadRestaurantProductTemplate()}
+              onClick={() =>
+                void (mode === 'advanced'
+                  ? downloadAdvancedRestaurantTemplate()
+                  : downloadRestaurantProductTemplate())
+              }
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-stone-200 bg-white hover:bg-stone-50"
             >
-              <Download size={16} /> Descargar plantilla
+              <Download size={16} /> {mode === 'advanced' ? 'Descargar plantilla avanzada' : 'Descargar plantilla'}
             </button>
             <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium bg-rest-600 text-white hover:bg-rest-700 cursor-pointer">
               <Upload size={16} /> Elegir archivo .xlsx
@@ -257,11 +407,17 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
             </div>
           )}
 
-          {validation && !validating && step !== 'importing' && (
+          {mode === 'basic' && validation && !validating && step !== 'importing' && (
             <ValidationSummary validation={validation} />
           )}
 
-          {step === 'done' && importResult && (
+          {mode === 'advanced' && adv && !validating && step !== 'importing' && step !== 'done' && (
+            <AdvancedSummary adv={adv} preview={advPreview} previewing={advPreviewing} branchName={selectedBranchName} />
+          )}
+
+          {mode === 'advanced' && step === 'done' && advResult && <AdvancedDone result={advResult} />}
+
+          {mode === 'basic' && step === 'done' && importResult && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm">
               <p className="font-medium text-emerald-800">
                 Importación finalizada:
@@ -305,10 +461,12 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
             <button
               type="button"
               disabled={!canImport}
-              onClick={() => void handleImport()}
+              onClick={() => void (mode === 'advanced' ? handleAdvancedImport() : handleImport())}
               className="px-4 py-2 rounded-xl text-sm font-medium bg-rest-600 text-white hover:bg-rest-700 disabled:opacity-40 disabled:pointer-events-none"
             >
-              Importar {validation?.rows.length ?? 0} producto(s)
+              {mode === 'advanced'
+                ? `Importar ${adv?.items.length ?? 0} plato(s)`
+                : `Importar ${validation?.rows.length ?? 0} producto(s)`}
             </button>
           )}
           {isImporting && (

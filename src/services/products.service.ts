@@ -160,6 +160,56 @@ export interface BulkImportItemPayload {
   preparation_area?: string
 }
 
+/** Importación avanzada de platos (Excel con varias hojas): plato + presentaciones, extras y combos. */
+export interface BulkImportAdvancedItemPayload extends BulkImportItemPayload {
+  min_stock?: number
+  presentations?: { row_number: number; name: string; sale_price: number; initial_stock?: number; sort_order?: number }[]
+  modifier_groups?: {
+    row_number: number
+    def_row_number?: number
+    name: string
+    /** true = la definición viene en el Excel (hoja Grupos de extras); false = el grupo debe existir ya. */
+    define: boolean
+    required?: boolean
+    multi_select?: boolean
+    options?: { row_number: number; name: string; extra_price: number }[]
+  }[]
+  combo_groups?: {
+    row_number: number
+    name: string
+    selection_type: 'fixed' | 'single' | 'multiple'
+    min_select?: number
+    max_select?: number
+    allow_quantity?: boolean
+    sort_order?: number
+    items: {
+      row_number: number
+      product_code: string
+      default_quantity?: number
+      max_quantity?: number
+      extra_price?: number
+      is_default?: boolean
+      sort_order?: number
+    }[]
+  }[]
+}
+
+export interface BulkImportAdvancedResultPayload extends BulkImportResultPayload {
+  presentations_created: number
+  presentations_updated: number
+  presentations_deactivated: number
+  modifier_groups_created: number
+  modifier_groups_updated: number
+  modifier_options_created: number
+  modifier_options_updated: number
+  modifier_options_deactivated: number
+  modifier_links_created: number
+  modifier_links_removed: number
+  combo_groups_created: number
+  combo_groups_updated: number
+  combo_groups_deactivated: number
+}
+
 export interface BulkImportResultPayload {
   created: number
   updated?: number
@@ -333,6 +383,15 @@ export const productsService = {
       .post<{ success: boolean; data: BulkImportResultPayload }>(
         '/api/products/bulk-import/restaurant',
         { branch_id: branchId && branchId > 0 ? branchId : undefined, items },
+      )
+      .then((r) => r.data.data),
+
+  /** dryRun=true: simula todo en una transacción que se revierte (resumen previo + errores del servidor). */
+  bulkImportRestaurantAdvanced: (items: BulkImportAdvancedItemPayload[], branchId?: number, dryRun = false) =>
+    api
+      .post<{ success: boolean; data: BulkImportAdvancedResultPayload }>(
+        '/api/products/bulk-import/restaurant-advanced',
+        { branch_id: branchId && branchId > 0 ? branchId : undefined, items, dry_run: dryRun || undefined },
       )
       .then((r) => r.data.data),
 
