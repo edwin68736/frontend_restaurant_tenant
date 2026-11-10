@@ -13,6 +13,9 @@
  * venta —aunque sea idéntica— es una venta nueva.
  */
 
+import { activeBranchIdForCache } from '@/lib/branch/epoch'
+import { registerCache } from '@/lib/cacheRegistry'
+
 interface Slot {
   fingerprint: string
   key: string
@@ -46,7 +49,9 @@ function newKey(): string {
  * `scope` separa flujos que pueden coexistir (p. ej. 'pos-checkout' y 'bill:123').
  */
 export function idempotencyKeyFor(scope: string, payload: unknown): string {
-  const fingerprint = JSON.stringify(payload)
+  // La sucursal activa forma parte de la huella: el mismo cobro en otra sucursal es OTRO cobro y
+  // nunca reutiliza la clave (el servidor devolvería la venta de la sucursal anterior).
+  const fingerprint = JSON.stringify([activeBranchIdForCache(), payload])
   const slot = slots.get(scope)
   if (slot && slot.fingerprint === fingerprint) return slot.key
   const key = newKey()
@@ -58,3 +63,6 @@ export function idempotencyKeyFor(scope: string, payload: unknown): string {
 export function releaseIdempotencyKey(scope: string): void {
   slots.delete(scope)
 }
+
+/** Al cambiar de sucursal o cerrar sesión no sobrevive ninguna clave pendiente. */
+registerCache('idempotency', 'branch', () => slots.clear())

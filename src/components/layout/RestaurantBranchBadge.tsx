@@ -14,7 +14,7 @@ const selectClass =
 
 /** Selector de sucursal para el menú del usuario (no va en el header). */
 export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
-  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch } = useBranch()
+  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch, switching: ctxSwitching } = useBranch()
   const [fallbackBranches, setFallbackBranches] = useState<{ id: number; name: string }[]>([])
   const [loading, setLoading] = useState(false)
   const [switching, setSwitching] = useState(false)
@@ -55,8 +55,9 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
     if (!branchId || branchId === activeBranch.id) return
     setSwitching(true)
     try {
-      await switchBranch(branchId)
-      onSelected?.()
+      const changed = await switchBranch(branchId)
+      if (changed) onSelected?.()
+      else e.target.value = String(activeBranch.id)
     } catch {
       e.target.value = String(activeBranch.id)
     } finally {
@@ -78,7 +79,7 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
         <select
           id="branch-select-menu"
           value={activeBranch.id}
-          disabled={loading || switching}
+          disabled={loading || switching || ctxSwitching}
           onChange={(e) => void handleChange(e)}
           className={selectClass}
           style={{

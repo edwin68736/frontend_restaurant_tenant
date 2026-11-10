@@ -2,6 +2,20 @@ import axios from 'axios'
 import { isDevelopmentMode } from '@/lib/runtime/environment'
 import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
 import { isTauriDesktop } from '@/lib/app'
+import { currentEpoch, currentEpochSignal, isBranchSwitching } from '@/lib/branch/epoch'
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /** Época de sucursal en la que salió la petición (interno, lo fija el interceptor). */
+    _branchEpoch?: number
+    /** Token con el que salió la petición (interno). */
+    _reqToken?: string | null
+    /** true = la petición no depende de la sucursal (login, refresh, contexto, cambio de sucursal). */
+    _epochExempt?: boolean
+    /** true = el AbortSignal de la época se adjuntó a esta petición (interno). */
+    _epochAborts?: boolean
+  }
+}
 
 function normalizeApiOrigin(raw: string): string {
   let base = raw.trim().replace(/\/+$/, '')
@@ -92,6 +106,47 @@ const api = axios.create({
   withCredentials: false,
 })
 
+/**
+ * Peticiones que NO se atan a la época de sucursal: autenticación, contexto y cambio de sucursal.
+ * Abortarlas al cambiar de sucursal rompería el propio cambio o el login.
+ */
+const EPOCH_EXEMPT_PREFIXES = [
+  '/api/login',
+  '/api/refresh',
+  '/api/session/',
+  '/api/restaurant/auth/',
+  '/api/public/',
+  // Suscripción/plan: es de la empresa, no de la sucursal (SubscriptionStatusProvider vive fuera del Outlet
+  // y no se vuelve a pedir al cambiar de sucursal; si se abortara quedaría cargando para siempre).
+  '/api/subscription/',
+]
+
+export function isEpochExemptUrl(url: string | undefined): boolean {
+  if (!url) return false
+  const path = url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0]
+  return EPOCH_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(p))
+}
+
+function isSafeMethod(method: string | undefined): boolean {
+  const m = (method ?? 'get').toLowerCase()
+  return m === 'get' || m === 'head' || m === 'options'
+}
+
+/** Combina la señal propia de la petición con la de la época (cualquiera aborta). */
+function combineSignals(a: AbortSignal | undefined | null, b: AbortSignal): AbortSignal {
+  if (!a) return b
+  const anyFn = (AbortSignal as unknown as { any?: (s: AbortSignal[]) => AbortSignal }).any
+  if (typeof anyFn === 'function') return anyFn.call(AbortSignal, [a, b])
+  const ctrl = new AbortController()
+  const abort = () => ctrl.abort()
+  if (a.aborted || b.aborted) abort()
+  else {
+    a.addEventListener('abort', abort, { once: true })
+    b.addEventListener('abort', abort, { once: true })
+  }
+  return ctrl.signal
+}
+
 api.interceptors.request.use((config) => {
   if (isDevelopmentMode()) {
     config.baseURL = ''
@@ -110,6 +165,20 @@ api.interceptors.request.use((config) => {
 
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  config._reqToken = token
+
+  // Época de sucursal: toda petición sale marcada con la época vigente. Las de LECTURA además llevan
+  // la señal de la época y se abortan al cambiar de sucursal. Las que escriben (POST/PUT/PATCH/DELETE)
+  // NO se abortan: el servidor puede estar procesándolas (cobro) y cancelar el cliente solo ocultaría
+  // el resultado; su respuesta se entrega igualmente.
+  config._epochExempt = isEpochExemptUrl(config.url)
+  if (!config._epochExempt) {
+    config._branchEpoch = currentEpoch()
+    if (isSafeMethod(config.method)) {
+      config.signal = combineSignals(config.signal as AbortSignal | undefined, currentEpochSignal())
+      config._epochAborts = true
+    }
+  }
 
   const slug = getTenantSlug()
   if (slug) config.headers['X-Tenant-Slug'] = slug
@@ -118,6 +187,8 @@ api.interceptors.request.use((config) => {
 })
 
 export const SESSION_EXPIRED_EVENT = 'tukichef-session-expired'
+/** BRANCH_REQUIRED / BRANCH_FORBIDDEN del backend: BranchProvider refresca el contexto de sucursal. */
+export const BRANCH_ERROR_EVENT = 'tukichef-branch-error'
 /**
  * 402 emitido por `SubscriptionGate` (backend) cuando `can_operate=false` (plan vencido fuera
  * de gracia, suspendido o bloqueado). No es un error de autenticación: no desloguea, solo avisa
@@ -173,10 +244,48 @@ function forceRelogin(reason: ReloginReason) {
   }
 }
 
+/** Promesa que nunca se resuelve: descarta en silencio una respuesta de otra época (sin error visible). */
+function discardSilently<T>(): Promise<T> {
+  return new Promise<T>(() => {})
+}
+
+/**
+ * La respuesta/error pertenece a una época anterior (se cambió de sucursal mientras viajaba).
+ * Solo aplica a lecturas: la respuesta de una ESCRITURA (cobro, etc.) siempre se entrega.
+ */
+function isStaleEpoch(
+  config: { _branchEpoch?: number; _epochExempt?: boolean; _epochAborts?: boolean } | undefined,
+): boolean {
+  if (!config || config._epochExempt || !config._epochAborts || config._branchEpoch === undefined) return false
+  return config._branchEpoch !== currentEpoch()
+}
+
+/** La petición salió con un token que ya no es el vigente (el cambio de sucursal lo reemplazó). */
+function isStaleToken(config: { _reqToken?: string | null } | undefined): boolean {
+  if (!config || !config._reqToken) return false
+  return config._reqToken !== localStorage.getItem('token')
+}
+
 api.interceptors.response.use(
-  (r) => r,
+  (r) => (isStaleEpoch(r.config) ? discardSilently() : r),
   (err) => {
+    const cfg = err?.config as
+      | { _branchEpoch?: number; _epochExempt?: boolean; _reqToken?: string | null; _epochAborts?: boolean; signal?: AbortSignal }
+      | undefined
+    // Cancelación por cambio de sucursal: no es un error ni debe mostrarse como tal.
+    if (axios.isCancel(err) && isStaleEpoch(cfg)) {
+      return discardSilently()
+    }
+    // Respuesta (cualquier error HTTP) de una época anterior: se ignora, no desloguea ni avisa.
+    if (err.response && isStaleEpoch(cfg)) return discardSilently()
+
     const code = err.response?.data?.code as string | undefined
+    if (err.response?.status === 403 || err.response?.status === 400) {
+      if (code === 'BRANCH_REQUIRED' || code === 'BRANCH_FORBIDDEN') {
+        window.dispatchEvent(new CustomEvent(BRANCH_ERROR_EVENT, { detail: { code } }))
+        return Promise.reject(err)
+      }
+    }
     if (err.response?.status === 403 && code === 'TENANT_ISOLATION_VIOLATION') {
       forceRelogin('tenant_isolation')
       return Promise.reject(err)
@@ -186,10 +295,14 @@ api.interceptors.response.use(
       return Promise.reject(err)
     }
     if (err.response?.status === 409 && code === 'SESSION_UPDATED') {
+      // Provocado por NUESTRO propio cambio de sucursal (token reemplazado mientras viajaba una
+      // petición con el token viejo): no es "sesión vencida".
+      if (isBranchSwitching() || isStaleToken(cfg)) return Promise.reject(err)
       forceRelogin('session_expired')
       return Promise.reject(err)
     }
     if (err.response?.status === 401) {
+      if (isBranchSwitching() || isStaleToken(cfg)) return Promise.reject(err)
       forceRelogin('session_expired')
       return Promise.reject(err)
     }

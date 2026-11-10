@@ -16,6 +16,7 @@ import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorAndroid, isCapacitorNative } from '@/lib/platform/detect'
 import { isPosFullBleedRoute } from '@/utils/posFullBleedRoute'
+import { useBranch } from '@/contexts/BranchContext'
 
 /**
  * Layout Tukichef: barra decorativa solo en pantallas grandes (lg+); sidebar colapsable como Tukifac.
@@ -26,6 +27,7 @@ export default function RestaurantLayout() {
   const nativeCapacitor = isCapacitorNative()
   const { pathname } = useLocation()
   const { blocked } = useSubscriptionStatus()
+  const { activeBranchId, resetEpoch } = useBranch()
   // /suscripcion siempre debe verse: es la única salida que tiene el tenant para regularizar.
   const onSubscriptionPage = pathname.startsWith('/suscripcion')
   const showBlockedScreen = blocked && !onSubscriptionPage
@@ -158,7 +160,7 @@ export default function RestaurantLayout() {
                     : 'px-3 py-2.5 sm:px-4 sm:py-3 lg:px-5 lg:pb-3',
                 )}
               >
-                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet />}
+                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet key={`${activeBranchId}:${resetEpoch}`} />}
               </div>
             </main>
             <MobileBottomNav />

@@ -8,6 +8,8 @@ export type NotaVentaPrintLayoutSettings = {
   showPaymentCondition: boolean
 }
 
+import { readTenantScoped, writeTenantScoped } from '@/lib/tenantStorage'
+
 export const NOTA_VENTA_PRINT_LAYOUT_STORAGE_KEY = 'tukichef_nota_venta_print_layout_v1'
 
 export const DEFAULT_NOTA_VENTA_PRINT_LAYOUT: NotaVentaPrintLayoutSettings = {
@@ -61,7 +63,7 @@ function normalizeLayout(
 export function loadNotaVentaPrintLayoutSettings(): NotaVentaPrintLayoutSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_NOTA_VENTA_PRINT_LAYOUT }
   try {
-    const raw = localStorage.getItem(NOTA_VENTA_PRINT_LAYOUT_STORAGE_KEY)
+    const raw = readTenantScoped(NOTA_VENTA_PRINT_LAYOUT_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_NOTA_VENTA_PRINT_LAYOUT }
     return normalizeLayout(JSON.parse(raw) as Partial<NotaVentaPrintLayoutSettings>)
   } catch {
@@ -72,10 +74,7 @@ export function loadNotaVentaPrintLayoutSettings(): NotaVentaPrintLayoutSettings
 export function saveNotaVentaPrintLayoutSettings(settings: NotaVentaPrintLayoutSettings) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(
-      NOTA_VENTA_PRINT_LAYOUT_STORAGE_KEY,
-      JSON.stringify(normalizeLayout(settings)),
-    )
+    writeTenantScoped(NOTA_VENTA_PRINT_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeLayout(settings)))
   } catch {
     /* quota */
   }

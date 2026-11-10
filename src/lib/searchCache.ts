@@ -1,4 +1,6 @@
 import { SEARCH_CACHE_TTL_MS } from './searchDefaults'
+import { activeBranchIdForCache } from './branch/epoch'
+import { registerCache } from './cacheRegistry'
 
 type CacheEntry<T> = { data: T; expiresAt: number }
 
@@ -18,8 +20,12 @@ export function setSearchCache<T>(key: string, data: T, ttlMs = SEARCH_CACHE_TTL
   store.set(key, { data, expiresAt: Date.now() + ttlMs })
 }
 
+/**
+ * La sucursal activa va SIEMPRE en la clave: un resultado cacheado en la sucursal A nunca se sirve en B.
+ * Formato: `scope::b<branchId>::query::deps` (el prefijo `scope::` se conserva para clearSearchCacheScope).
+ */
 export function buildSearchCacheKey(scope: string, query: string, depsKey: string): string {
-  return `${scope}::${query}::${depsKey}`
+  return `${scope}::b${activeBranchIdForCache()}::${query}::${depsKey}`
 }
 
 export function clearSearchCacheScope(scope: string): void {
@@ -27,3 +33,9 @@ export function clearSearchCacheScope(scope: string): void {
     if (key.startsWith(`${scope}::`)) store.delete(key)
   }
 }
+
+export function clearAllSearchCache(): void {
+  store.clear()
+}
+
+registerCache('searchCache', 'branch', clearAllSearchCache)

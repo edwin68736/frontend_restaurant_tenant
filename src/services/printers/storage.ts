@@ -1,5 +1,6 @@
 import type { PrinterConfig, PrinterConnectionMode, StoredPrinterSettings } from './types'
 import { defaultConnectionForPlatform, effectiveConnection } from './platform'
+import { readTenantScoped, writeTenantScoped } from '@/lib/tenantStorage'
 
 export const PRINTER_SETTINGS_STORAGE_KEY_V3 = 'tukichef_kitchen_printer_settings_v3'
 const PRINTER_SETTINGS_STORAGE_KEY_V2 = 'tukichef_kitchen_printer_settings_v2'
@@ -131,7 +132,8 @@ export function loadStoredPrinterSettings(): StoredPrinterSettings {
     LEGACY_PRINTER_KEY_V1,
   ]
   for (const key of keys) {
-    const raw = localStorage.getItem(key)
+    // Ajustes por empresa: la clave lleva el slug del tenant (la antigua sin slug se adopta una vez).
+    const raw = readTenantScoped(key)
     if (!raw) continue
     const parsed = parseLegacyJson(raw)
     if (parsed) {
@@ -147,7 +149,7 @@ export function saveStoredPrinterSettings(v: StoredPrinterSettings) {
   if (typeof window === 'undefined') return
   try {
     const payload = finalizeStoredSettings(v)
-    localStorage.setItem(PRINTER_SETTINGS_STORAGE_KEY_V3, JSON.stringify(payload))
+    writeTenantScoped(PRINTER_SETTINGS_STORAGE_KEY_V3, JSON.stringify(payload))
   } catch {
     /* quota */
   }

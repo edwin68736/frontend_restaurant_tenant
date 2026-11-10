@@ -1,6 +1,8 @@
 /** Tamaño del logo en comprobantes (ESC/POS y PDF). Ajuste local del dispositivo. */
 export type LogoPrintSize = 'pequeno' | 'mediano' | 'grande'
 
+import { readTenantScoped, writeTenantScoped } from '@/lib/tenantStorage'
+
 const STORAGE_KEY = 'tukichef_logo_print_size_v1'
 
 export const DEFAULT_LOGO_PRINT_SIZE: LogoPrintSize = 'mediano'
@@ -47,7 +49,7 @@ const A4_SCALE: Record<LogoPrintSize, number> = {
 
 export function readLogoPrintSize(): LogoPrintSize {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = readTenantScoped(STORAGE_KEY)
     if (raw === 'pequeno' || raw === 'mediano' || raw === 'grande') return raw
   } catch {
     /* noop */
@@ -57,7 +59,7 @@ export function readLogoPrintSize(): LogoPrintSize {
 
 export function saveLogoPrintSize(size: LogoPrintSize) {
   try {
-    localStorage.setItem(STORAGE_KEY, size)
+    writeTenantScoped(STORAGE_KEY, size)
   } catch {
     /* quota */
   }

@@ -1,4 +1,5 @@
 import api from './api'
+import { clearAllCaches } from '@/lib/cacheRegistry'
 
 export interface LoginPayload {
   email: string
@@ -46,7 +47,10 @@ export const authService = {
   },
   logout: () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
+    // Nada de la sesión anterior (búsquedas, claves de cobro, logo en memoria) sobrevive al logout.
+    clearAllCaches()
     // No borrar tenantSlug/tenantName/tokenConsultaDatos: el RUC solo se ingresa la primera vez
   },
 }

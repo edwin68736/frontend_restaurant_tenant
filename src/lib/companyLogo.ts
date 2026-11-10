@@ -1,5 +1,7 @@
 import { companyService } from '@/services/company.service'
 import { resolvePublicAssetUrl } from '@/services/api'
+import { registerCache } from '@/lib/cacheRegistry'
+import { currentTenantSlug, readTenantScoped, removeTenantScoped, writeTenantScoped } from '@/lib/tenantStorage'
 
 /**
  * Logo del emisor para comprobantes. Es de la empresa, no de la venta, así que no se toma
@@ -13,23 +15,38 @@ const STORAGE_KEY = 'tukichef_company_logo_v1'
 let cached: string | null = null
 let inFlight: Promise<string | null> | null = null
 let seeded = false
+/** Empresa a la que pertenece el logo en memoria: si cambia, el caché se descarta. */
+let cachedSlug = ''
+
+/** El logo es POR EMPRESA: nunca se reutiliza el de otra empresa en el mismo dispositivo. */
+function syncTenant() {
+  const slug = currentTenantSlug()
+  if (slug !== cachedSlug) {
+    cachedSlug = slug
+    cached = null
+    inFlight = null
+    seeded = false
+  }
+}
 
 function seedFromStorage() {
+  syncTenant()
   if (seeded) return
   seeded = true
   try {
-    cached = localStorage.getItem(STORAGE_KEY) || null
+    cached = readTenantScoped(STORAGE_KEY) || null
   } catch {
     cached = null
   }
 }
 
 function persist(logo: string | null) {
+  syncTenant()
   cached = logo
   seeded = true
   try {
-    if (logo) localStorage.setItem(STORAGE_KEY, logo)
-    else localStorage.removeItem(STORAGE_KEY)
+    if (logo) writeTenantScoped(STORAGE_KEY, logo)
+    else removeTenantScoped(STORAGE_KEY)
   } catch {
     /* quota */
   }
@@ -52,6 +69,14 @@ export function primeCompanyLogo(cfg: { logo_data_url?: string; logo_url?: strin
 export function clearCompanyLogoCache() {
   persist(null)
 }
+
+/** Cierre de sesión: se olvida el logo en memoria (el de la empresa vuelve a leerse de su clave). */
+registerCache('companyLogo', 'session', () => {
+  cached = null
+  inFlight = null
+  seeded = false
+  cachedSlug = ''
+})
 
 /**
  * Devuelve el logo listo para imprimir, cargando la config la primera vez. Idempotente:

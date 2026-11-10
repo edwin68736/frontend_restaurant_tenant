@@ -33,6 +33,12 @@ type SessionPayload = LoginResponse & {
 type AuthContextType = AuthState & {
   login: (p: LoginPayload) => Promise<LoginResponse>
   applySession: (data: SessionPayload) => void
+  /**
+   * Cambio de token dentro de la misma sesión (cambio de sucursal): actualiza localStorage, el token
+   * y los módulos en el estado y, si vienen, refresh_token y permisos. Los permisos finos se vuelven
+   * a pedir al backend (efecto sobre state.token).
+   */
+  applyTokenUpdate: (u: { token: string; refresh_token?: string; restaurant_permissions?: string[] }) => void
   logout: () => void
   canAccess: (feature: RestaurantFeature) => boolean
   hasPerm: (perm: string) => boolean
@@ -93,6 +99,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     window.dispatchEvent(new CustomEvent('tukichef-session-applied'))
   }, [])
+
+  const applyTokenUpdate = useCallback(
+    (u: { token: string; refresh_token?: string; restaurant_permissions?: string[] }) => {
+      localStorage.setItem('token', u.token)
+      if (u.refresh_token) localStorage.setItem('refresh_token', u.refresh_token)
+      const perms = u.restaurant_permissions
+      if (Array.isArray(perms)) localStorage.setItem(PERMS_KEY, JSON.stringify(perms))
+      setState((s) => ({
+        ...s,
+        token: u.token,
+        modules: modulesFromToken(u.token),
+        restaurantPermissions: Array.isArray(perms) ? perms : s.restaurantPermissions,
+      }))
+    },
+    [],
+  )
 
   useEffect(() => {
     const onSessionExpired = () => {
@@ -225,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, login, applySession, logout, canAccess, hasPerm, hasModule }}>
+    <AuthContext.Provider value={{ ...state, login, applySession, applyTokenUpdate, logout, canAccess, hasPerm, hasModule }}>
       {children}
     </AuthContext.Provider>
   )

@@ -14,6 +14,8 @@ export type ComandaPrintLayoutSettings = {
   textSize: ComandaTextSize
 }
 
+import { readTenantScoped, writeTenantScoped } from '@/lib/tenantStorage'
+
 export const COMANDA_PRINT_LAYOUT_STORAGE_KEY = 'tukichef_comanda_print_layout_v1'
 
 export const DEFAULT_COMANDA_PRINT_LAYOUT: ComandaPrintLayoutSettings = {
@@ -54,7 +56,7 @@ function normalizeLayout(
 export function loadComandaPrintLayoutSettings(): ComandaPrintLayoutSettings {
   if (typeof window === 'undefined') return { ...DEFAULT_COMANDA_PRINT_LAYOUT }
   try {
-    const raw = localStorage.getItem(COMANDA_PRINT_LAYOUT_STORAGE_KEY)
+    const raw = readTenantScoped(COMANDA_PRINT_LAYOUT_STORAGE_KEY)
     if (!raw) return { ...DEFAULT_COMANDA_PRINT_LAYOUT }
     return normalizeLayout(JSON.parse(raw) as Partial<ComandaPrintLayoutSettings>)
   } catch {
@@ -65,7 +67,7 @@ export function loadComandaPrintLayoutSettings(): ComandaPrintLayoutSettings {
 export function saveComandaPrintLayoutSettings(settings: ComandaPrintLayoutSettings) {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(COMANDA_PRINT_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeLayout(settings)))
+    writeTenantScoped(COMANDA_PRINT_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeLayout(settings)))
   } catch {
     /* quota */
   }

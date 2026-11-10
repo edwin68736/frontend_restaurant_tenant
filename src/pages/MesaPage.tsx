@@ -16,6 +16,7 @@ import {
 import { usePosInfiniteProducts } from '@/hooks/usePosInfiniteProducts'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
+import { useTableSessionBranchGuard } from '@/hooks/useTableSessionBranchGuard'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { restaurantService, type SessionDetail, type Comanda } from '@/services/restaurant.service'
 import { ReceiptPrintModal } from '@/components/ReceiptPrintModal'
@@ -182,8 +183,35 @@ export default function MesaPage() {
   const { flyToCart, FlyToCartLayer, cancelFlyAnimations } = useFlyToCart(cartBtnRef, { desktopCartRef })
   const configuringRef = useRef(false)
 
+  // Aislamiento por sucursal: nunca se consulta ni se opera una sesión abierta en OTRA sucursal.
+  const pendingMessage =
+    session || cart.length > 0
+      ? `Tiene abierta la cuenta de ${session?.table_name || 'esta mesa'}${
+          cart.length > 0 ? ' con productos aún sin enviar a cocina' : ''
+        }.`
+      : null
+  const { foreign: foreignSession } = useTableSessionBranchGuard({
+    sessionId: id,
+    activeBranchId,
+    pendingMessage,
+    onDiscard: () => {
+      setCart([])
+      setSession(null)
+      setCheckoutOpen(false)
+      navigate('/salas', { replace: true })
+    },
+  })
+
+  useEffect(() => {
+    if (!foreignSession) return
+    setCart([])
+    setSession(null)
+    toast.info('Esa mesa pertenece a otra sucursal. Volvimos a las salas.')
+    navigate('/salas', { replace: true })
+  }, [foreignSession, navigate])
+
   const load = useCallback((opts?: { silent?: boolean }) => {
-    if (!id) return
+    if (!id || foreignSession) return
     if (!opts?.silent) setLoading(true)
     restaurantService
       .getSession(id)
@@ -192,7 +220,7 @@ export default function MesaPage() {
       .finally(() => {
         if (!opts?.silent) setLoading(false)
       })
-  }, [id])
+  }, [id, foreignSession])
 
   useEffect(() => { load() }, [load])
 
@@ -256,7 +284,7 @@ export default function MesaPage() {
     categoryFilter,
     preparationAreaFilter,
     scopeKey: id,
-    enabled: !!id,
+    enabled: !!id && !foreignSession,
     onError: () => toast.error('No se pudieron cargar los productos'),
   })
 

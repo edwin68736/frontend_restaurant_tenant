@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { getApiBaseUrl } from '@/services/api'
+import { useAuth } from '@/contexts/AuthContext'
 
 export interface BillingStatusEvent {
   event: string
@@ -22,10 +23,16 @@ export function useBillingEvents(
 ) {
   const handlerRef = useRef(onUpdate)
   handlerRef.current = onUpdate
+  // El token vigente (AuthContext) es dependencia del efecto: al cambiar de sucursal o renovarse el
+  // token, la conexión SSE se cierra y se reabre con el token nuevo.
+  // RIESGO CONOCIDO: EventSource no admite cabeceras, así que el token sigue yendo en la URL
+  // (?access_token=). Quitarlo exige un cambio de backend (cookie corta o ticket de un solo uso)
+  // o usar fetch-streaming con Authorization.
+  const { token: authToken } = useAuth()
 
   useEffect(() => {
     if (!enabled) return
-    const token = localStorage.getItem('token')
+    const token = authToken || localStorage.getItem('token')
     if (!token) return
 
     const url = `${getApiBaseUrl()}/api/billing/events?access_token=${encodeURIComponent(token)}`
@@ -45,5 +52,5 @@ export function useBillingEvents(
       es.removeEventListener('billing.status.updated', onMessage)
       es.close()
     }
-  }, [enabled])
+  }, [enabled, authToken])
 }
