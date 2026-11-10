@@ -1024,6 +1024,26 @@ export default function ProductosPage() {
                           </span>
                         )}
                       </span>
+                      {/* La columna Stock solo existe desde lg: en tablet y celular el stock y "Ajustar" van bajo el nombre. */}
+                      {p.manage_stock && (
+                        <div className="lg:hidden mt-1.5 flex items-center gap-2 text-xs">
+                          <span className="text-stone-500">Stock</span>
+                          <span className="font-mono font-semibold text-stone-800 tabular-nums">
+                            {typeof stockByProductId[p.id] === 'number' ? stockByProductId[p.id] : '—'}
+                          </span>
+                          {canAdjustInventory && (
+                            <button
+                              type="button"
+                              onClick={() => setAdjustmentProduct(p)}
+                              title="Ajustar inventario"
+                              aria-label={`Ajustar inventario de ${p.name}`}
+                              className="inline-flex items-center px-2.5 py-1 rounded-lg border border-rest-200 bg-rest-50 text-rest-700 font-medium touch-manipulation active:bg-rest-100"
+                            >
+                              Ajustar
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="hidden md:table-cell px-3 py-2 text-stone-600 max-w-[14rem]">
                       {p.description?.trim() ? (
