@@ -20,6 +20,8 @@ export type BranchBrief = { id: number; name: string; is_main?: boolean }
 
 export interface LoginResponse {
   token: string
+  /** Solo el login de correo/contraseña lo recibe; el POS por PIN no tiene refresh token. */
+  refresh_token?: string
   user: AuthUser
   modules?: string[]
   permissions?: string[]

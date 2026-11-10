@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
-import { resetReloginGuard, SESSION_EXPIRED_EVENT } from '@/services/api'
+import { resetReloginGuard, SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { msUntilPinExpiryWarning } from '@/lib/session/pinExpiry'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { canAccessFeature, type RestaurantFeature } from '@/utils/restaurantPermissions'
 import { canManageGlobalCatalog as computeCanManageGlobalCatalog } from '@/utils/catalogPermissions'
@@ -78,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { employeeType, staffId } = readUserMeta(user)
 
     localStorage.setItem('token', data.token)
+    // Solo el login de correo/contraseña trae refresh token; el PIN no (y no hereda el de una sesión anterior).
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+    else localStorage.removeItem('refresh_token')
     localStorage.setItem('user', JSON.stringify(user))
     localStorage.setItem(PERMS_KEY, JSON.stringify(perms))
     if (data.active_branch) {
@@ -141,6 +145,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
   }, [])
+
+  // Token renovado por el interceptor/SSE (409 SESSION_UPDATED): se sincroniza el estado. Los permisos finos
+  // se vuelven a pedir solos (efecto sobre state.token).
+  useEffect(() => {
+    const onRefreshed = (e: Event) => {
+      const token = (e as CustomEvent<{ token?: string }>).detail?.token
+      if (!token) return
+      setState((s) => (s.isAuthenticated ? { ...s, token, modules: modulesFromToken(token) } : s))
+    }
+    window.addEventListener(SESSION_REFRESHED_EVENT, onRefreshed)
+    return () => window.removeEventListener(SESSION_REFRESHED_EVENT, onRefreshed)
+  }, [])
+
+  // Aviso de fin de turno del POS por PIN (5 min antes del exp del JWT).
+  useEffect(() => {
+    const wait = msUntilPinExpiryWarning(state.token)
+    if (wait === null) return
+    const t = window.setTimeout(() => {
+      toast.warning('Su turno vence en unos 5 minutos. Termine lo pendiente; deberá volver a ingresar con su PIN.', {
+        id: 'pin-expiry-warning',
+        duration: 20000,
+      })
+    }, wait)
+    return () => window.clearTimeout(t)
+  }, [state.token])
 
   useEffect(() => {
     const token = localStorage.getItem('token')

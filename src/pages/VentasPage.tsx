@@ -271,7 +271,14 @@ export default function VentasPage() {
       : d))
   }, [])
 
-  useBillingEvents(applyBillingEvent, (tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === true)
+  // Al reconectar el stream se pudieron perder eventos: se vuelve a pedir la lista.
+  useBillingEvents(
+    applyBillingEvent,
+    (tab === 'facturacion' || tab === 'credit_notes') && sunatEnabled === true,
+    () => {
+      void refresh()
+    },
+  )
 
   const setTabAndUrl = (t: Tab) => {
     setTab(t)

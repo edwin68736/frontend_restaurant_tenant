@@ -12,7 +12,7 @@ import { toast } from 'sonner'
 import { sessionService, type BranchBrief } from '@/services/session.service'
 import { decodeJWT } from '@/services/auth.service'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRANCH_ERROR_EVENT } from '@/services/api'
+import { BRANCH_ERROR_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
 import {
   beginBranchSwitch,
   bumpBranchEpoch,
@@ -374,7 +374,13 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     }
     window.addEventListener(BRANCH_ERROR_EVENT, onBranchError)
 
+    // Token renovado tras un 409 SESSION_UPDATED: el rol/asignaciones pudieron cambiar la sucursal activa o
+    // los permisos; el contexto se vuelve a pedir (y, si la sucursal cambió, se abre época nueva).
+    const onSessionRefreshed = () => void refreshContext().catch(() => {})
+    window.addEventListener(SESSION_REFRESHED_EVENT, onSessionRefreshed)
+
     return () => {
+      window.removeEventListener(SESSION_REFRESHED_EVENT, onSessionRefreshed)
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
       window.removeEventListener(BRANCH_ERROR_EVENT, onBranchError)

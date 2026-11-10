@@ -22,6 +22,10 @@ declare module 'axios' {
     _epochExempt?: boolean
     /** true = el AbortSignal de la época se adjuntó a esta petición (interno). */
     _epochAborts?: boolean
+    /** true = ya se reintentó UNA vez tras renovar el token por un 409 SESSION_UPDATED (corta cualquier bucle). */
+    _sessionRetried?: boolean
+    /** true = ya se reenvió UNA vez con el token que otra petición acababa de renovar (interno). */
+    _staleResent?: boolean
   }
 }
 
@@ -239,7 +243,7 @@ export const SUBSCRIPTION_BLOCKED_EVENT = 'tukichef-subscription-blocked'
 const TOAST_SESSION_EXPIRED = 'session-expired'
 const TOAST_TENANT_ISOLATION = 'tenant-isolation'
 
-type ReloginReason = 'session_expired' | 'tenant_isolation'
+type ReloginReason = 'session_expired' | 'tenant_isolation' | 'access_changed'
 
 let reloginHandled = false
 
@@ -248,6 +252,9 @@ export function resetReloginGuard() {
 }
 
 function getReloginMessage(reason: ReloginReason): string {
+  if (reason === 'access_changed') {
+    return 'Su acceso cambió; vuelva a ingresar.'
+  }
   if (reason === 'tenant_isolation') {
     return 'Sesi?n inv?lida para esta empresa. Vuelva a vincular el RUC e iniciar sesi?n.'
   }
@@ -260,11 +267,17 @@ function isPublicRouteHash(): boolean {
   return path === '/home' || path === '/login' || path === '/ruc' || path.startsWith('/pin/')
 }
 
+/** Cierra la sesión local (mismo camino que el interceptor). Lo usa el stream SSE cuando no hay cómo recuperarse. */
+export function expireSession(reason: ReloginReason = 'session_expired') {
+  forceRelogin(reason)
+}
+
 function forceRelogin(reason: ReloginReason) {
   if (reloginHandled) return
   reloginHandled = true
 
   localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
   localStorage.removeItem('allowed_branches')
@@ -282,6 +295,133 @@ function forceRelogin(reason: ReloginReason) {
   if (!isPublicRouteHash()) {
     window.location.hash = '#/home'
   }
+}
+
+// --- Renovación del access token (refresh token) ---------------------------------------------------
+// Solo el login de correo/contraseña recibe refresh_token; el POS por PIN NO tiene (su sesión es de turno
+// y al vencer o ser revocada se vuelve a ingresar). El backend (POST /api/session/refresh) reconstruye rol,
+// permisos y módulos desde la BD y respeta la sucursal activa si el usuario aún puede acceder a ella.
+
+/** Emitido tras renovar el access token: AuthContext actualiza token/módulos y BranchContext el contexto. */
+export const SESSION_REFRESHED_EVENT = 'tukichef-session-refreshed'
+
+const REFRESH_URL = '/api/session/refresh'
+
+export type RefreshOutcome =
+  | { status: 'ok'; token: string }
+  /** No hay refresh token (sesión PIN) o el servidor lo rechazó: no hay forma de recuperar la sesión. */
+  | { status: 'unavailable-session' }
+  /** Fallo transitorio (red, 5xx): la sesión puede seguir siendo válida; no se debe cerrar. */
+  | { status: 'transient' }
+
+/** true si hay refresh token (login de correo/contraseña). El PIN nunca lo tiene. */
+export function hasRefreshToken(): boolean {
+  return !!localStorage.getItem('refresh_token')
+}
+
+function isRefreshUrl(url: string | undefined): boolean {
+  return !!url && url.split('?')[0].endsWith(REFRESH_URL)
+}
+
+function storedActiveBranchId(): number | undefined {
+  try {
+    const id = Number(JSON.parse(localStorage.getItem('active_branch') || 'null')?.id)
+    return id > 0 ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Sucursal activa (claim active_branch_id) de un JWT; 0 si no se puede leer. */
+function jwtBranchId(token: string | null | undefined): number {
+  try {
+    const payload = token?.split('.')[1]
+    if (!payload) return 0
+    const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { active_branch_id?: number }
+    return Number(json.active_branch_id) || 0
+  } catch {
+    return 0
+  }
+}
+
+/** Último token emitido por un refresh nuestro (distingue "otra petición ya renovó" de "cambio de sucursal"). */
+let lastRefreshedToken: string | null = null
+/** Un único refresh en vuelo: un burst de 409 comparte la misma renovación. */
+let refreshInFlight: Promise<RefreshOutcome> | null = null
+
+export function refreshAccessToken(): Promise<RefreshOutcome> {
+  if (refreshInFlight) return refreshInFlight
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return Promise.resolve({ status: 'unavailable-session' })
+  refreshInFlight = (async (): Promise<RefreshOutcome> => {
+    try {
+      const resp = await api.post<{ token?: string; modules?: string[]; permissions?: string[] }>(REFRESH_URL, {
+        refresh_token: refreshToken,
+        active_branch_id: storedActiveBranchId(),
+      })
+      const token = resp?.data?.token
+      if (!token) return { status: 'transient' }
+      lastRefreshedToken = token
+      localStorage.setItem('token', token)
+      window.dispatchEvent(
+        new CustomEvent(SESSION_REFRESHED_EVENT, {
+          detail: { token, modules: resp.data.modules, permissions: resp.data.permissions },
+        }),
+      )
+      return { status: 'ok', token }
+    } catch (e) {
+      const status = (e as { response?: { status?: number } })?.response?.status
+      // 4xx del refresh (salvo 408/429): el refresh token ya no sirve. Red caída, 5xx, 429: transitorio.
+      if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
+        return { status: 'unavailable-session' }
+      }
+      return { status: 'transient' }
+    } finally {
+      refreshInFlight = null
+    }
+  })()
+  return refreshInFlight
+}
+
+/** Solo para tests. */
+export function __resetRefreshStateForTests(): void {
+  lastRefreshedToken = null
+  refreshInFlight = null
+}
+
+/**
+ * Cabeceras de una petición autenticada hecha FUERA de axios (stream SSE con fetch). Replica las del
+ * interceptor: token, tenant, modo consulta y, en desarrollo, el origen que enruta el proxy de Vite.
+ */
+export function buildAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
+  const token = localStorage.getItem('token')
+  if (token) headers.Authorization = `Bearer ${token}`
+  const slug = getTenantSlug()
+  if (slug) headers['X-Tenant-Slug'] = slug
+  if (isDevelopmentMode()) {
+    const origin = getResolvedTenantApiUrl()
+    if (origin) headers['X-Tenant-Api-Origin'] = normalizeApiOrigin(origin)
+  }
+  if (isReadOnlyMode()) headers[BRANCH_MODE_HEADER] = BRANCH_MODE_ALL
+  return headers
+}
+
+/**
+ * Recuperación ante 409 SESSION_UPDATED (el backend subió la versión de sesión: cambió rol, permisos o
+ * asignación de sucursales). Devuelve el token a usar para reintentar, o null si se debe abandonar:
+ *  - sin refresh token (PIN) o refresh rechazado -> cierra sesión con "Su acceso cambió; vuelva a ingresar";
+ *  - fallo transitorio del refresh -> no cierra sesión (null; el llamador rechaza el error original).
+ */
+export async function recoverFromSessionUpdated(): Promise<string | null> {
+  if (!hasRefreshToken()) {
+    forceRelogin('access_changed')
+    return null
+  }
+  const out = await refreshAccessToken()
+  if (out.status === 'ok') return out.token
+  if (out.status === 'unavailable-session') forceRelogin('access_changed')
+  return null
 }
 
 /** Promesa que nunca se resuelve: descarta en silencio una respuesta de otra época (sin error visible). */
@@ -306,6 +446,49 @@ function isStaleToken(config: { _reqToken?: string | null } | undefined): boolea
   return config._reqToken !== localStorage.getItem('token')
 }
 
+/**
+ * 409 SESSION_UPDATED ajeno a un cambio de sucursal propio: el acceso del usuario cambió en el servidor.
+ * Se intenta UNA renovación del token y UN reintento de la petición original; sin refresh token (PIN) o
+ * si el refresh falla se cierra sesión con un mensaje claro. Sin bucles: cada petición se reintenta una
+ * sola vez (`_sessionRetried`) y el propio refresh nunca entra aquí.
+ *
+ * Seguridad frente a duplicados: el 409 lo emite el middleware de sucursal ANTES de que corra el handler,
+ * así que la petición rechazada no se ejecutó y reenviarla no duplica nada; además el reintento conserva
+ * cuerpo y cabeceras (incluida la clave de idempotencia del cobro) para que el servidor la reconozca si
+ * algún día no fuera así. Una ESCRITURA no se reenvía si la sucursal del token nuevo difiere de la del
+ * token con el que salió: se escribiría en una sucursal distinta de la que el usuario veía.
+ */
+async function retryAfterSessionUpdated(err: AxiosError): Promise<never | AxiosResponse> {
+  const original = err.config
+  if (!original || isRefreshUrl(original.url)) return Promise.reject(err)
+  const sentToken = original._reqToken ?? null
+  const current = localStorage.getItem('token')
+
+  let newToken: string | null = null
+  if (original._sessionRetried) {
+    // Segundo 409 tras renovar: el acceso fue revocado de verdad. Fin (sin más reintentos).
+    forceRelogin('access_changed')
+    return Promise.reject(err)
+  }
+  if (sentToken && current && sentToken !== current) {
+    // Otra petición del mismo burst ya renovó el token: se reenvía UNA vez con el vigente. Si el reemplazo
+    // lo hizo un cambio de sucursal (no un refresh) se descarta como siempre (comportamiento de la Fase 4).
+    if (current !== lastRefreshedToken || original._staleResent) return Promise.reject(err)
+    original._staleResent = true
+    newToken = current
+  } else {
+    newToken = await recoverFromSessionUpdated()
+    if (!newToken) return Promise.reject(err) // sesión cerrada, o fallo transitorio sin cerrar
+    original._sessionRetried = true
+  }
+
+  if (!isSafeMethod(original.method) && jwtBranchId(sentToken) !== jwtBranchId(newToken)) {
+    window.dispatchEvent(new CustomEvent(BRANCH_ERROR_EVENT, { detail: { code: 'BRANCH_FORBIDDEN' } }))
+    return Promise.reject(err)
+  }
+  return api(original)
+}
+
 api.interceptors.response.use(
   (r) => (isStaleEpoch(r.config) ? discardSilently() : r),
   (err) => {
@@ -318,6 +501,9 @@ api.interceptors.response.use(
     }
     // Respuesta (cualquier error HTTP) de una época anterior: se ignora, no desloguea ni avisa.
     if (err.response && isStaleEpoch(cfg)) return discardSilently()
+
+    // El propio refresh: su fallo lo interpreta refreshAccessToken (no debe cerrar sesión ni reentrar aquí).
+    if (isRefreshUrl(err?.config?.url)) return Promise.reject(err)
 
     const code = err.response?.data?.code as string | undefined
     // Modo consulta: el servidor (o el propio cliente) rechazo una escritura. No es un error de acceso.
@@ -342,9 +528,8 @@ api.interceptors.response.use(
     if (err.response?.status === 409 && code === 'SESSION_UPDATED') {
       // Provocado por NUESTRO propio cambio de sucursal (token reemplazado mientras viajaba una
       // petición con el token viejo): no es "sesión vencida".
-      if (isBranchSwitching() || isStaleToken(cfg)) return Promise.reject(err)
-      forceRelogin('session_expired')
-      return Promise.reject(err)
+      if (isBranchSwitching()) return Promise.reject(err)
+      return retryAfterSessionUpdated(err)
     }
     if (err.response?.status === 401) {
       if (isBranchSwitching() || isStaleToken(cfg)) return Promise.reject(err)
