@@ -90,6 +90,8 @@ export interface PrintItem {
   total: number
   igv_affectation_type?: string
   modifiers_json?: string
+  /** Nota de la línea (el backend la envía en print_data.items[].item_note). */
+  item_note?: string
 }
 
 export interface PrintAffectTotal {
