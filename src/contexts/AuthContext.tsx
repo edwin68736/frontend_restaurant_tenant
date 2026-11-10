@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { resetReloginGuard, SESSION_EXPIRED_EVENT } from '@/services/api'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { canAccessFeature, type RestaurantFeature } from '@/utils/restaurantPermissions'
+import { canManageGlobalCatalog as computeCanManageGlobalCatalog } from '@/utils/catalogPermissions'
 import { toast } from 'sonner'
 
 const PERMS_KEY = 'restaurant_permissions'
@@ -43,6 +44,8 @@ type AuthContextType = AuthState & {
   canAccess: (feature: RestaurantFeature) => boolean
   hasPerm: (perm: string) => boolean
   hasModule: (key: string) => boolean
+  /** Puede crear/editar/eliminar el catálogo global (products.manage_global o products.manage). */
+  canManageGlobalCatalog: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -123,6 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('active_branch')
       localStorage.removeItem('allowed_branches')
       localStorage.removeItem('can_switch_branch')
+      localStorage.removeItem('can_view_all')
       setState({
         user: null,
         token: null,
@@ -214,6 +218,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [state.restaurantPermissions],
   )
 
+  const canManageGlobalCatalog = useMemo(() => {
+    const jwt = state.token ? decodeJWT<{ permissions?: string[]; auth_method?: string }>(state.token) : null
+    return computeCanManageGlobalCatalog(jwt?.permissions, jwt?.auth_method)
+  }, [state.token])
+
   const login = async (payload: LoginPayload) => {
     const slug = payload.slug?.trim() || tenantBinding?.slug
     if (!slug) {
@@ -231,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('active_branch')
     localStorage.removeItem('allowed_branches')
     localStorage.removeItem('can_switch_branch')
+    localStorage.removeItem('can_view_all')
     localStorage.removeItem(PERMS_KEY)
     setState({
       user: null,
@@ -247,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, login, applySession, applyTokenUpdate, logout, canAccess, hasPerm, hasModule }}>
+    <AuthContext.Provider value={{ ...state, login, applySession, applyTokenUpdate, logout, canAccess, hasPerm, hasModule, canManageGlobalCatalog }}>
       {children}
     </AuthContext.Provider>
   )

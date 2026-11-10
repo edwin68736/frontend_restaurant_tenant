@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import RestaurantModuleUpsell from '@/components/RestaurantModuleUpsell'
 import RestaurantLayout from '@/layouts/RestaurantLayout'
+import { RequireOperationalBranch } from '@/components/layout/RequireOperationalBranch'
 import LoginPage from '@/pages/LoginPage'
 import HomePage from '@/pages/HomePage'
 import InicioPage from '@/pages/InicioPage'
@@ -123,17 +124,17 @@ export default function App() {
           <Route index element={<DefaultRedirect />} />
           <Route path="inicio" element={<RequireFeature feature="inicio"><InicioPage /></RequireFeature>} />
           <Route path="productos" element={<RequireFeature feature="productos"><ProductosPage /></RequireFeature>} />
-          <Route path="modificadores" element={<RequireFeature feature="modificadores"><ModificadoresPage /></RequireFeature>} />
-          <Route path="mesas" element={<RequireFeature feature="mesas"><MesasPage /></RequireFeature>} />
-          <Route path="pos" element={<RequireFeature feature="pos"><POSPage /></RequireFeature>} />
-          <Route path="salas" element={<RequireFeature feature="salas"><SalasPage /></RequireFeature>} />
-          <Route path="mesa/:sessionId" element={<RequireFeature feature="mesa"><MesaPage /></RequireFeature>} />
-          <Route path="comandas" element={<RequireFeature feature="comandas"><ComandasPage /></RequireFeature>} />
-          <Route path="comandas/cocina" element={<RequireFeature feature="comandas"><ComandasCocinaPage /></RequireFeature>} />
-          <Route path="repartidores" element={<RequireFeature feature="repartidores"><RepartidoresPage /></RequireFeature>} />
+          <Route path="modificadores" element={<RequireFeature feature="modificadores"><RequireOperationalBranch><ModificadoresPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="mesas" element={<RequireFeature feature="mesas"><RequireOperationalBranch><MesasPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="pos" element={<RequireFeature feature="pos"><RequireOperationalBranch><POSPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="salas" element={<RequireFeature feature="salas"><RequireOperationalBranch><SalasPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="mesa/:sessionId" element={<RequireFeature feature="mesa"><RequireOperationalBranch><MesaPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="comandas" element={<RequireFeature feature="comandas"><RequireOperationalBranch><ComandasPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="comandas/cocina" element={<RequireFeature feature="comandas"><RequireOperationalBranch><ComandasCocinaPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="repartidores" element={<RequireFeature feature="repartidores"><RequireOperationalBranch><RepartidoresPage /></RequireOperationalBranch></RequireFeature>} />
           <Route path="dashboard" element={<RequireFeature feature="dashboard"><DashboardPage /></RequireFeature>} />
           <Route path="ventas" element={<RequireFeature feature="ventas"><VentasPage /></RequireFeature>} />
-          <Route path="caja" element={<RequireFeature feature="caja"><CajaPage /></RequireFeature>} />
+          <Route path="caja" element={<RequireFeature feature="caja"><RequireOperationalBranch><CajaPage /></RequireOperationalBranch></RequireFeature>} />
           <Route
             path="reportes"
             element={
@@ -150,7 +151,9 @@ export default function App() {
             path="ajustes"
             element={
               <RequireSettingsAccess>
-                <AjustesPage />
+                <RequireOperationalBranch>
+                  <AjustesPage />
+                </RequireOperationalBranch>
               </RequireSettingsAccess>
             }
           />

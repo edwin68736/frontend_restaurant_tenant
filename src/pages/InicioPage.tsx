@@ -89,7 +89,7 @@ function firstName(name: string | undefined): string {
 
 export default function InicioPage() {
   const { user, employeeType, restaurantPermissions, canAccess, hasPerm } = useAuth()
-  const { activeBranch } = useBranch()
+  const { activeBranch, isAllBranches } = useBranch()
   const { session, loading: cashLoading, canOperateCash, setOpenModal } = useCashSession()
   const { hub } = useSubscriptionStatus()
 
@@ -227,7 +227,7 @@ export default function InicioPage() {
           </section>
         ) : null}
 
-        <MiTurnoBlock role={group} />
+        {isAllBranches ? null : <MiTurnoBlock role={group} />}
 
         {showsResumenHoy(group) ? <ResumenHoyBlock role={group} /> : null}
 

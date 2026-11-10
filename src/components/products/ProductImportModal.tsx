@@ -43,7 +43,7 @@ type Step = 'select' | 'validated' | 'importing' | 'done'
 type Mode = 'basic' | 'advanced'
 
 export function ProductImportModal({ open, onClose, categories, onImported }: Props) {
-  const { activeBranchId, activeBranch, allowedBranches, canSwitchBranch } = useBranch()
+  const { activeBranchId, activeBranch } = useBranch()
   const fileRef = useRef<HTMLInputElement>(null)
   const [selectedBranchId, setSelectedBranchId] = useState(activeBranchId)
   const [step, setStep] = useState<Step>('select')
@@ -70,16 +70,13 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
   const previewSeq = useRef(0)
   const needsRefresh = useRef(false)
 
+  // El backend solo acepta importar en la sucursal ACTIVA (ResolveWriteBranchID, incluso administradores): el selector
+  // queda bloqueado en ella. Para importar en otra, se cambia de sucursal primero.
   const branchOptions = useMemo(() => {
     if (activeBranchId <= 0) return []
-    if (!canSwitchBranch) {
-      if (activeBranch) return [activeBranch]
-      return [{ id: activeBranchId, name: 'Sucursal actual', is_main: false }]
-    }
-    if (allowedBranches.length > 0) return allowedBranches
     if (activeBranch) return [activeBranch]
     return [{ id: activeBranchId, name: 'Sucursal actual', is_main: false }]
-  }, [canSwitchBranch, allowedBranches, activeBranchId, activeBranch])
+  }, [activeBranchId, activeBranch])
 
   const selectedBranchName =
     branchOptions.find((b) => b.id === selectedBranchId)?.name ?? '—'

@@ -26,6 +26,8 @@ export interface LoginResponse {
   restaurant_permissions?: string[]
   active_branch?: BranchBrief | null
   can_switch_branch?: boolean
+  /** branches.view_all: el POS por PIN nunca lo recibe. */
+  can_view_all?: boolean
   allowed_branches?: BranchBrief[]
 }
 

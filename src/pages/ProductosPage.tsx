@@ -52,6 +52,7 @@ import { PortalModal } from '@/components/ui/PortalModal'
 import { PosBarcodeScannerModal } from '@/components/pos/PosBarcodeScannerModal'
 import { isCapacitorNative } from '@/lib/app'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useInventoryAccess } from '@/hooks/useInventoryAccess'
 import { sortCategories } from '@/utils/sortCategories'
@@ -173,9 +174,14 @@ const emptyForm = (unitId: number | null = null): CreateProductInput => ({
 
 export default function ProductosPage() {
   const navigate = useNavigate()
-  const { canAccess } = useAuth()
+  const { canAccess, canManageGlobalCatalog } = useAuth()
   const { activeBranchId, activeBranch } = useBranch()
-  const canAdjustInventory = useInventoryAccess()
+  const { readOnly } = useBranchWriteGuard()
+  // Catálogo global (crear/editar/eliminar productos, categorías, importar...): products.manage_global. Sin él las
+  // acciones se OCULTAN, no solo fallan al guardar. En modo consulta (todas las sucursales) tampoco se escribe.
+  const canEditCatalog = canManageGlobalCatalog && !readOnly
+  // Ajuste de stock: inventario por sucursal, no exige catálogo global (pero sí una sucursal concreta).
+  const canAdjustInventory = useInventoryAccess() && !readOnly
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [categoryFilter, setCategoryFilter] = useState<number | ''>('')
@@ -746,6 +752,7 @@ export default function ProductosPage() {
           </button>
         ) : (
           <div className="grid grid-cols-2 gap-1.5 w-full sm:flex sm:flex-wrap sm:gap-2 lg:w-auto">
+            {canEditCatalog && (
             <button
               type="button"
               onClick={() => setImportModalOpen(true)}
@@ -754,7 +761,8 @@ export default function ProductosPage() {
               <FileSpreadsheet size={15} className="shrink-0" />
               <span className="truncate">Importar</span>
             </button>
-            {canAccess('modificadores') && (
+            )}
+            {canAccess('modificadores') && !readOnly && (
               <button
                 type="button"
                 onClick={() => navigate('/modificadores')}
@@ -764,6 +772,7 @@ export default function ProductosPage() {
                 <span className="truncate">Modificadores</span>
               </button>
             )}
+            {canEditCatalog && (
             <button
               type="button"
               onClick={() => setActiveTab('categories')}
@@ -772,6 +781,8 @@ export default function ProductosPage() {
               <Layers size={15} className="shrink-0" />
               <span className="truncate">Categorías</span>
             </button>
+            )}
+            {!readOnly && (
             <button
               type="button"
               onClick={() => setActiveTab('prep_areas')}
@@ -780,6 +791,8 @@ export default function ProductosPage() {
               <ChefHat size={15} className="shrink-0" />
               <span className="truncate">Áreas</span>
             </button>
+            )}
+            {canEditCatalog && (
             <button
               type="button"
               onClick={() => setActiveTab('combos')}
@@ -788,6 +801,8 @@ export default function ProductosPage() {
               <UtensilsCrossed size={15} className="shrink-0" />
               <span className="truncate">Combos</span>
             </button>
+            )}
+            {canEditCatalog && (
             <button
               type="button"
               onClick={openCreate}
@@ -796,6 +811,7 @@ export default function ProductosPage() {
               <Plus size={15} className="shrink-0" />
               <span className="truncate">Agregar producto</span>
             </button>
+            )}
           </div>
         )
       }
@@ -883,7 +899,7 @@ export default function ProductosPage() {
           </div>
         </div>
 
-        {selectedCount > 0 && (
+        {canEditCatalog && selectedCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 mb-2 sm:mb-3 py-2 rounded-xl border border-red-200 bg-red-50/80">
             <span className="text-sm font-medium text-red-900">
               {selectedCount} producto{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
@@ -920,6 +936,7 @@ export default function ProductosPage() {
               <thead className="sticky top-0 z-10 bg-stone-50 border-b border-stone-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
                 <tr>
                   <th className="text-left px-2 py-1.5 sm:py-2 w-9">
+                    {canEditCatalog && (
                     <input
                       type="checkbox"
                       checked={allPageSelected}
@@ -930,6 +947,7 @@ export default function ProductosPage() {
                       aria-label="Seleccionar todos en esta página"
                       className="rounded border-stone-300"
                     />
+                    )}
                   </th>
                   <th className="text-left px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold text-stone-700 w-11 sm:w-14">Imagen</th>
                   <SortableTh
@@ -990,6 +1008,7 @@ export default function ProductosPage() {
                     )}
                   >
                     <td className="px-2 py-1.5 sm:py-2">
+                      {canEditCatalog && (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(p.id)}
@@ -997,6 +1016,7 @@ export default function ProductosPage() {
                         aria-label={`Seleccionar ${p.name}`}
                         className="rounded border-stone-300"
                       />
+                      )}
                     </td>
                     <td className="px-2 sm:px-3 py-1.5 sm:py-2">
                       <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-stone-100 overflow-hidden flex-shrink-0">
@@ -1092,6 +1112,7 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end items-center gap-1">
+                        {canEditCatalog ? (<>
                         <button
                           type="button"
                           onClick={() => void toggleActive(p)}
@@ -1128,6 +1149,11 @@ export default function ProductosPage() {
                         >
                           <Trash2 size={16} />
                         </button>
+                        </>) : (
+                          <span className="text-[11px] text-stone-400" data-testid="catalog-readonly-hint">
+                            {p.active ? 'Activo' : 'Inactivo'}
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

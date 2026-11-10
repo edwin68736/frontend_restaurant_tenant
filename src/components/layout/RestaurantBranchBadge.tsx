@@ -7,6 +7,8 @@ type BranchMenuProps = {
   onSelected?: () => void
 }
 
+const ALL_VALUE = 'all'
+
 const selectClass =
   'w-full rounded-lg border border-stone-200 bg-white py-2 pl-8 pr-8 text-sm text-stone-800 shadow-sm ' +
   'focus:border-rest-400 focus:outline-none focus:ring-2 focus:ring-rest-500/25 ' +
@@ -14,20 +16,29 @@ const selectClass =
 
 /** Selector de sucursal para el menú del usuario (no va en el header). */
 export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
-  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch, switching: ctxSwitching } = useBranch()
+  const {
+    activeBranch,
+    allowedBranches,
+    canSwitchBranch,
+    canViewAll,
+    isAllBranches,
+    setViewMode,
+    switchBranch,
+    switching: ctxSwitching,
+  } = useBranch()
   const [fallbackBranches, setFallbackBranches] = useState<{ id: number; name: string }[]>([])
   const [loading, setLoading] = useState(false)
   const [switching, setSwitching] = useState(false)
 
   useEffect(() => {
-    if (!canSwitchBranch || allowedBranches.length > 0) return
+    if (!(canSwitchBranch || canViewAll) || allowedBranches.length > 0) return
     setLoading(true)
     companyService
       .listBranches()
       .then((b) => setFallbackBranches((b ?? []).filter((x) => x.active !== false).map((x) => ({ id: x.id, name: x.name }))))
       .catch(() => setFallbackBranches([]))
       .finally(() => setLoading(false))
-  }, [canSwitchBranch, allowedBranches.length])
+  }, [canSwitchBranch, canViewAll, allowedBranches.length])
 
   if (!activeBranch) return null
 
@@ -38,7 +49,7 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
         ? fallbackBranches
         : [{ id: activeBranch.id, name: activeBranch.name }]
 
-  if (!canSwitchBranch) {
+  if (!canSwitchBranch && !canViewAll) {
     return (
       <div className="px-3 py-2 border-b border-stone-100">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 mb-1">Sucursal</p>
@@ -51,15 +62,30 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
   }
 
   const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const restore = () => {
+      e.target.value = isAllBranches ? ALL_VALUE : String(activeBranch.id)
+    }
+    // "Todas las sucursales": modo SOLO CONSULTA (no cambia de sucursal ni reemite token).
+    if (e.target.value === ALL_VALUE) {
+      if (!canViewAll || isAllBranches) return restore()
+      if (setViewMode('all')) onSelected?.()
+      else restore()
+      return
+    }
     const branchId = Number(e.target.value)
-    if (!branchId || branchId === activeBranch.id) return
+    if (!branchId) return
+    // Estando en modo consulta, elegir la sucursal activa solo vuelve al modo operativo.
+    if (branchId === activeBranch.id) {
+      if (isAllBranches && setViewMode('single')) onSelected?.()
+      return
+    }
     setSwitching(true)
     try {
       const changed = await switchBranch(branchId)
       if (changed) onSelected?.()
-      else e.target.value = String(activeBranch.id)
+      else restore()
     } catch {
-      e.target.value = String(activeBranch.id)
+      restore()
     } finally {
       setSwitching(false)
     }
@@ -78,7 +104,7 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
         />
         <select
           id="branch-select-menu"
-          value={activeBranch.id}
+          value={isAllBranches ? ALL_VALUE : activeBranch.id}
           disabled={loading || switching || ctxSwitching}
           onChange={(e) => void handleChange(e)}
           className={selectClass}
@@ -86,6 +112,7 @@ export function BranchSelectorMenu({ onSelected }: BranchMenuProps) {
             backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2378716c' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
           }}
         >
+          {canViewAll ? <option value={ALL_VALUE}>Todas las sucursales (consulta)</option> : null}
           {loading && options.length <= 1 ? (
             <option value={activeBranch.id}>{activeBranch.name}</option>
           ) : (

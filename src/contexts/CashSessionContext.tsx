@@ -37,8 +37,9 @@ export function canChargeCashByRole(employeeType: string, permissions: string[])
 
 export function CashSessionProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading: authLoading, token, employeeType, restaurantPermissions } = useAuth()
-  const { activeBranchId } = useBranch()
-  const canOperateCash = canChargeCashByRole(employeeType, restaurantPermissions)
+  const { activeBranchId, isAllBranches } = useBranch()
+  // Modo consulta (todas las sucursales): no hay caja que consultar ni abrir.
+  const canOperateCash = !isAllBranches && canChargeCashByRole(employeeType, restaurantPermissions)
   const canChargeCash = canOperateCash
 
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)

@@ -1,4 +1,12 @@
-import axios from 'axios'
+import axios, { AxiosError, type AxiosResponse } from 'axios'
+import {
+  BRANCH_MODE_ALL,
+  BRANCH_MODE_HEADER,
+  BRANCH_READ_ONLY_CODE,
+  BRANCH_READ_ONLY_EVENT,
+  READ_ONLY_MESSAGE,
+  isReadOnlyMode,
+} from '@/lib/branch/viewMode'
 import { isDevelopmentMode } from '@/lib/runtime/environment'
 import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
 import { isTauriDesktop } from '@/lib/app'
@@ -121,6 +129,18 @@ const EPOCH_EXEMPT_PREFIXES = [
   '/api/subscription/',
 ]
 
+/**
+ * Escrituras que SI se permiten en modo consulta ("todas las sucursales"): no operan sobre una sucursal.
+ * Autenticacion/sesion, suscripcion de la empresa y consultas DNI/RUC (POST que solo lee).
+ */
+const READ_ONLY_WRITE_ALLOWLIST = [...EPOCH_EXEMPT_PREFIXES, '/api/consulta/']
+
+export function isWriteAllowedInReadOnlyMode(url: string | undefined): boolean {
+  if (!url) return false
+  const path = url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0]
+  return READ_ONLY_WRITE_ALLOWLIST.some((p) => path === p || path.startsWith(p))
+}
+
 export function isEpochExemptUrl(url: string | undefined): boolean {
   if (!url) return false
   const path = url.replace(/^https?:\/\/[^/]+/i, '').split('?')[0]
@@ -148,6 +168,25 @@ function combineSignals(a: AbortSignal | undefined | null, b: AbortSignal): Abor
 }
 
 api.interceptors.request.use((config) => {
+  // Modo "todas las sucursales" = SOLO CONSULTA. Las lecturas llevan X-Branch-Mode: all (solo GET/HEAD/OPTIONS);
+  // cualquier escritura se rechaza aqui, sin salir: sin la cabecera el servidor la ejecutaria en la sucursal activa.
+  if (isReadOnlyMode()) {
+    if (isSafeMethod(config.method)) {
+      if (!isEpochExemptUrl(config.url)) config.headers[BRANCH_MODE_HEADER] = BRANCH_MODE_ALL
+    } else if (!isWriteAllowedInReadOnlyMode(config.url)) {
+      const response = {
+        data: { code: BRANCH_READ_ONLY_CODE, error: READ_ONLY_MESSAGE },
+        status: 403,
+        statusText: 'Forbidden',
+        headers: {},
+        config,
+      }
+      return Promise.reject(
+        new AxiosError(READ_ONLY_MESSAGE, BRANCH_READ_ONLY_CODE, config, null, response as AxiosResponse),
+      )
+    }
+  }
+
   if (isDevelopmentMode()) {
     config.baseURL = ''
     const tenantOrigin = getResolvedTenantApiUrl()
@@ -230,6 +269,7 @@ function forceRelogin(reason: ReloginReason) {
   localStorage.removeItem('active_branch')
   localStorage.removeItem('allowed_branches')
   localStorage.removeItem('can_switch_branch')
+  localStorage.removeItem('can_view_all')
   localStorage.removeItem('restaurant_permissions')
 
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
@@ -280,6 +320,11 @@ api.interceptors.response.use(
     if (err.response && isStaleEpoch(cfg)) return discardSilently()
 
     const code = err.response?.data?.code as string | undefined
+    // Modo consulta: el servidor (o el propio cliente) rechazo una escritura. No es un error de acceso.
+    if (err.response?.status === 403 && code === BRANCH_READ_ONLY_CODE) {
+      window.dispatchEvent(new CustomEvent(BRANCH_READ_ONLY_EVENT))
+      return Promise.reject(err)
+    }
     if (err.response?.status === 403 || err.response?.status === 400) {
       if (code === 'BRANCH_REQUIRED' || code === 'BRANCH_FORBIDDEN') {
         window.dispatchEvent(new CustomEvent(BRANCH_ERROR_EVENT, { detail: { code } }))

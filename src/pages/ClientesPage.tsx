@@ -1,3 +1,4 @@
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Eye, EyeOff, RefreshCw, SearchCheck } from 'lucide-react'
@@ -33,6 +34,8 @@ const emptyForm = (): CreateContactInput => ({
 })
 
 export default function ClientesPage() {
+  // Modo consulta (todas las sucursales): el directorio se ve, pero no se crea/edita/elimina.
+  const { readOnly } = useBranchWriteGuard()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -225,6 +228,7 @@ export default function ClientesPage() {
           <h2 className="text-lg font-bold text-stone-800">Clientes</h2>
           <p className="text-sm text-stone-500">Gestión de clientes para facturación y ventas</p>
         </div>
+        {!readOnly && (
         <button
           type="button"
           onClick={openNew}
@@ -233,6 +237,7 @@ export default function ClientesPage() {
           <Plus size={18} />
           Nuevo cliente
         </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -321,6 +326,7 @@ export default function ClientesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
+                    {!readOnly && (
                     <div className="flex justify-end items-center gap-1">
                       <button
                         type="button"
@@ -359,6 +365,7 @@ export default function ClientesPage() {
                         <Trash2 size={16} />
                       </button>
                     </div>
+                    )}
                   </td>
                 </tr>
               ))}

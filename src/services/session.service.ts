@@ -9,6 +9,8 @@ export type BranchBrief = {
 export type SessionContextResponse = {
   active_branch: BranchBrief | null
   can_switch_branch: boolean
+  /** Permiso branches.view_all: habilita el modo de consulta "todas las sucursales". */
+  can_view_all?: boolean
   allowed_branches?: BranchBrief[]
 }
 
@@ -18,6 +20,7 @@ export type SwitchBranchResponse = {
   refresh_token?: string
   active_branch: BranchBrief
   can_switch_branch: boolean
+  can_view_all?: boolean
   allowed_branches?: BranchBrief[]
   permissions?: string[]
   restaurant_permissions?: string[]

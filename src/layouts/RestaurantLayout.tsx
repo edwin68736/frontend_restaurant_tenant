@@ -17,6 +17,7 @@ import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorAndroid, isCapacitorNative } from '@/lib/platform/detect'
 import { isPosFullBleedRoute } from '@/utils/posFullBleedRoute'
 import { useBranch } from '@/contexts/BranchContext'
+import { BranchReadOnlyBanner } from '@/components/layout/BranchReadOnlyBanner'
 
 /**
  * Layout Tukichef: barra decorativa solo en pantallas grandes (lg+); sidebar colapsable como Tukifac.
@@ -142,6 +143,7 @@ export default function RestaurantLayout() {
                 onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
               />
             </div>
+            <BranchReadOnlyBanner />
             <CashSessionOpenModal />
             <BackendOfflineOverlay />
             <main

@@ -1,4 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { canAdministerCashSessions } from '@/utils/restaurantPermissions'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -122,6 +123,8 @@ export default function VentasPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { canFactura } = useBranchCheckoutSeries()
   const { user, restaurantPermissions, employeeType } = useAuth()
+  // Modo consulta (todas las sucursales): el listado se ve consolidado, pero emitir/anular/reenviar no se ofrece.
+  const { readOnly, guardWrite } = useBranchWriteGuard()
   // Los totales del período (ventas acumuladas) solo los ve el administrador.
   const canViewPeriodTotals = canAdministerCashSessions(restaurantPermissions, employeeType, user?.role)
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
@@ -329,6 +332,7 @@ export default function VentasPage() {
   }
 
   const openEmit = async (row: Sale) => {
+    if (!guardWrite()) return
     if (row.electronic_issue_sale_id) {
       toast.info('Esta nota ya tiene comprobante electrónico emitido')
       return
@@ -457,6 +461,7 @@ export default function VentasPage() {
   }
 
   const submitEmit = async () => {
+    if (!guardWrite()) return
     if (!emitRow || !emitDetail) return
     if (!emitContactId || !emitContactOk) {
       toast.error(
@@ -496,12 +501,14 @@ export default function VentasPage() {
   }
 
   const openVoidNota = (row: Sale) => {
+    if (!guardWrite()) return
     setVoidNotaRow(row)
     setVoidNotaReason('')
     setVoidNotaOpen(true)
   }
 
   const submitVoidNota = async () => {
+    if (!guardWrite()) return
     if (!voidNotaRow) return
     if (!voidNotaReason.trim()) {
       toast.error('Indique el motivo de anulación')
@@ -522,12 +529,14 @@ export default function VentasPage() {
   }
 
   const openVoidNc = (row: Sale) => {
+    if (!guardWrite()) return
     setVoidNcRow(row)
     setVoidNcReason('')
     setVoidNcOpen(true)
   }
 
   const submitVoidNc = async () => {
+    if (!guardWrite()) return
     if (!voidNcRow) return
     if (!voidNcReason.trim()) {
       toast.error('Indique el motivo de anulación')
@@ -566,6 +575,7 @@ export default function VentasPage() {
   }, [emitOpen, emitLoading, filteredSeriesForEmit, emitSeriesId])
 
   const handleSend = async (saleId: number) => {
+    if (!guardWrite()) return
     setSending(saleId)
     const tid = toast.loading('Enviando a SUNAT…')
     try {
@@ -586,6 +596,7 @@ export default function VentasPage() {
   }
 
   const handleResend = async (saleId: number) => {
+    if (!guardWrite()) return
     setResending(saleId)
     const tid = toast.loading('Reenviando a SUNAT…')
     try {
@@ -821,6 +832,7 @@ export default function VentasPage() {
   )
 
   const renderSunatSendResendButton = (sale: Sale) => {
+    if (readOnly) return null
     const bs = sale.billing_status
     if (bs === 'pending') {
       return (
@@ -1070,7 +1082,7 @@ export default function VentasPage() {
       }
     >
       {renderLocalPdfOverflowItems(sale.id)}
-      {context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && sunatEnabled && (
+      {!readOnly && context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && sunatEnabled && (
         <button
           type="button"
           className={ROW_DROPDOWN_ITEM}
@@ -1083,7 +1095,7 @@ export default function VentasPage() {
           Convertir a factura o boleta
         </button>
       )}
-      {context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && (
+      {!readOnly && context === 'nota' && sale.status !== 'cancelled' && !sale.electronic_issue_sale_id && (
         <button
           type="button"
           className={ROW_DROPDOWN_ITEM}
@@ -1097,7 +1109,7 @@ export default function VentasPage() {
         </button>
       )}
       {(context === 'fact' || context === 'nc') && renderSunatDownloadMenuItems(sale, context === 'nc')}
-      {context === 'fact' && sale.billing_status === 'accepted' && sale.status !== 'cancelled' && (
+      {!readOnly && context === 'fact' && sale.billing_status === 'accepted' && sale.status !== 'cancelled' && (
         <button
           type="button"
           className={ROW_DROPDOWN_ITEM}
@@ -1709,7 +1721,7 @@ export default function VentasPage() {
                                   <span className="sm:hidden">{renderThermalPrintButton(s.id)}</span>
                                   <span className="xl:hidden">{renderLocalPdfActions(s.id, 'fact')}</span>
                                   {renderSunatPseActions(s, 'fact')}
-                                  {s.billing_status === 'accepted' && s.status !== 'cancelled' && (
+                                  {!readOnly && s.billing_status === 'accepted' && s.status !== 'cancelled' && (
                                     <button
                                       type="button"
                                       title="Anular con nota de crédito"
@@ -1765,7 +1777,7 @@ export default function VentasPage() {
                                   <Eye size={14} />
                                 </button>
                                 {renderLocalPdfActions(pdfTargetSaleId(s), 'nota')}
-                                {s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
+                                {!readOnly && s.status !== 'cancelled' && !s.electronic_issue_sale_id && sunatEnabled && (
                                   <button
                                     type="button"
                                     title="Convertir a factura o boleta"
@@ -1775,7 +1787,7 @@ export default function VentasPage() {
                                     <Receipt size={13} /> FE
                                   </button>
                                 )}
-                                {s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
+                                {!readOnly && s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
                                   <button
                                     type="button"
                                     title="Anular nota de venta"
