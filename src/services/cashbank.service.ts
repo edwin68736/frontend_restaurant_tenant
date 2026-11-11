@@ -77,6 +77,9 @@ export interface BankMovement {
   amount: number
   date: string
   created_at: string
+  /** Importe que movió el saldo de esta cuenta, en la moneda de la cuenta (el servidor nuevo lo envía); amount va en la moneda del documento. */
+  account_amount?: number | null
+  amount_pen?: number | null
 }
 
 export interface PaymentMethodRecord {

@@ -1889,7 +1889,7 @@ export default function CajaPage() {
                           <td className="px-4 py-2 text-stone-700">{m.description}</td>
                           <td className="px-4 py-2 text-stone-600">{m.reference || '—'}</td>
                           <td className={`px-4 py-2 font-bold whitespace-nowrap ${m.type === 'credit' ? 'text-green-700' : 'text-red-700'}`}>
-                            {m.type === 'credit' ? '+' : '-'} {selectedAccount.currency} {Number(m.amount).toFixed(2)}
+                            {m.type === 'credit' ? '+' : '-'} {selectedAccount.currency} {Number(m.account_amount ?? m.amount).toFixed(2)}
                           </td>
                         </tr>
                       ))}
