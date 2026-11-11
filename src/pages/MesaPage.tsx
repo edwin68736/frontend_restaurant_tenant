@@ -89,7 +89,7 @@ import {
   isElectronicBillingSunatCode,
 } from '@/utils/restaurantCheckoutSeries'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
-import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods, missingRequiredReference } from '@/utils/operationalPaymentMethods'
 import {
   applyCheckoutDiscountToLines,
   buildRestaurantBillDiscount,
@@ -173,7 +173,7 @@ export default function MesaPage() {
     { mode: 'all' } | { mode: 'round'; orderId: number; orderNumber: number } | null
   >(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods, 'income'), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [clientQuickAddOpen, setClientQuickAddOpen] = useState(false)
   const [newClientQuery, setNewClientQuery] = useState('')
@@ -706,6 +706,11 @@ export default function MesaPage() {
         }
       }
     }
+    const noRefPay = missingRequiredReference(paymentMethods, payments)
+    if (noRefPay) {
+      toast.error(`El método "${noRefPay.name}" exige el N° de operación`)
+      return
+    }
     const needsCashSession =
       payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
       (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))
@@ -819,6 +824,11 @@ export default function MesaPage() {
       }
     }
 
+    const noRefPay = missingRequiredReference(paymentMethods, payments)
+    if (noRefPay) {
+      toast.error(`El método "${noRefPay.name}" exige el N° de operación`)
+      return
+    }
     const needsCashSession =
       payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
       (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))

@@ -54,7 +54,7 @@ import {
   printPrecuentaAuto,
 } from '@/services/printers.service'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale, normalizePaymentMethodCodeForLookup } from '@/utils/paymentMethodCheckout'
-import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods, missingRequiredReference } from '@/utils/operationalPaymentMethods'
 import { ORDER_TYPE_LABELS, ORDER_STATUS_LABELS, type DeliveryDriver, type PrecuentaPayload, type RestaurantOrderSummary } from '@/types/restaurantOrder'
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { FloatingCartButton } from '@/components/restaurant/FloatingCartButton'
@@ -160,7 +160,7 @@ export default function POSPage() {
   const [contactId, setContactId] = useState<number | null>(null)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods, 'income'), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [payments, setPayments] = useState<CheckoutPaymentLine[]>([
     { method: 'cash', amount: 0, reference: '' },
@@ -1336,6 +1336,11 @@ export default function POSPage() {
       }
     }
 
+    const noRefPay = missingRequiredReference(paymentMethods, payments)
+    if (noRefPay) {
+      toast.error(`El método "${noRefPay.name}" exige el N° de operación`)
+      return
+    }
     const needsCashSession =
       payments.some((p) => findPaymentMethodRecord(paymentMethods, p.method)?.destination_type === 'cash') ||
       (paymentMethods.length === 0 && payments.some((p) => normalizePaymentMethodCodeForLookup(p.method) === 'cash'))

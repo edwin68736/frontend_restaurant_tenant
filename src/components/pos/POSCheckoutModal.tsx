@@ -487,7 +487,11 @@ export function POSCheckoutModal({
                       className={INPUT}
                       value={payments[0]?.reference ?? ''}
                       onChange={(e) => updateLine(0, { reference: e.target.value })}
-                      placeholder="N° Op / Ref."
+                      placeholder={
+                        paymentMethods.find((m) => m.code === payments[0]?.method)?.requires_reference
+                          ? 'N° Op / Ref. *'
+                          : 'N° Op / Ref.'
+                      }
                     />
                     <PaymentDestinationSelect
                       method={paymentMethods.find((m) => m.code === payments[0]?.method)}
@@ -531,7 +535,9 @@ export function POSCheckoutModal({
                           className={clsx(INPUT, 'min-w-0 py-1.5')}
                           value={p.reference ?? ''}
                           onChange={(e) => updateLine(idx, { reference: e.target.value })}
-                          placeholder="N° Op / Ref."
+                          placeholder={
+                            paymentMethods.find((m) => m.code === p.method)?.requires_reference ? 'N° Op / Ref. *' : 'N° Op / Ref.'
+                          }
                         />
                         <PaymentDestinationSelect
                           method={paymentMethods.find((m) => m.code === p.method)}

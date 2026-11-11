@@ -93,6 +93,10 @@ export interface PaymentMethodRecord {
   is_system: boolean
   sort_order: number
   active: boolean
+  /** En qué sentido sirve el método: cobros, pagos o ambos (ausente = ambos). */
+  applies_to?: 'income' | 'expense' | 'both'
+  /** Exige N° de operación / referencia al cobrar o pagar. */
+  requires_reference?: boolean
 }
 
 export interface CashSessionReportSession {
