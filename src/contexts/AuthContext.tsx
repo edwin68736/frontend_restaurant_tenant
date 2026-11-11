@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type LoginResponse } from '@/services/auth.service'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
-import { resetReloginGuard, SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { refreshAccessToken, resetReloginGuard, SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { hasStaleProductPermissions } from '@/lib/staleTokenPermissions'
 import { msUntilPinExpiryWarning } from '@/lib/session/pinExpiry'
 import { restaurantAuthService } from '@/services/restaurantAuth.service'
 import { canAccessFeature, type RestaurantFeature } from '@/utils/restaurantPermissions'
@@ -145,6 +146,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
   }, [])
+
+  // Token anterior a un permiso nuevo (V177): renovar una vez por carga para que la interfaz refleje los permisos del rol.
+  // Solo sesiones de correo/contraseña (las de PIN no tienen refresh token ni permisos de tenant en el JWT).
+  const staleRefreshTried = useRef(false)
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.token || staleRefreshTried.current) return
+    const jwt = decodeJWT<{ permissions?: string[]; auth_method?: string }>(state.token)
+    if (!jwt || jwt.auth_method === 'pin' || !hasStaleProductPermissions(jwt.permissions ?? [])) return
+    staleRefreshTried.current = true
+    void refreshAccessToken()
+  }, [state.isAuthenticated, state.token])
 
   // Token renovado por el interceptor/SSE (409 SESSION_UPDATED): se sincroniza el estado. Los permisos finos
   // se vuelven a pedir solos (efecto sobre state.token).
