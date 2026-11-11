@@ -65,6 +65,40 @@ export interface BankAccount {
   type: string
   payment_method: string
   active: boolean
+  bank_id?: number | null
+}
+
+export interface Bank {
+  id: number
+  name: string
+  active: boolean
+}
+
+export interface AccountTransfer {
+  id: number
+  from_kind: 'cash' | 'bank'
+  from_account_id?: number | null
+  to_kind: 'cash' | 'bank'
+  to_account_id?: number | null
+  from_name: string
+  to_name: string
+  amount_from: number
+  currency_from: string
+  amount_to: number
+  currency_to: string
+  exchange_rate?: number | null
+  date: string
+  notes: string
+  status: 'active' | 'voided'
+}
+
+export interface TransferInput {
+  from: { kind: 'cash' | 'bank'; account_id: number }
+  to: { kind: 'cash' | 'bank'; account_id: number }
+  amount: number
+  exchange_rate?: number
+  date?: string
+  notes?: string
 }
 
 export interface BankMovement {
@@ -402,10 +436,25 @@ export const cashbankService = {
   listBankAccounts: (all?: boolean): Promise<BankAccount[]> =>
     api.get('/api/cashbank/bank-accounts', { params: all ? { all: '1' } : {} }).then((r) => r.data.data ?? []),
 
+  listBanks: (all?: boolean): Promise<Bank[]> =>
+    api.get('/api/cashbank/banks', { params: all ? { all: '1' } : {} }).then((r) => r.data.data ?? []),
+
+  createBank: (name: string): Promise<Bank> => api.post('/api/cashbank/banks', { name }).then((r) => r.data.data ?? r.data),
+
+  createTransfer: (data: TransferInput): Promise<AccountTransfer> =>
+    api.post('/api/cashbank/transfers', data).then((r) => r.data.data ?? r.data),
+
+  listTransfers: (limit = 10): Promise<AccountTransfer[]> =>
+    api.get('/api/cashbank/transfers', { params: { limit } }).then((r) => r.data.data ?? []),
+
+  voidTransfer: (id: number, reason: string): Promise<void> =>
+    api.post(`/api/cashbank/transfers/${id}/void`, { reason }).then((r) => r.data),
+
   getBankAccount: (id: number): Promise<BankAccount> =>
     api.get(`/api/cashbank/bank-accounts/${id}`).then((r) => r.data.data ?? r.data),
 
   createBankAccount: (data: {
+    bank_id?: number | null
     name: string
     bank_name: string
     account_number: string
@@ -418,6 +467,7 @@ export const cashbankService = {
   updateBankAccount: (
     id: number,
     data: {
+      bank_id?: number | null
       name: string
       bank_name: string
       account_number: string
@@ -454,6 +504,8 @@ export const cashbankService = {
     code: string
     destination_type: 'cash' | 'bank_account'
     bank_account_id?: number | null
+    applies_to?: 'income' | 'expense' | 'both'
+    requires_reference?: boolean
   }): Promise<PaymentMethodRecord> => api.post('/api/cashbank/payment-methods', data).then((r) => r.data.data ?? r.data),
 
   updatePaymentMethod: (
@@ -464,6 +516,8 @@ export const cashbankService = {
       destination_type: 'cash' | 'bank_account'
       bank_account_id?: number | null
       active: boolean
+      applies_to?: 'income' | 'expense' | 'both'
+      requires_reference?: boolean
     }
   ): Promise<{ success: boolean }> => api.put(`/api/cashbank/payment-methods/${id}`, data).then((r) => r.data),
 

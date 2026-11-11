@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
-import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock, Printer } from 'lucide-react'
+import { Wallet, Building2, CreditCard, Plus, X, TrendingUp, TrendingDown, FileText, History, Pencil, Trash2, Download, Unlock, Printer, ArrowLeftRight } from 'lucide-react'
 import { openCashDrawer } from '@/services/printers.service'
 import {
   cashbankService,
@@ -10,6 +10,8 @@ import {
   type CashMovement,
   type BankMovement,
   type BankAccount,
+  type Bank,
+  type AccountTransfer,
   type PaymentMethodRecord,
   type CashSessionReport,
   type MethodTotal,
@@ -19,6 +21,8 @@ import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import type { CashDetailSections } from '@/utils/cashSessionDetailTicket'
 import { CashDetailSectionsModal } from '@/components/cash/CashDetailSectionsModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { TransferModal } from '@/components/cash/TransferModal'
+import { formatMoney } from '@/utils/format'
 import { downloadCajaSessionReportPdf, parseSessionNotesBlock } from '@/utils/cajaSessionReportPdf'
 import { downloadCajaSessionReportExcel } from '@/utils/cajaSessionReportExcel'
 import { useAuth } from '@/contexts/AuthContext'
@@ -213,6 +217,10 @@ export default function CajaPage() {
   const [sessionTotalSales, setSessionTotalSales] = useState(0)
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const [banks, setBanks] = useState<Bank[]>([])
+  const [transfers, setTransfers] = useState<AccountTransfer[]>([])
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [newBankName, setNewBankName] = useState<string | null>(null)
   const [tab, setTab] = useState<'sesion' | 'movimientos' | 'reporte' | 'config'>('sesion')
 
   const [loading, setLoading] = useState(true)
@@ -270,6 +278,7 @@ export default function CajaPage() {
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null)
   const [savingConfig, setSavingConfig] = useState(false)
   const [accountForm, setAccountForm] = useState({
+    bank_id: null as number | null,
     name: '',
     bank_name: '',
     account_number: '',
@@ -301,6 +310,8 @@ export default function CajaPage() {
     destination_type: 'cash' as 'cash' | 'bank_account',
     bank_account_id: '' as number | '',
     active: true,
+    applies_to: 'both' as 'income' | 'expense' | 'both',
+    requires_reference: false,
   })
 
   const activePaymentMethods = useMemo(
@@ -331,6 +342,7 @@ export default function CajaPage() {
   const openNewAccount = () => {
     setEditingAccount(null)
     setAccountForm({
+      bank_id: null,
       name: '',
       bank_name: '',
       account_number: '',
@@ -346,6 +358,7 @@ export default function CajaPage() {
   const openEditAccount = (acc: BankAccount) => {
     setEditingAccount(acc)
     setAccountForm({
+      bank_id: acc.bank_id ?? null,
       name: acc.name || '',
       bank_name: acc.bank_name || '',
       account_number: acc.account_number || '',
@@ -365,6 +378,7 @@ export default function CajaPage() {
     try {
       if (editingAccount) {
         await cashbankService.updateBankAccount(editingAccount.id, {
+          bank_id: accountForm.bank_id,
           name: accountForm.name.trim(),
           bank_name: accountForm.bank_name.trim(),
           account_number: accountForm.account_number.trim(),
@@ -375,6 +389,7 @@ export default function CajaPage() {
         toast.success('Cuenta actualizada')
       } else {
         await cashbankService.createBankAccount({
+          bank_id: accountForm.bank_id,
           name: accountForm.name.trim(),
           bank_name: accountForm.bank_name.trim(),
           account_number: accountForm.account_number.trim(),
@@ -450,6 +465,8 @@ export default function CajaPage() {
       destination_type: 'cash',
       bank_account_id: '',
       active: true,
+      applies_to: 'both',
+      requires_reference: false,
     })
     setShowPaymentMethodModal(true)
   }
@@ -462,6 +479,8 @@ export default function CajaPage() {
       destination_type: editablePaymentMethodDestination(pm.destination_type),
       bank_account_id: pm.bank_account_id ?? '',
       active: !!pm.active,
+      applies_to: pm.applies_to ?? 'both',
+      requires_reference: !!pm.requires_reference,
     })
     setShowPaymentMethodModal(true)
   }
@@ -483,6 +502,8 @@ export default function CajaPage() {
           bank_account_id:
             paymentMethodForm.destination_type === 'bank_account' ? Number(paymentMethodForm.bank_account_id) : null,
           active: !!paymentMethodForm.active,
+          applies_to: paymentMethodForm.applies_to,
+          requires_reference: paymentMethodForm.requires_reference,
         })
         toast.success('Método actualizado')
       } else {
@@ -492,6 +513,8 @@ export default function CajaPage() {
           destination_type: paymentMethodForm.destination_type,
           bank_account_id:
             paymentMethodForm.destination_type === 'bank_account' ? Number(paymentMethodForm.bank_account_id) : null,
+          applies_to: paymentMethodForm.applies_to,
+          requires_reference: paymentMethodForm.requires_reference,
         })
         toast.success('Método creado')
       }
@@ -535,11 +558,13 @@ export default function CajaPage() {
         ? Promise.resolve(ctx)
         : cashbankService.getOpenSession(activeBranchId)
 
-      const [sessR, histR, baR, pmR] = await Promise.allSettled([
+      const [sessR, histR, baR, pmR, bkR, trR] = await Promise.allSettled([
         openSessionPromise,
         cashbankService.listSessions(activeBranchId),
         canViewCashConfig ? cashbankService.listBankAccounts(true) : Promise.resolve([] as BankAccount[]),
         canViewCashConfig ? cashbankService.listPaymentMethods(true) : Promise.resolve([] as PaymentMethodRecord[]),
+        canViewCashConfig ? cashbankService.listBanks() : Promise.resolve([] as Bank[]),
+        canViewCashConfig ? cashbankService.listTransfers(10) : Promise.resolve([] as AccountTransfer[]),
       ])
 
       if (gen !== loadGenRef.current) return
@@ -557,6 +582,8 @@ export default function CajaPage() {
       setSessions(hist ?? [])
       setBankAccounts(ba ?? [])
       setPaymentMethods(pm ?? [])
+      setBanks(bkR.status === 'fulfilled' ? bkR.value ?? [] : [])
+      setTransfers(trR.status === 'fulfilled' ? trR.value ?? [] : [])
       if (sess?.id != null) {
         const [movs, rep] = await Promise.all([
           cashbankService.listMovements(sess.id),
@@ -1323,14 +1350,24 @@ export default function CajaPage() {
                   Cuentas (bancos / billeteras / caja)
                 </h3>
                 {canManageCashConfig && (
-                  <button
-                    type="button"
-                    onClick={openNewAccount}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-rest-600 text-white rounded-xl text-sm font-semibold hover:opacity-90"
-                  >
-                    <Plus size={16} />
-                    Nueva
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowTransfer(true)}
+                      className="inline-flex items-center gap-2 px-3 py-2 border border-stone-200 rounded-xl text-sm font-semibold text-stone-700 hover:bg-stone-50"
+                    >
+                      <ArrowLeftRight size={16} />
+                      Transferir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openNewAccount}
+                      className="inline-flex items-center gap-2 px-3 py-2 bg-rest-600 text-white rounded-xl text-sm font-semibold hover:opacity-90"
+                    >
+                      <Plus size={16} />
+                      Nueva
+                    </button>
+                  </div>
                 )}
               </div>
               <p className="text-xs text-stone-500 mb-4">
@@ -1415,6 +1452,58 @@ export default function CajaPage() {
                   </tbody>
                 </table>
               </div>
+
+              {transfers.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="mb-2 text-sm font-semibold text-stone-700">Transferencias recientes</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead className="bg-stone-50">
+                        <tr>
+                          {['Fecha', 'Desde', 'Hacia', 'Monto', 'Estado', ''].map((h) => (
+                            <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-stone-500 uppercase whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {transfers.map((t) => (
+                          <tr key={t.id} className="border-t border-stone-100">
+                            <td className="px-3 py-2 whitespace-nowrap">{String(t.date).slice(0, 10)}</td>
+                            <td className="px-3 py-2">{t.from_name}</td>
+                            <td className="px-3 py-2">{t.to_name}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {formatMoney(t.amount_from, t.currency_from)}
+                              {t.currency_from !== t.currency_to && <span className="text-stone-500"> → {formatMoney(t.amount_to, t.currency_to)}</span>}
+                            </td>
+                            <td className="px-3 py-2">{t.status === 'voided' ? 'Anulada' : 'Vigente'}</td>
+                            <td className="px-3 py-2 text-right">
+                              {t.status === 'active' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const reason = window.prompt('Motivo de la anulación de la transferencia:')
+                                    if (!reason || !reason.trim()) return
+                                    try {
+                                      await cashbankService.voidTransfer(t.id, reason.trim())
+                                      toast.success('Transferencia anulada')
+                                      await load()
+                                    } catch (e: unknown) {
+                                      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo anular')
+                                    }
+                                  }}
+                                  className="rounded-lg border border-stone-200 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-stone-50"
+                                >
+                                  Anular
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1520,6 +1609,8 @@ export default function CajaPage() {
 
       </div>
 
+      <TransferModal open={showTransfer} onClose={() => setShowTransfer(false)} accounts={bankAccounts} onDone={() => void load()} />
+
       <PortalModal open={showAccountModal} onClose={() => setShowAccountModal(false)} className="max-w-xl">
           <div className="bg-white rounded-2xl shadow-xl w-full p-6">
             <div className="flex items-center justify-between mb-4">
@@ -1572,12 +1663,60 @@ export default function CajaPage() {
 
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Banco (opcional)</label>
-                <input
-                  value={accountForm.bank_name}
-                  onChange={(e) => setAccountForm((f) => ({ ...f, bank_name: e.target.value }))}
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-                  placeholder="Ej. BCP"
-                />
+                {newBankName === null ? (
+                  <div className="flex gap-2">
+                    <select
+                      value={accountForm.bank_id ?? ''}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null
+                        const b = banks.find((x) => x.id === id)
+                        setAccountForm((f) => ({ ...f, bank_id: id, bank_name: b ? b.name : f.bank_name }))
+                      }}
+                      className="min-w-0 flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">
+                        {accountForm.bank_id ? 'Sin banco del catálogo' : accountForm.bank_name ? `Otro: ${accountForm.bank_name}` : 'Seleccionar banco…'}
+                      </option>
+                      {banks.filter((b) => b.active !== false).map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => setNewBankName('')} className="shrink-0 rounded-xl border border-stone-200 px-3 text-sm hover:bg-stone-50">
+                      + Nuevo
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={newBankName}
+                      onChange={(e) => setNewBankName(e.target.value)}
+                      className="min-w-0 flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                      placeholder="Nombre del banco"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const name = newBankName.trim()
+                        if (!name) return
+                        try {
+                          const b = await cashbankService.createBank(name)
+                          setBanks((prev) => [...prev.filter((x) => x.id !== b.id), b].sort((x, y) => x.name.localeCompare(y.name)))
+                          setAccountForm((f) => ({ ...f, bank_id: b.id, bank_name: b.name }))
+                          setNewBankName(null)
+                        } catch (e: unknown) {
+                          toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'No se pudo crear el banco')
+                        }
+                      }}
+                      className="shrink-0 rounded-xl bg-rest-600 px-3 text-sm font-semibold text-white"
+                    >
+                      Guardar
+                    </button>
+                    <button type="button" onClick={() => setNewBankName(null)} className="shrink-0 rounded-xl border border-stone-200 px-3 text-sm">
+                      Cancelar
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1715,6 +1854,32 @@ export default function CajaPage() {
                   />
                 </div>
               )}
+
+              <div>
+                <label className="block text-xs font-medium text-stone-600 mb-1">Se usa para</label>
+                <SearchableSelect
+                  value={paymentMethodForm.applies_to}
+                  onChange={(v) => setPaymentMethodForm((f) => ({ ...f, applies_to: v as 'income' | 'expense' | 'both' }))}
+                  options={[
+                    { value: 'both', label: 'Cobros y pagos' },
+                    { value: 'income', label: 'Solo cobros (ventas)' },
+                    { value: 'expense', label: 'Solo pagos (compras)' },
+                  ]}
+                  searchable={false}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                />
+              </div>
+
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 text-sm text-stone-700 pb-2">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethodForm.requires_reference}
+                    onChange={(e) => setPaymentMethodForm((f) => ({ ...f, requires_reference: e.target.checked }))}
+                  />
+                  Exige N° de operación
+                </label>
+              </div>
 
               {editingPaymentMethod && (
                 <div className="sm:col-span-2">
