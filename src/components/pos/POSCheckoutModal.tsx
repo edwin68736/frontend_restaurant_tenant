@@ -4,7 +4,9 @@ import { clsx } from 'clsx'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { MAX_H_CHECKOUT_PANEL, MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import { PaymentMethodIcon } from '@/components/pos/PaymentMethodIcon'
-import type { PaymentMethodRecord } from '@/services/cashbank.service'
+import type { BankAccount, PaymentMethodRecord } from '@/services/cashbank.service'
+import { PaymentDestinationSelect } from '@/components/pos/PaymentDestinationSelect'
+import { useCashSession } from '@/contexts/CashSessionContext'
 import type { SeriesRow } from '@/services/company.service'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
@@ -35,6 +37,8 @@ export type CheckoutPaymentLine = {
   method: string
   amount: number
   reference?: string
+  /** Cuenta bancaria que recibe este pago (undefined = la vinculada al método). */
+  destination_account_id?: number
 }
 
 type MethodOption = {
@@ -88,6 +92,8 @@ type Props = {
   onAddContact?: (query?: string) => void
   onPreferVariosContact?: () => void
   paymentMethods: PaymentMethodRecord[]
+  /** Cuentas bancarias activas: habilitan elegir el destino de un pago electrónico. */
+  bankAccounts?: BankAccount[]
   payments: CheckoutPaymentLine[]
   onPaymentsChange: (payments: CheckoutPaymentLine[]) => void
   onConfirm: () => void
@@ -126,6 +132,7 @@ export function POSCheckoutModal({
   onAddContact,
   onPreferVariosContact,
   paymentMethods,
+  bankAccounts = [],
   payments,
   onPaymentsChange,
   onConfirm,
@@ -145,6 +152,7 @@ export function POSCheckoutModal({
       ? 'other_branch'
       : 'missing'
 
+  const { session: cashSession, canChargeCash, setOpenModal: openCashModal } = useCashSession()
   const [showMoreMethods, setShowMoreMethods] = useState(false)
   const [methodPickerIndex, setMethodPickerIndex] = useState<number | null>(null)
   const [isEditingDiscount, setIsEditingDiscount] = useState(false)
@@ -213,6 +221,11 @@ export function POSCheckoutModal({
     !loading &&
     !confirmDisabled &&
     blockedOverpay <= 0
+
+  const needsCashSession = payments.some((p) => {
+    const rec = paymentMethods.find((m) => m.code === p.method)
+    return rec ? rec.destination_type === 'cash' : isCashPaymentCode(p.method)
+  })
 
   const defaultMethodCode = methodOptions[0]?.code ?? 'cash'
 
@@ -453,7 +466,7 @@ export function POSCheckoutModal({
                       <button
                         key={opt.code}
                         type="button"
-                        onClick={() => updateLine(0, { method: opt.code })}
+                        onClick={() => updateLine(0, { method: opt.code, destination_account_id: undefined })}
                         className={methodCardClass(payments[0]?.method === opt.code)}
                       >
                         <PaymentMethodIcon code={opt.code} name={opt.name} className="h-7 w-7 object-contain" />
@@ -475,6 +488,12 @@ export function POSCheckoutModal({
                       value={payments[0]?.reference ?? ''}
                       onChange={(e) => updateLine(0, { reference: e.target.value })}
                       placeholder="N° Op / Ref."
+                    />
+                    <PaymentDestinationSelect
+                      method={paymentMethods.find((m) => m.code === payments[0]?.method)}
+                      accounts={bankAccounts}
+                      value={payments[0]?.destination_account_id ? String(payments[0].destination_account_id) : ''}
+                      onChange={(v) => updateLine(0, { destination_account_id: v ? Number(v) : undefined })}
                     />
                   </div>
                 </>
@@ -514,6 +533,12 @@ export function POSCheckoutModal({
                           onChange={(e) => updateLine(idx, { reference: e.target.value })}
                           placeholder="N° Op / Ref."
                         />
+                        <PaymentDestinationSelect
+                          method={paymentMethods.find((m) => m.code === p.method)}
+                          accounts={bankAccounts}
+                          value={p.destination_account_id ? String(p.destination_account_id) : ''}
+                          onChange={(v) => updateLine(idx, { destination_account_id: v ? Number(v) : undefined })}
+                        />
                       </div>
                     )
                   })}
@@ -528,6 +553,24 @@ export function POSCheckoutModal({
                   <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-900">
                     <span className="text-[10px] font-bold uppercase tracking-wide">Vuelto</span>
                     <span className="text-sm font-bold">{formatMoney(change)}</span>
+                  </div>
+                )}
+                {needsCashSession && !cashSession?.id && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+                    <span>
+                      {canChargeCash
+                        ? 'No tienes la caja abierta: para cobrar en efectivo ábrela, o paga con un método electrónico.'
+                        : 'No tienes permiso para cobrar en efectivo: usa un método electrónico.'}
+                    </span>
+                    {canChargeCash && (
+                      <button
+                        type="button"
+                        onClick={() => openCashModal(true)}
+                        className="shrink-0 rounded-md bg-amber-600 px-2 py-1 font-semibold text-white hover:bg-amber-700"
+                      >
+                        Abrir caja
+                      </button>
+                    )}
                   </div>
                 )}
                 {blockedOverpay > 0 && (
@@ -644,7 +687,7 @@ export function POSCheckoutModal({
                 type="button"
                 onClick={() => {
                   if (methodPickerIndex !== null) {
-                    updateLine(methodPickerIndex, { method: opt.code })
+                    updateLine(methodPickerIndex, { method: opt.code, destination_account_id: undefined })
                     setMethodPickerIndex(null)
                   }
                 }}

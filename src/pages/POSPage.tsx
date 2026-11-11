@@ -90,7 +90,7 @@ import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
-import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
+import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
   BILLING_NOT_ENABLED_MESSAGE,
@@ -162,7 +162,7 @@ export default function POSPage() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
-  const [payments, setPayments] = useState<{ method: string; amount: number; reference?: string }[]>([
+  const [payments, setPayments] = useState<CheckoutPaymentLine[]>([
     { method: 'cash', amount: 0, reference: '' },
   ])
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
@@ -1383,6 +1383,7 @@ export default function POSPage() {
             method: p.method,
             amount: roundSunat(p.amount),
             reference: p.reference?.trim() ?? '',
+            destination_account_id: p.destination_account_id,
             notes: '',
           })),
         })
@@ -1432,6 +1433,7 @@ export default function POSPage() {
             method: p.method,
             amount: roundSunat(p.amount),
             reference: p.reference?.trim() ?? '',
+            destination_account_id: p.destination_account_id,
             notes: '',
           })),
         })
@@ -1962,6 +1964,7 @@ export default function POSPage() {
           if (variosId) setContactId(variosId)
         }}
         paymentMethods={checkoutPaymentMethods}
+        bankAccounts={bankAccounts}
         payments={payments}
         onPaymentsChange={setPayments}
         onConfirm={doCheckout}

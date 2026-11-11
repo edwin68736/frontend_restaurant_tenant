@@ -373,7 +373,7 @@ export const restaurantService = {
     discount_mode?: 'percent' | 'amount'
     discount_value?: number
     discount_amount?: number
-    payments: { method: string; amount: number; reference?: string; notes?: string }[]
+    payments: { method: string; amount: number; reference?: string; notes?: string; destination_account_id?: number }[]
     /** Dividir cuenta: factura solo estas comandas (deben estar pendientes). Vacío = todo lo pendiente. */
     comanda_ids?: number[]
     /** Dividir cuenta con cantidades parciales por línea (una comanda no puede ir también en comanda_ids). */
@@ -416,7 +416,7 @@ export const restaurantService = {
     discount_mode?: 'percent' | 'amount'
     discount_value?: number
     discount_amount?: number
-    payments: { method: string; amount: number; reference?: string; notes?: string }[]
+    payments: { method: string; amount: number; reference?: string; notes?: string; destination_account_id?: number }[]
   }) =>
     api
       .post<{ success: boolean; data: { id: number; number: string; total: number }; print_data?: import('@/types/printData').PrintData }>(

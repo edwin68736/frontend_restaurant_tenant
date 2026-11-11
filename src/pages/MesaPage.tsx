@@ -82,7 +82,7 @@ import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
-import { POSCheckoutModal } from '@/components/pos/POSCheckoutModal'
+import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
   BILLING_NOT_ENABLED_MESSAGE,
@@ -148,7 +148,7 @@ export default function MesaPage() {
   const [seriesId, setSeriesId] = useState(0)
   const [docType, setDocType] = useState('NOTA DE VENTA')
   const [contactId, setContactId] = useState<number | null>(null)
-  const [payments, setPayments] = useState<{ method: string; amount: number; reference?: string }[]>([
+  const [payments, setPayments] = useState<CheckoutPaymentLine[]>([
     { method: 'cash', amount: 0, reference: '' },
   ])
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
@@ -735,6 +735,7 @@ export default function MesaPage() {
           method: p.method,
           amount: roundSunat(p.amount),
           reference: p.reference?.trim() ?? '',
+            destination_account_id: p.destination_account_id,
           notes: '',
         })),
       })
@@ -875,6 +876,7 @@ export default function MesaPage() {
           method: p.method,
           amount: roundSunat(p.amount),
           reference: p.reference?.trim() ?? '',
+            destination_account_id: p.destination_account_id,
           notes: '',
         })),
       })
@@ -1583,6 +1585,7 @@ export default function MesaPage() {
           if (variosId) setContactId(variosId)
         }}
         paymentMethods={checkoutPaymentMethods}
+        bankAccounts={bankAccounts}
         payments={payments}
         onPaymentsChange={setPayments}
         allowDiscount={!splitSelection && allowCheckoutDiscount}
