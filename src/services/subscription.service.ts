@@ -84,6 +84,8 @@ export interface BillingContextView {
   current_payment_tone: 'success' | 'warning' | 'danger' | 'info' | 'muted'
   has_real_debt: boolean
   display_debt_amount?: number
+  /** Cargo de reconexión configurado: se suma al renovar una cuenta suspendida. */
+  reconnection_fee?: number
   /** Plazo del cobro en curso: dia limite y dias restantes (negativo = plazo agotado). */
   payment_due_date?: string
   payment_days_left?: number

@@ -128,7 +128,11 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
   const isLifetime = selected?.billing_cycle === 'lifetime'
   const availableCycles = selected ? cyclesOf(selected) : []
   const selectedCycle = availableCycles.find(c => c.months === months)
-  const totalAmount = selectedCycle?.net_amount ?? 0
+  // Cuenta suspendida: reactivarla cuesta el plan + el cargo de reconexión (el servidor exige cubrir ambos al aprobar el pago).
+  const isSuspendedAccount = Boolean(hub.subscription.is_suspended) || hub.subscription.tenant_status === 'suspended'
+  const reconnectionFee = isSuspendedAccount ? Math.max(0, hub.billing_context?.reconnection_fee ?? 0) : 0
+  const planAmount = selectedCycle?.net_amount ?? 0
+  const totalAmount = planAmount + (selectedCycle ? reconnectionFee : 0)
   // Plan que el tenant ya tiene activo, si está en el catálogo — mismo criterio que el
   // auto-select del useEffect. Sirve para el atajo «Volver a mi plan actual» en la grilla.
   const currentPlan = plans.find(p => Boolean(hub.subscription.can_operate) && p.name === hub.subscription.plan_name)
@@ -354,6 +358,13 @@ export default function PlanPickerModal({ open, onClose, hub, onSuccess }: Props
                     )}
                   </div>
                 </div>
+
+                {reconnectionFee > 0 && selectedCycle && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900 space-y-1">
+                    <div className="flex justify-between"><span>Plan</span><span>{formatMoney(planAmount)}</span></div>
+                    <div className="flex justify-between"><span>Cargo por reconexión</span><span>{formatMoney(reconnectionFee)}</span></div>
+                  </div>
+                )}
 
                 <div className="rounded-xl border border-rest-200 bg-rest-50/60 px-3.5 py-3 flex items-center gap-3">
                   <span className="p-2 rounded-lg bg-white text-rest-600 shrink-0">
