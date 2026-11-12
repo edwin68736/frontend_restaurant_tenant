@@ -18,6 +18,7 @@ import {
   receiptItemDisplayUnitPrice,
 } from '@/utils/receiptBonificacion'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
+import { receiptServiceCharge } from '@/utils/receiptServiceCharge'
 
 const A4_WIDTH = 210
 const A4_HEIGHT = 297
@@ -388,6 +389,14 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
     doc.text(formatMoney(data.tax_amount, data.currency), totalsX, y, { align: 'right' })
     y += LINE_H + 1
   }
+  }
+  const serviceCharge = receiptServiceCharge(data)
+  if (serviceCharge) {
+    doc.setFont('helvetica', 'bold')
+    doc.text(`${serviceCharge.label.toUpperCase()}:`, totalsX - 42, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(formatMoney(serviceCharge.amount, data.currency), totalsX, y, { align: 'right' })
+    y += LINE_H + 1
   }
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(FONT)

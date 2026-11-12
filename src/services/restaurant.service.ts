@@ -159,8 +159,17 @@ export interface OrderItemInput {
   price_includes_igv?: boolean
 }
 
+export interface RestaurantSettingsPayload {
+  has_deletion_pin: boolean
+  /** Recargo al consumo activo en el tenant (DL 25988). */
+  service_charge_enabled?: boolean
+  /** % sobre el valor de venta sin IGV (0 < r ≤ 13). */
+  service_charge_rate?: number
+}
+
 export const restaurantService = {
-  getSettings: () => api.get<{ has_deletion_pin: boolean }>('/api/restaurant/settings').then((r) => r.data),
+  getSettings: () =>
+    api.get<RestaurantSettingsPayload>('/api/restaurant/settings').then((r) => r.data),
 
   updateSettings: (data: { deletion_pin: string }) =>
     api.put<{ success: boolean }>('/api/restaurant/settings', data).then((r) => r.data),
@@ -373,6 +382,8 @@ export const restaurantService = {
     discount_mode?: 'percent' | 'amount'
     discount_value?: number
     discount_amount?: number
+    /** Recargo al consumo: el servidor toma el % de la configuración y lo suma al total. */
+    apply_service_charge?: boolean
     payments: { method: string; amount: number; reference?: string; notes?: string; destination_account_id?: number }[]
     /** Dividir cuenta: factura solo estas comandas (deben estar pendientes). Vacío = todo lo pendiente. */
     comanda_ids?: number[]
@@ -416,6 +427,8 @@ export const restaurantService = {
     discount_mode?: 'percent' | 'amount'
     discount_value?: number
     discount_amount?: number
+    /** Recargo al consumo: el servidor toma el % de la configuración y lo suma al total. */
+    apply_service_charge?: boolean
     payments: { method: string; amount: number; reference?: string; notes?: string; destination_account_id?: number }[]
   }) =>
     api

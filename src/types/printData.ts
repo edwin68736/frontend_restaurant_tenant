@@ -15,7 +15,11 @@ export interface PrintData {
   items: PrintItem[]
   subtotal: number
   tax_amount: number
+  /** Incluye el recargo al consumo (si lo hay); `subtotal` e IGV no. */
   total: number
+  /** Recargo al consumo (DL 25988, sin IGV). Omitido por el servidor si es 0. */
+  service_charge_amount?: number
+  service_charge_rate?: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
   /** Nota crédito/débito (07/08): documento afectado (SUNAT). */

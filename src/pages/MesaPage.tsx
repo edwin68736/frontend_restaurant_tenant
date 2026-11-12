@@ -83,6 +83,8 @@ import { printAllKitchenRounds, printKitchenRound } from '@/utils/kitchenPrint'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { VoidOrderPinModal } from '@/components/restaurant/VoidOrderPinModal'
 import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
+import { useServiceChargeSettings } from '@/hooks/useServiceChargeSettings'
+import { serviceChargeAmount } from '@/utils/serviceCharge'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
   BILLING_NOT_ENABLED_MESSAGE,
@@ -436,6 +438,14 @@ export default function MesaPage() {
     [checkoutLineTax],
   )
   const payableTotal = allowCheckoutDiscount ? checkoutBilling.payableTotal : totalToPay
+  // Recargo al consumo (DL 25988): % sobre el subtotal SIN IGV tras el descuento global; sin IGV.
+  const serviceCharge = useServiceChargeSettings()
+  const [applyServiceCharge, setApplyServiceCharge] = useState(true)
+  const serviceChargeBase = allowCheckoutDiscount ? checkoutBilling.subtotal : billingSubtotal
+  const checkoutServiceChargeAmount =
+    serviceCharge.enabled && applyServiceCharge ? serviceChargeAmount(serviceChargeBase, serviceCharge.rate) : 0
+  // Estimado de la precuenta (sin descuento): el cajero decide al cobrar si lo aplica.
+  const precuentaServiceChargeAmount = serviceCharge.enabled ? serviceChargeAmount(billingSubtotal, serviceCharge.rate) : 0
   const checkoutTaxAmount = checkoutBilling.taxAmount
   const canComanda = cart.length > 0
   const canGenerarVenta = (cart.length > 0 || sessionTotal > 0) && session?.status === 'open'
@@ -453,6 +463,12 @@ export default function MesaPage() {
   const splitTotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.total)) : 0
   const splitSubtotal = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.subtotal)) : 0
   const splitTaxAmount = splitLineTax ? sumMoney(...splitLineTax.map((l) => l.taxAmount)) : 0
+  // Cobro dividido: cada comprobante calcula su propio recargo sobre su subtotal.
+  const splitServiceChargeAmount =
+    serviceCharge.enabled && applyServiceCharge ? serviceChargeAmount(splitSubtotal, serviceCharge.rate) : 0
+  const dueTotal = roundSunat(
+    splitSelection ? splitTotal + splitServiceChargeAmount : payableTotal + checkoutServiceChargeAmount,
+  )
   const canDividirCuenta = cart.length === 0 && pendingForSplit.length > 0 && session?.status === 'open'
 
   const sessionItemQty = useMemo(() => sumSessionComandaQty(session), [session])
@@ -669,11 +685,12 @@ export default function MesaPage() {
     const s = session
     if (!s) { toast.error('No hay una mesa cargada'); return }
     const paid = payments.reduce((sum, p) => sum + p.amount, 0)
-    if (!paidCoversTotal(paid, splitTotal)) {
+    const splitDue = roundSunat(splitTotal + splitServiceChargeAmount)
+    if (!paidCoversTotal(paid, splitDue)) {
       toast.error('El monto pagado debe ser al menos el total de lo seleccionado')
       return
     }
-    if (nonCashOverpay(payments, splitTotal) > 0) {
+    if (nonCashOverpay(payments, splitDue) > 0) {
       toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
       return
     }
@@ -736,6 +753,7 @@ export default function MesaPage() {
         cash_session_id: myCashSession?.id ?? null,
         close_session: true, // el servidor lo recalcula según si la selección cubre todo lo pendiente
         comanda_splits: selection,
+        apply_service_charge: splitServiceChargeAmount > 0 ? true : undefined,
         payments: payments.map((p) => ({
           method: p.method,
           amount: roundSunat(p.amount),
@@ -785,11 +803,11 @@ export default function MesaPage() {
     if (!s) { toast.error('No hay una mesa cargada'); return }
     if (blockIfMissingCartPrices()) return
     const paid = payments.reduce((s, p) => s + p.amount, 0)
-    if (!paidCoversTotal(paid, payableTotal)) {
+    if (!paidCoversTotal(paid, dueTotal)) {
       toast.error('El monto pagado debe ser al menos el total')
       return
     }
-    if (nonCashOverpay(payments, payableTotal) > 0) {
+    if (nonCashOverpay(payments, dueTotal) > 0) {
       toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
       return
     }
@@ -854,11 +872,16 @@ export default function MesaPage() {
         checkoutDiscountValue,
         allowCheckoutDiscount,
       )
-      if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
-        toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+      const billServiceCharge =
+        serviceCharge.enabled && applyServiceCharge
+          ? serviceChargeAmount(roundSunat(billDiscount.billingSubtotal - billDiscount.discountAmount), serviceCharge.rate)
+          : 0
+      const billDue = roundSunat(billDiscount.payableTotal + billServiceCharge)
+      if (!paidCoversTotal(paid, billDue)) {
+        toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDue)})`)
         return
       }
-      if (nonCashOverpay(payments, billDiscount.payableTotal) > 0) {
+      if (nonCashOverpay(payments, billDue) > 0) {
         toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
         return
       }
@@ -882,6 +905,7 @@ export default function MesaPage() {
         discount_mode: billDiscount.discount_mode,
         discount_value: billDiscount.discount_value,
         discount_amount: billDiscount.discount_amount,
+        apply_service_charge: billServiceCharge > 0 ? true : undefined,
         payments: payments.map((p) => ({
           method: p.method,
           amount: roundSunat(p.amount),
@@ -951,6 +975,10 @@ export default function MesaPage() {
         notes: s.notes ?? null,
         items,
         total: totalToPay,
+        serviceCharge:
+          precuentaServiceChargeAmount > 0
+            ? { rate: serviceCharge.rate, amount: precuentaServiceChargeAmount }
+            : null,
       })
       toast.success(msg || 'Precuenta enviada a la impresora')
     } catch (e) {
@@ -969,6 +997,7 @@ export default function MesaPage() {
     if (branchSeriesMissing) return
     if (!canGenerarVenta) return
     setSplitSelection(null)
+    setApplyServiceCharge(true)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
@@ -987,6 +1016,7 @@ export default function MesaPage() {
     if (branchSeriesMissing) return
     setSplitBillOpen(false)
     setSplitSelection(selection)
+    setApplyServiceCharge(true)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
@@ -1011,9 +1041,9 @@ export default function MesaPage() {
   }, [checkoutOpen, allowCheckoutDiscount])
 
   useEffect(() => {
-    if (!checkoutOpen || payments.length !== 1 || splitSelection) return
-    setPayments((prev) => syncSinglePaymentAmount(prev, payableTotal))
-  }, [checkoutOpen, payableTotal, payments.length, splitSelection])
+    if (!checkoutOpen || payments.length !== 1) return
+    setPayments((prev) => syncSinglePaymentAmount(prev, dueTotal))
+  }, [checkoutOpen, dueTotal, payments.length])
 
   const confirmAnulComanda = async () => {
     if (!anulComanda) return
@@ -1569,7 +1599,11 @@ export default function MesaPage() {
         title={splitSelection ? 'Cobrar parte de la mesa' : 'Procesar venta'}
         confirmLabel={splitSelection ? 'Confirmar pago' : 'Confirmar venta'}
         rawTotal={splitSelection ? splitTotal : totalToPay}
-        payableTotal={splitSelection ? splitTotal : payableTotal}
+        payableTotal={dueTotal}
+        serviceChargeRate={serviceCharge.enabled ? serviceCharge.rate : 0}
+        applyServiceCharge={applyServiceCharge}
+        onApplyServiceChargeChange={setApplyServiceCharge}
+        serviceChargeAmount={splitSelection ? splitServiceChargeAmount : checkoutServiceChargeAmount}
         billingSubtotal={splitSelection ? splitSubtotal : billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
@@ -1692,6 +1726,23 @@ export default function MesaPage() {
                 <span>Total a pagar</span>
                 <span className="text-lg tabular-nums">{formatSoles(totalToPay)}</span>
               </div>
+              {precuentaServiceChargeAmount > 0 && (
+                <>
+                  <div className="mt-1 flex justify-between items-center text-sm text-stone-700">
+                    <span>Recargo al consumo ({serviceCharge.rate} %)</span>
+                    <span className="tabular-nums">{formatSoles(precuentaServiceChargeAmount)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between items-center font-bold text-stone-800">
+                    <span>TOTAL con recargo</span>
+                    <span className="text-lg tabular-nums">
+                      {formatSoles(roundSunat(totalToPay + precuentaServiceChargeAmount))}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-stone-500">
+                    Sin IGV. El recargo es opcional: el cliente puede rechazarlo.
+                  </p>
+                </>
+              )}
               <p className="mt-4 text-sm text-stone-600 border-b border-stone-400 pb-1">
                 Documento:{' '}
                 <span className="inline-block min-w-[12rem] border-b border-stone-400">&nbsp;</span>

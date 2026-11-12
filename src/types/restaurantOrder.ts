@@ -100,7 +100,13 @@ export interface PrecuentaPayload {
   notes: string
   subtotal: number
   tax_amount: number
+  /** `total` NO incluye el recargo al consumo. */
   total: number
+  service_charge_enabled?: boolean
+  service_charge_rate?: number
+  /** Estimado: el cajero puede quitarlo al cobrar. */
+  service_charge_amount?: number
+  total_with_service_charge?: number
   lines: {
     product_name: string
     quantity: number

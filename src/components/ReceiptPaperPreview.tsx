@@ -8,6 +8,7 @@ import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/suna
 import { resolvePublicAssetUrl } from '@/services/api'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { receiptChangeAmount } from '@/utils/receiptChange'
+import { receiptServiceCharge } from '@/utils/receiptServiceCharge'
 import {
   receiptItemDisplayDescription,
   receiptItemDisplayTotal,
@@ -54,6 +55,7 @@ export function ReceiptPaperPreview({
   const isTicket = format === 'ticket'
   const hasIgv = printData.tax_amount > 0
   const change = receiptChangeAmount(printData)
+  const serviceCharge = receiptServiceCharge(printData)
   const businessName = c?.business_name?.trim()
   const tradeName = c?.trade_name?.trim()
   const showBusiness = Boolean(businessName) && businessName !== tradeName
@@ -142,6 +144,12 @@ export function ReceiptPaperPreview({
             <div className="flex justify-between">
               <span>IGV</span>
               <span>{money(printData.tax_amount)}</span>
+            </div>
+          )}
+          {serviceCharge && (
+            <div className="flex justify-between">
+              <span>{serviceCharge.label}</span>
+              <span>{money(serviceCharge.amount)}</span>
             </div>
           )}
           <div className="flex justify-between font-bold">

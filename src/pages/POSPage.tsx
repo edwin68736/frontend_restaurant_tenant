@@ -91,6 +91,9 @@ import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ComandaNoteEditor } from '@/components/pos/ComandaNoteEditor'
 import { KitchenRoundHistoryModal } from '@/components/restaurant/KitchenRoundHistoryModal'
 import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
+import { useServiceChargeSettings } from '@/hooks/useServiceChargeSettings'
+import { serviceChargeAmount } from '@/utils/serviceCharge'
+import { precuentaServiceCharge } from '@/utils/posOrderHelpers'
 import { checkoutContactIsValid, isFacturaDocType, pickVariosContactId } from '@/utils/checkoutContacts'
 import {
   BILLING_NOT_ENABLED_MESSAGE,
@@ -493,6 +496,14 @@ export default function POSPage() {
     [checkoutLineTax],
   )
   const payableTotal = allowCheckoutDiscount ? checkoutBilling.payableTotal : total
+  // Recargo al consumo (DL 25988): % sobre el subtotal SIN IGV tras el descuento global; sin IGV.
+  const serviceCharge = useServiceChargeSettings()
+  const [applyServiceCharge, setApplyServiceCharge] = useState(true)
+  const checkoutServiceChargeAmount =
+    serviceCharge.enabled && applyServiceCharge
+      ? serviceChargeAmount(allowCheckoutDiscount ? checkoutBilling.subtotal : billingSubtotal, serviceCharge.rate)
+      : 0
+  const dueTotal = roundSunat(payableTotal + checkoutServiceChargeAmount)
   const checkoutTaxAmount = checkoutBilling.taxAmount
 
   const cartQty = sumCartQty(cart)
@@ -1233,6 +1244,7 @@ export default function POSPage() {
           issueDate: formatPrecuentaIssueDate(data.opened_at),
           items: data.lines.map(precuentaApiLineToPrintItem),
           total: data.total,
+          serviceCharge: precuentaServiceCharge(data),
         })
       }
     } catch (e: unknown) {
@@ -1260,6 +1272,7 @@ export default function POSPage() {
         issueDate: formatPrecuentaIssueDate(data.opened_at),
         items: data.lines.map(precuentaApiLineToPrintItem),
         total: data.total,
+        serviceCharge: precuentaServiceCharge(data),
       })
       toast.success(msg || 'Precuenta enviada a la impresora')
     } catch (e) {
@@ -1271,6 +1284,7 @@ export default function POSPage() {
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (cart.length === 0 && sessionTotal <= 0) return
+    setApplyServiceCharge(true)
     applyCheckoutDefaults()
     setCheckoutDiscountMode('percent')
     setCheckoutDiscountValue(0)
@@ -1291,17 +1305,17 @@ export default function POSPage() {
 
   useEffect(() => {
     if (!checkoutOpen || payments.length !== 1) return
-    setPayments((prev) => syncSinglePaymentAmount(prev, payableTotal))
-  }, [checkoutOpen, payableTotal, payments.length])
+    setPayments((prev) => syncSinglePaymentAmount(prev, dueTotal))
+  }, [checkoutOpen, dueTotal, payments.length])
 
   const doCheckout = async () => {
     if (blockIfMissingCartPrices()) return
     const paid = payments.reduce((s, p) => s + p.amount, 0)
-    if (!paidCoversTotal(paid, payableTotal)) {
+    if (!paidCoversTotal(paid, dueTotal)) {
       toast.error('El monto pagado debe ser al menos el total')
       return
     }
-    if (nonCashOverpay(payments, payableTotal) > 0) {
+    if (nonCashOverpay(payments, dueTotal) > 0) {
       toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
       return
     }
@@ -1384,6 +1398,7 @@ export default function POSPage() {
           cash_session_id: myCashSession?.id ?? null,
           discount_mode: checkoutDiscountMode,
           discount_value: allowCheckoutDiscount ? checkoutDiscountValue : 0,
+          apply_service_charge: checkoutServiceChargeAmount > 0 ? true : undefined,
           payments: payments.map((p) => ({
             method: p.method,
             amount: roundSunat(p.amount),
@@ -1416,11 +1431,16 @@ export default function POSPage() {
           checkoutDiscountValue,
           allowCheckoutDiscount,
         )
-        if (!paidCoversTotal(paid, billDiscount.payableTotal)) {
-          toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDiscount.payableTotal)})`)
+        const billServiceCharge =
+          serviceCharge.enabled && applyServiceCharge
+            ? serviceChargeAmount(roundSunat(billDiscount.billingSubtotal - billDiscount.discountAmount), serviceCharge.rate)
+            : 0
+        const billDue = roundSunat(billDiscount.payableTotal + billServiceCharge)
+        if (!paidCoversTotal(paid, billDue)) {
+          toast.error(`El monto pagado debe ser al menos el total (${formatMoney(billDue)})`)
           return
         }
-        if (nonCashOverpay(payments, billDiscount.payableTotal) > 0) {
+        if (nonCashOverpay(payments, billDue) > 0) {
           toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
           return
         }
@@ -1434,6 +1454,7 @@ export default function POSPage() {
           discount_mode: billDiscount.discount_mode,
           discount_value: billDiscount.discount_value,
           discount_amount: billDiscount.discount_amount,
+          apply_service_charge: billServiceCharge > 0 ? true : undefined,
           payments: payments.map((p) => ({
             method: p.method,
             amount: roundSunat(p.amount),
@@ -1939,7 +1960,11 @@ export default function POSPage() {
         onClose={() => setCheckoutOpen(false)}
         loading={loading}
         rawTotal={total}
-        payableTotal={payableTotal}
+        payableTotal={dueTotal}
+        serviceChargeRate={serviceCharge.enabled ? serviceCharge.rate : 0}
+        applyServiceCharge={applyServiceCharge}
+        onApplyServiceChargeChange={setApplyServiceCharge}
+        serviceChargeAmount={checkoutServiceChargeAmount}
         billingSubtotal={billingSubtotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
@@ -2274,6 +2299,26 @@ export default function POSPage() {
               <span>Total a pagar</span>
               <span className="text-rest-600 tabular-nums">{formatSoles(Number(precuentaData.total))}</span>
             </div>
+            {precuentaServiceCharge(precuentaData) && (
+              <>
+                <div className="flex justify-between text-sm text-stone-700 pt-1">
+                  <span>Recargo al consumo ({precuentaData.service_charge_rate} %)</span>
+                  <span className="tabular-nums">{formatSoles(Number(precuentaData.service_charge_amount))}</span>
+                </div>
+                <div className="flex justify-between font-bold text-stone-800 pt-1">
+                  <span>TOTAL con recargo</span>
+                  <span className="text-rest-600 tabular-nums">
+                    {formatSoles(
+                      Number(
+                        precuentaData.total_with_service_charge ??
+                          roundSunat(Number(precuentaData.total) + Number(precuentaData.service_charge_amount)),
+                      ),
+                    )}
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500 pt-1">Sin IGV. El recargo es opcional: el cliente puede rechazarlo.</p>
+              </>
+            )}
             <p className="mt-4 text-sm text-stone-600 border-b border-stone-400 pb-1">
               Documento:{' '}
               <span className="inline-block min-w-[12rem] border-b border-stone-400">&nbsp;</span>

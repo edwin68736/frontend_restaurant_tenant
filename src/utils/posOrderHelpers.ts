@@ -416,3 +416,12 @@ export function precuentaApiLineToPrintItem(l: {
     notes: l.notes,
   }
 }
+
+/** Recargo al consumo de la precuenta del servidor (null si no viene activo o es 0). */
+export function precuentaServiceCharge(
+  data: Pick<import('@/types/restaurantOrder').PrecuentaPayload, 'service_charge_enabled' | 'service_charge_rate' | 'service_charge_amount'>,
+): { rate: number; amount: number } | null {
+  const amount = Number(data.service_charge_amount) || 0
+  if (!data.service_charge_enabled || amount <= 0) return null
+  return { rate: Number(data.service_charge_rate) || 0, amount }
+}

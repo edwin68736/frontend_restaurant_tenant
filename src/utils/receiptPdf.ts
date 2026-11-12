@@ -25,6 +25,7 @@ import {
   resolveReceiptLogoForPdf,
 } from '@/utils/receiptLogoPdf'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
+import { receiptServiceCharge } from '@/utils/receiptServiceCharge'
 import {
   configuredTicketPaperMm,
   normalizeTicketPaperWidth,
@@ -125,6 +126,8 @@ function emitAffectTotals(
       emitRow('IGV:', formatMoney(data.tax_amount, data.currency))
     }
   }
+  const serviceCharge = receiptServiceCharge(data)
+  if (serviceCharge) emitRow(`${serviceCharge.label}:`, formatMoney(serviceCharge.amount, data.currency))
   emitRow('TOTAL A PAGAR:', formatMoney(data.total, data.currency), true)
   void doc
   void margin

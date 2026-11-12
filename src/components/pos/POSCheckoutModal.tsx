@@ -108,6 +108,15 @@ type Props = {
   sunatEnabled?: boolean
   /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
   canFactura?: boolean
+  /**
+   * Recargo al consumo (DL 25988). `serviceChargeRate` > 0 = el tenant lo tiene activo: se muestra la
+   * casilla. `payableTotal` YA incluye `serviceChargeAmount` cuando `applyServiceCharge` está marcada.
+   */
+  serviceChargeRate?: number
+  applyServiceCharge?: boolean
+  onApplyServiceChargeChange?: (apply: boolean) => void
+  /** Monto del recargo ya calculado por el padre (0 si está desmarcado). */
+  serviceChargeAmount?: number
 }
 
 export function POSCheckoutModal({
@@ -143,6 +152,10 @@ export function POSCheckoutModal({
   allowDiscount = true,
   sunatEnabled = true,
   canFactura = true,
+  serviceChargeRate = 0,
+  applyServiceCharge = false,
+  onApplyServiceChargeChange,
+  serviceChargeAmount = 0,
 }: Props) {
   const { activeBranch } = useBranch()
   const { seriesLoadError, seriesOnOtherBranches } = useBranchCheckoutSeries()
@@ -424,6 +437,27 @@ export function POSCheckoutModal({
 
             {extraBeforePayments}
 
+            {serviceChargeRate > 0 && onApplyServiceChargeChange && (
+              <label className="flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2">
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-stone-800">
+                    Recargo al consumo ({serviceChargeRate} %)
+                  </span>
+                  <span className="block text-[11px] text-stone-500">
+                    {applyServiceCharge
+                      ? `+ ${formatMoney(serviceChargeAmount)} · sin IGV`
+                      : 'Desmarcado: el cliente lo rechazó'}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={applyServiceCharge}
+                  onChange={(e) => onApplyServiceChargeChange(e.target.checked)}
+                  className="h-5 w-5 shrink-0 accent-rest-600"
+                />
+              </label>
+            )}
+
             <div>
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <span className={LABEL.replace(' mb-1', '')}>Métodos de pago</span>
@@ -592,7 +626,7 @@ export function POSCheckoutModal({
                 )}
 
                 <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2.5 space-y-1">
-                  {(discountAmount > 0 || igvAmount > 0) && (
+                  {(discountAmount > 0 || igvAmount > 0 || serviceChargeAmount > 0) && (
                     <>
                       <div className="flex justify-between text-[11px] text-stone-500">
                         <span>Base imponible</span>
@@ -610,12 +644,18 @@ export function POSCheckoutModal({
                           <span>{formatMoney(igvAmount)}</span>
                         </div>
                       )}
+                      {serviceChargeAmount > 0 && (
+                        <div className="flex justify-between text-[11px] text-stone-500">
+                          <span>Recargo al consumo ({serviceChargeRate} %)</span>
+                          <span>{formatMoney(serviceChargeAmount)}</span>
+                        </div>
+                      )}
                     </>
                   )}
                   <div
                     className={clsx(
                       'flex justify-between items-baseline',
-                      (discountAmount > 0 || igvAmount > 0) && 'border-t border-stone-200/80 pt-1',
+                      (discountAmount > 0 || igvAmount > 0 || serviceChargeAmount > 0) && 'border-t border-stone-200/80 pt-1',
                     )}
                   >
                     <span className="text-xs font-medium text-stone-600">Total a pagar</span>

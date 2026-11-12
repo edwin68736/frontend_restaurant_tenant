@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import type { ManualCartLine } from '@/utils/posCart'
+import { useServiceChargeSettings } from '@/hooks/useServiceChargeSettings'
 
 const UNIT_OPTIONS = [
   { value: 'NIU', label: 'NIU - Unidad' },
@@ -19,6 +20,7 @@ type Props = {
 }
 
 export function ManualProductModal({ open, onClose, onAdd }: Props) {
+  const serviceCharge = useServiceChargeSettings()
   const [description, setDescription] = useState('')
   const [code, setCode] = useState('MANUAL')
   const [unit, setUnit] = useState('NIU')
@@ -78,8 +80,13 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Ej. Propina, delivery, cubiertos"
+              placeholder="Ej. Delivery, cubiertos"
             />
+            {serviceCharge.enabled && /propina/i.test(description) && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                Ya se cobra recargo al consumo; no agregue propina como producto.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

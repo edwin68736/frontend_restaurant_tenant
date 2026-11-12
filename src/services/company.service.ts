@@ -24,6 +24,9 @@ export interface CompanyConfig {
   wallet_show_on_ticket?: boolean
   /** JSON en BD: array de IDs de cuentas bancarias visibles en comprobantes. */
   receipt_bank_account_ids?: string | number[]
+  /** Recargo al consumo (DL 25988): activo por tenant, % sobre el valor de venta sin IGV (máx. 13). */
+  service_charge_enabled?: boolean
+  service_charge_rate?: number
 }
 
 /** Capacidades resueltas por el backend según el régimen tributario del tenant. */

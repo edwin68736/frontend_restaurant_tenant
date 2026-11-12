@@ -21,6 +21,7 @@ import {
   receiptItemDisplayUnitPrice,
 } from '@/utils/receiptBonificacion'
 import { hasReceiptDiscount, receiptTotalDiscount } from '@/utils/receiptDiscount'
+import { receiptServiceCharge } from '@/utils/receiptServiceCharge'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
   getConfiguredComandaDefaultPrinter,
@@ -428,6 +429,8 @@ export function buildPrecuentaEscPos(input: {
   notes?: string | null
   items: PrecuentaPrintItem[]
   total: number
+  /** Recargo al consumo (DL 25988): si viene con monto > 0 se imprime la fila y el total con recargo. */
+  serviceCharge?: { rate: number; amount: number } | null
   currency?: string
   paperWidthMm: PrinterPaperWidth
 }): Uint8Array {
@@ -465,6 +468,11 @@ export function buildPrecuentaEscPos(input: {
   }
 
   const totalLines: string[] = [amountLine('TOTAL A PAGAR:', money(input.total), cols)]
+  const sc = input.serviceCharge
+  if (sc && Number(sc.amount) > 0) {
+    totalLines.push(amountLine(`Recargo al consumo (${sc.rate}%):`, money(sc.amount), cols))
+    totalLines.push(amountLine('TOTAL CON RECARGO:', money(Math.round((input.total + sc.amount) * 100) / 100), cols))
+  }
   const docLabel = 'Documento:'
   const docLine = docLabel + '_'.repeat(Math.max(10, cols - docLabel.length))
 
@@ -675,6 +683,10 @@ export async function buildSaleDocumentEscPos(
     }
     if (printData.tax_amount > 0) totalLines.push(amountLine('IGV:', money(printData.tax_amount), cols))
   }
+  const serviceCharge = receiptServiceCharge(printData)
+  if (serviceCharge) {
+    totalLines.push(amountLine(`${serviceCharge.label.replace(' %', '%')}:`, money(serviceCharge.amount), cols))
+  }
   totalLines.push(amountLine('TOTAL A PAGAR:', money(printData.total), cols))
 
   const legendLines: string[] = []
@@ -840,6 +852,7 @@ export async function printPrecuentaAuto(input: {
   notes?: string | null
   items: PrecuentaPrintItem[]
   total: number
+  serviceCharge?: { rate: number; amount: number } | null
   currency?: string
 }): Promise<string> {
   const cfg = getConfiguredPrinter('precuenta')
