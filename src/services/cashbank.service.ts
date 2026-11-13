@@ -131,6 +131,8 @@ export interface PaymentMethodRecord {
   applies_to?: 'income' | 'expense' | 'both'
   /** Exige N° de operación / referencia al cobrar o pagar. */
   requires_reference?: boolean
+  /** Logo propio (data URL reducido). Vacío = icono por defecto según el código. */
+  logo_url?: string
 }
 
 export interface CashSessionReportSession {
