@@ -435,7 +435,7 @@ export default function ClientesPage() {
                     }}
                     options={contactDocSelectOptions()}
                     searchable={false}
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500 bg-white text-left flex items-center justify-between gap-2"
                   />
                 </div>
                 <div>
@@ -456,7 +456,7 @@ export default function ClientesPage() {
                     </div>
                   ) : (
                     <input
-                      className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                      className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                       value={form.doc_number}
                       onChange={(e) => setF('doc_number', e.target.value)}
                       placeholder="Número de documento"
@@ -481,7 +481,7 @@ export default function ClientesPage() {
                 <div>
                   <label className="block text-xs font-medium text-stone-600 mb-1">Nombre comercial</label>
                   <input
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                     value={form.trade_name ?? ''}
                     onChange={(e) => setF('trade_name', e.target.value)}
                   />
@@ -490,7 +490,7 @@ export default function ClientesPage() {
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Dirección</label>
                 <input
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                   value={form.address ?? ''}
                   onChange={(e) => setF('address', e.target.value)}
                   placeholder="Para facturación electrónica use dirección completa"
@@ -499,7 +499,7 @@ export default function ClientesPage() {
               <div>
                 <label className="block text-xs font-medium text-stone-600 mb-1">Código Ubigeo (6 dígitos, opcional)</label>
                 <input
-                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                   value={form.ubigeo ?? ''}
                   onChange={(e) => setF('ubigeo', e.target.value)}
                   placeholder="Ej: 150101"
@@ -510,7 +510,7 @@ export default function ClientesPage() {
                 <div>
                   <label className="block text-xs font-medium text-stone-600 mb-1">Teléfono</label>
                   <input
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                     value={form.phone ?? ''}
                     onChange={(e) => setF('phone', e.target.value)}
                   />
@@ -519,7 +519,7 @@ export default function ClientesPage() {
                   <label className="block text-xs font-medium text-stone-600 mb-1">Email</label>
                   <input
                     type="email"
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500"
                     value={form.email ?? ''}
                     onChange={(e) => setF('email', e.target.value)}
                   />
