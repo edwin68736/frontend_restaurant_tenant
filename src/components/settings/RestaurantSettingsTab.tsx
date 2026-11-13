@@ -5,6 +5,7 @@ import { RestaurantBranchesSettings } from './restaurant/RestaurantBranchesSetti
 import { RestaurantCompanySettings } from './restaurant/RestaurantCompanySettings'
 import { RestaurantOperationSettings } from './restaurant/RestaurantOperationSettings'
 import { RestaurantReceiptWalletSettings } from './restaurant/RestaurantReceiptWalletSettings'
+import { RestaurantSaleNoteSettings } from './restaurant/RestaurantSaleNoteSettings'
 import { RestaurantSeriesSettings } from './restaurant/RestaurantSeriesSettings'
 import { RestaurantTaxSettings } from './restaurant/RestaurantTaxSettings'
 
@@ -53,7 +54,12 @@ export function RestaurantSettingsTab() {
       {tab === 'impuestos' && <RestaurantTaxSettings />}
       {tab === 'sucursales' && <RestaurantBranchesSettings />}
       {tab === 'series' && <RestaurantSeriesSettings />}
-      {tab === 'comprobantes' && <RestaurantReceiptWalletSettings />}
+      {tab === 'comprobantes' && (
+        <div className="space-y-5">
+          <RestaurantReceiptWalletSettings />
+          <RestaurantSaleNoteSettings />
+        </div>
+      )}
       {tab === 'anuladas' && <ComandasCancelledView />}
     </div>
   )

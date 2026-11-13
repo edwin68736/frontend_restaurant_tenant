@@ -1,4 +1,5 @@
 import { ticketLogoBoxMm } from '@/services/printers/logoPrintSize'
+import { hideBusinessNameOnSaleNote, receiptBreakdownVisibility } from '@/utils/saleNoteDisplay'
 import { resolveLogoForPrint } from '@/lib/companyLogo'
 import { jsPDF } from 'jspdf'
 import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
@@ -101,8 +102,12 @@ function emitAffectTotals(
   const exonerado = sumAffectationByGroup(aff, 'exonerado')
   const inafecto = sumAffectationByGroup(aff, 'inafecto')
   const exportacion = sumAffectationByGroup(aff, 'exportacion')
-  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
-  const hideBreakdown = data.company?.show_igv_breakdown === false
+  // Se oculta el desglose por régimen (Nuevo RUS) o por el ajuste de nota de venta (ver saleNoteDisplay).
+  const { hide: hideBreakdown, bySaleNoteOnly } = receiptBreakdownVisibility(data)
+  if (hideBreakdown && bySaleNoteOnly && hasReceiptDiscount(data)) {
+    // Sin Op. gravadas / IGV, pero el descuento sigue visible: explica por qué el total no es la suma de los ítems.
+    emitRow('Descuento:', `- ${formatMoney(receiptTotalDiscount(data), data.currency)}`)
+  }
   if (!hideBreakdown) {
     if (gravado && gravado.subtotal > 0.000001) {
       emitRow('Op. Gravadas:', formatMoney(gravado.subtotal, data.currency))
@@ -321,7 +326,8 @@ export async function generateReceiptPdf(
     const businessName = String(data.company.business_name ?? '').trim()
     const showBusinessName =
       Boolean(businessName) &&
-      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0 &&
+      !hideBusinessNameOnSaleNote(data, tradeName)
     if (tradeName) {
       addWrapped(tradeName, FONT_SIZE_COMMERCIAL, 'center', true)
       if (showBusinessName) addWrapped(businessName, FONT_SIZE, 'center')

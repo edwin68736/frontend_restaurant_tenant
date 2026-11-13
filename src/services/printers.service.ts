@@ -1,4 +1,5 @@
 import { resolveLogoForPrint } from '@/lib/companyLogo'
+import { hideBusinessNameOnSaleNote, receiptBreakdownVisibility } from '@/utils/saleNoteDisplay'
 import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
@@ -579,7 +580,8 @@ function pushCompanyHeaderEscPos(
   const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
   const showBusinessName =
     Boolean(businessName) &&
-    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0 &&
+    !hideBusinessNameOnSaleNote(printData, tradeName)
 
   if (tradeName) {
     escposPushWrappedCenter(out, wrapText(tradeName, cols))
@@ -670,8 +672,11 @@ export async function buildSaleDocumentEscPos(
   const exonerado = sumAffectationByGroup(totals, 'exonerado')
   const inafecto = sumAffectationByGroup(totals, 'inafecto')
   const exportacion = sumAffectationByGroup(totals, 'exportacion')
-  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
-  const hideBreakdown = printData.company?.show_igv_breakdown === false
+  // Se oculta el desglose por régimen (Nuevo RUS) o por el ajuste de nota de venta (ver saleNoteDisplay).
+  const { hide: hideBreakdown, bySaleNoteOnly } = receiptBreakdownVisibility(printData)
+  if (hideBreakdown && bySaleNoteOnly && hasReceiptDiscount(printData)) {
+    totalLines.push(amountLine('Descuento:', `-${money(receiptTotalDiscount(printData))}`, cols))
+  }
   if (!hideBreakdown) {
     if (gravado?.subtotal) totalLines.push(amountLine('Op. Gravadas:', money(gravado.subtotal), cols))
     if (exonerado?.subtotal) totalLines.push(amountLine('Op. Exoneradas:', money(exonerado.subtotal), cols))

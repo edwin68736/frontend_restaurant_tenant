@@ -27,6 +27,10 @@ export interface CompanyConfig {
   /** Recargo al consumo (DL 25988): activo por tenant, % sobre el valor de venta sin IGV (máx. 13). */
   service_charge_enabled?: boolean
   service_charge_rate?: number
+  /** Nota de venta: false = no mostrar la razón social en el impreso (se usa el nombre comercial). */
+  show_business_name_on_sale_note?: boolean
+  /** Nota de venta: false = solo total a pagar, sin Op. gravadas / IGV. */
+  show_igv_breakdown_on_sale_note?: boolean
 }
 
 /** Capacidades resueltas por el backend según el régimen tributario del tenant. */

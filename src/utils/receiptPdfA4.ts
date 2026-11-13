@@ -1,4 +1,5 @@
 import { scaleA4LogoDimension } from '@/services/printers/logoPrintSize'
+import { hideBusinessNameOnSaleNote, receiptBreakdownVisibility } from '@/utils/saleNoteDisplay'
 import { resolveLogoForPrint } from '@/lib/companyLogo'
 import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -120,7 +121,7 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const centerLines: { text: string; size: number; bold: boolean }[] = []
   if (tradeName) {
     centerLines.push({ text: tradeName.toUpperCase(), size: FONT_LG + 2, bold: true })
-    if (businessName) centerLines.push({ text: businessName.toUpperCase(), size: FONT_SM, bold: false })
+    if (businessName && !hideBusinessNameOnSaleNote(data, tradeName)) centerLines.push({ text: businessName.toUpperCase(), size: FONT_SM, bold: false })
   } else if (businessName) {
     centerLines.push({ text: businessName.toUpperCase(), size: FONT_LG, bold: true })
   }
@@ -337,8 +338,15 @@ export async function renderA4ReceiptPdf(doc: jsPDF, data: PrintData, startY = M
   const exonerado = sumAffectationByGroup(aff, 'exonerado')
   const inafecto = sumAffectationByGroup(aff, 'inafecto')
   const exportacion = sumAffectationByGroup(aff, 'exportacion')
-  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso (solo total).
-  const hideBreakdown = data.company?.show_igv_breakdown === false
+  // Se oculta el desglose por régimen (Nuevo RUS) o por el ajuste de nota de venta (ver saleNoteDisplay).
+  const { hide: hideBreakdown, bySaleNoteOnly } = receiptBreakdownVisibility(data)
+  if (hideBreakdown && bySaleNoteOnly && hasReceiptDiscount(data)) {
+    doc.setFont('helvetica', 'bold')
+    doc.text('DESCUENTO:', totalsX - 42, y, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    doc.text(`- ${formatMoney(receiptTotalDiscount(data), data.currency)}`, totalsX, y, { align: 'right' })
+    y += LINE_H + 1
+  }
   if (!hideBreakdown) {
   if (gravado?.subtotal) {
     doc.setFont('helvetica', 'bold')

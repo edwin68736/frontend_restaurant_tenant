@@ -68,6 +68,10 @@ export interface PrintCompany {
    * (la boleta muestra solo el total; el XML sí lleva el IGV).
    */
   show_igv_breakdown?: boolean
+  /** Solo nota de venta (SUNAT 00): false = no mostrar la razón social (se imprime el nombre comercial). Default true. */
+  show_business_name_on_sale_note?: boolean
+  /** Solo nota de venta (SUNAT 00): false = solo total a pagar, sin Op. gravadas / IGV. Default true. */
+  show_igv_breakdown_on_sale_note?: boolean
 }
 
 export interface PrintBranch {

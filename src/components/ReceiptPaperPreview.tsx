@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { hideBusinessNameOnSaleNote, receiptBreakdownVisibility } from '@/utils/saleNoteDisplay'
 import QRCode from 'qrcode'
 import { clsx } from 'clsx'
 import type { PrintData } from '@/types/printData'
@@ -58,7 +59,8 @@ export function ReceiptPaperPreview({
   const serviceCharge = receiptServiceCharge(printData)
   const businessName = c?.business_name?.trim()
   const tradeName = c?.trade_name?.trim()
-  const showBusiness = Boolean(businessName) && businessName !== tradeName
+  const showBusiness = Boolean(businessName) && businessName !== tradeName && !hideBusinessNameOnSaleNote(printData, tradeName)
+  const breakdown = receiptBreakdownVisibility(printData)
 
   return (
     <div className="flex justify-center overflow-y-auto bg-stone-300/60 p-3 md:p-5 h-[min(70vh,520px)] min-h-[320px]">
@@ -134,13 +136,13 @@ export function ReceiptPaperPreview({
         <Sep />
 
         <div className="space-y-0.5">
-          {hasIgv && (
+          {hasIgv && !breakdown.hide && (
             <div className="flex justify-between">
               <span>Op. Gravadas</span>
               <span>{money(printData.subtotal)}</span>
             </div>
           )}
-          {hasIgv && (
+          {hasIgv && !breakdown.hide && (
             <div className="flex justify-between">
               <span>IGV</span>
               <span>{money(printData.tax_amount)}</span>
