@@ -441,7 +441,7 @@ export default function ClientesPage() {
                 <div>
                   <label className="block text-xs font-medium text-stone-600 mb-1">N° Documento *</label>
                   {contactDocSupportsConsulta(form.doc_type) ? (
-                    <div className="flex border border-stone-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-rest-500">
+                    <div className="flex border border-stone-200 rounded-xl overflow-hidden bg-white">
                       <input
                         className="flex-1 min-w-0 px-3 py-2 border-0 text-sm"
                         value={form.doc_number}
