@@ -404,16 +404,19 @@ export async function importRestaurantProducts(
   updated: number
   stockRegistered: number
   failed: { row: number; name: string; error: string }[]
+  /** Filas omitidas porque el plan llegó a su tope de productos. */
+  limitSkipped: number
 }> {
   const failed: { row: number; name: string; error: string }[] = []
   let created = 0
   let updated = 0
   let stockRegistered = 0
+  let limitSkipped = 0
   const total = rows.length
 
   if (total === 0) {
     await reportImportProgress(onProgress, { done: 0, total: 0 })
-    return { created: 0, updated: 0, stockRegistered: 0, failed }
+    return { created: 0, updated: 0, stockRegistered: 0, failed, limitSkipped: 0 }
   }
 
   await reportImportProgress(onProgress, { done: 0, total, current: 'Preparando envío…' })
@@ -431,6 +434,7 @@ export async function importRestaurantProducts(
       created += res.created
       updated += res.updated ?? 0
       stockRegistered += res.stock_registered
+      limitSkipped += res.limit_skipped ?? 0
       failed.push(...res.failed)
       await reportImportProgress(onProgress, {
         done: chunkEnd,
@@ -449,5 +453,5 @@ export async function importRestaurantProducts(
   }
 
   await reportImportProgress(onProgress, { done: total, total })
-  return { created, updated, stockRegistered, failed }
+  return { created, updated, stockRegistered, failed, limitSkipped }
 }

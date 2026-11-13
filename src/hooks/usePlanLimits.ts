@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import api from '@/services/api'
 
 export type PlanLimit = { used: number; max: number; unlimited: boolean }
@@ -27,22 +27,30 @@ export const EMPTY_PLAN_LIMITS: PlanLimits = {
  * falla se devuelven cuotas «ilimitadas» para no inventar avisos que no corresponden.
  */
 export function usePlanLimits(): PlanLimits {
-  const [limits, setLimits] = useState<PlanLimits>(EMPTY_PLAN_LIMITS)
+  return usePlanLimitsState().limits
+}
 
-  useEffect(() => {
-    let cancelled = false
-    api
-      .get<{ limits?: Partial<PlanLimits> }>('/api/session/modules')
-      .then(({ data }) => {
-        if (!cancelled) setLimits({ ...EMPTY_PLAN_LIMITS, ...(data.limits ?? {}) })
-      })
-      .catch(() => {
-        if (!cancelled) setLimits(EMPTY_PLAN_LIMITS)
-      })
-    return () => {
-      cancelled = true
+/** Igual que usePlanLimits, pero además devuelve `refresh` para volver a leer los conteos (p. ej. tras importar o dar de alta). */
+export function usePlanLimitsState(): { limits: PlanLimits; refresh: () => Promise<void> } {
+  const [limits, setLimits] = useState<PlanLimits>(EMPTY_PLAN_LIMITS)
+  const alive = useRef(true)
+
+  const refresh = useCallback(async () => {
+    try {
+      const { data } = await api.get<{ limits?: Partial<PlanLimits> }>('/api/session/modules')
+      if (alive.current) setLimits({ ...EMPTY_PLAN_LIMITS, ...(data.limits ?? {}) })
+    } catch {
+      if (alive.current) setLimits(EMPTY_PLAN_LIMITS)
     }
   }, [])
 
-  return limits
+  useEffect(() => {
+    alive.current = true
+    void refresh()
+    return () => {
+      alive.current = false
+    }
+  }, [refresh])
+
+  return { limits, refresh }
 }

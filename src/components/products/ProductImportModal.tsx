@@ -31,6 +31,8 @@ import {
   type AdvancedTotals,
 } from '@/utils/restaurantProductAdvancedImport'
 import { AdvancedDone, AdvancedSummary } from '@/components/products/RestaurantAdvancedImportPanels'
+import { ImportPlanLimitNotice } from '@/components/products/ImportPlanLimitNotice'
+import { usePlanLimitsState } from '@/hooks/usePlanLimits'
 
 type Props = {
   open: boolean
@@ -59,7 +61,9 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
     updated: number
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
+    limitSkipped?: number
   } | null>(null)
+  const { limits, refresh: refreshLimits } = usePlanLimitsState()
 
   // Importación avanzada (Excel con varias hojas: presentaciones, extras y combos). La básica no usa esto.
   const [mode, setMode] = useState<Mode>('basic')
@@ -167,6 +171,8 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
       )
       setAdvResult(result)
       setStep('done')
+      void refreshLimits()
+      if (result.limitSkipped > 0) toast.warning(`${result.limitSkipped} plato(s) no se importaron: tu plan llegó a su límite de productos`)
       if (result.created > 0 || result.updated > 0) {
         toast.success(`${result.created} creado(s), ${result.updated} actualizado(s)`)
         // El listado se refresca al cerrar (handleClose) para que el reporte siga visible.
@@ -243,6 +249,8 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
       )
       setImportResult(result)
       setStep('done')
+      void refreshLimits()
+      if (result.limitSkipped > 0) toast.warning(`${result.limitSkipped} plato(s) no se importaron: tu plan llegó a su límite de productos`)
       if (result.created > 0 || result.updated > 0) {
         const parts: string[] = []
         if (result.created > 0) parts.push(`${result.created} creado(s)`)
@@ -406,6 +414,20 @@ export function ProductImportModal({ open, onClose, categories, onImported }: Pr
 
           {mode === 'basic' && validation && !validating && step !== 'importing' && (
             <ValidationSummary validation={validation} />
+          )}
+
+          {/* Tope de productos del plan: se avisa ANTES de importar cuántos entrarán, y al terminar cuántos se omitieron. */}
+          {step === 'validated' && !validating && mode === 'basic' && validation && validation.errors.length === 0 && (
+            <ImportPlanLimitNotice phase="before" limit={limits.products} candidates={validation.rows.length} />
+          )}
+          {step === 'validated' && !validating && mode === 'advanced' && adv && adv.errors.length === 0 && advPreview && (
+            <ImportPlanLimitNotice phase="preview" limit={limits.products} skipped={advPreview.limitSkipped} />
+          )}
+          {step === 'done' && mode === 'basic' && importResult && (
+            <ImportPlanLimitNotice phase="after" limit={limits.products} skipped={importResult.limitSkipped ?? 0} />
+          )}
+          {step === 'done' && mode === 'advanced' && advResult && (
+            <ImportPlanLimitNotice phase="after" limit={limits.products} skipped={advResult.limitSkipped} />
           )}
 
           {mode === 'advanced' && adv && !validating && step !== 'importing' && step !== 'done' && (

@@ -3,6 +3,7 @@ import { Pencil, Plus, RefreshCw, RotateCcw, Shield, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { restaurantService, type RestaurantStaffManagementRow } from '@/services/restaurant.service'
 import { EMPLOYEE_TYPE_LABELS } from '@/utils/restaurantPermissions'
+import { usePlanLimitsState } from '@/hooks/usePlanLimits'
 import { RestaurantStaffEditModal } from '../RestaurantStaffEditModal'
 import { RestaurantStaffCreateModal } from '../RestaurantStaffCreateModal'
 
@@ -17,6 +18,13 @@ export function RestaurantOperationSettings() {
   // Vista de usuarios eliminados y el eliminado que se está restaurando.
   const [showDeleted, setShowDeleted] = useState(false)
   const [restoring, setRestoring] = useState<RestaurantStaffManagementRow | null>(null)
+  // Cupo de usuarios del plan: los operativos (mozos, cajeros, cocina…) cuentan igual que los demás usuarios del negocio.
+  const { limits: planLimits, refresh: refreshPlan } = usePlanLimitsState()
+  const seats = planLimits.users
+  const seatsKnown = !seats.unlimited && seats.max > 0
+  const atSeatLimit = seatsKnown && seats.used >= seats.max
+  const overSeatLimit = seatsKnown && seats.used > seats.max
+  const seatLimitMessage = `Tu plan permite hasta ${seats.max} usuarios y ya hay ${seats.used} activos (incluye al administrador). Mejora tu plan o desactiva a alguien para agregar más.`
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -27,12 +35,13 @@ export function RestaurantOperationSettings() {
       ])
       setHasDeletionPin(settings.has_deletion_pin)
       setRows(staff)
+      void refreshPlan()
     } catch {
       toast.error('No se pudieron cargar los ajustes')
     } finally {
       setLoading(false)
     }
-  }, [showDeleted])
+  }, [showDeleted, refreshPlan])
 
   useEffect(() => {
     void load()
@@ -79,7 +88,7 @@ export function RestaurantOperationSettings() {
     return (
       <button
         type="button"
-        onClick={() => setRestoring(row)}
+        onClick={() => (atSeatLimit ? toast.error(seatLimitMessage) : setRestoring(row))}
         className={`inline-flex items-center gap-1 ${padding} rounded-lg text-xs font-medium text-rest-700 hover:bg-rest-50`}
       >
         <RotateCcw size={14} />
@@ -159,14 +168,21 @@ export function RestaurantOperationSettings() {
                 {showDeleted
                   ? `${rows.length} eliminados`
                   : `${rows.length} en total · ${staffWithAccess.length} con acceso`}
+                {seatsKnown && !showDeleted && (
+                  <span className={atSeatLimit ? 'font-semibold text-amber-700' : undefined}>
+                    {' '}· {seats.used} de {seats.max} usuarios del plan
+                  </span>
+                )}
               </p>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-2 sm:shrink-0">
             <button
               type="button"
-              onClick={() => setCreating(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl bg-rest-600 text-white text-xs sm:text-sm font-medium hover:bg-rest-700 min-w-0"
+              onClick={() => (atSeatLimit ? toast.error(seatLimitMessage) : setCreating(true))}
+              aria-disabled={atSeatLimit}
+              title={atSeatLimit ? seatLimitMessage : undefined}
+              className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl bg-rest-600 text-white text-xs sm:text-sm font-medium hover:bg-rest-700 min-w-0 ${atSeatLimit ? 'opacity-50' : ''}`}
             >
               <Plus size={15} className="shrink-0 sm:w-4 sm:h-4" />
               <span className="truncate sm:hidden">Nuevo</span>
@@ -196,6 +212,13 @@ export function RestaurantOperationSettings() {
             </button>
           </div>
         </div>
+
+        {overSeatLimit && (
+          <div role="alert" className="border-b border-amber-200 bg-amber-50 px-3 py-2.5 text-xs sm:text-sm text-amber-900">
+            Tu plan permite <strong>{seats.max}</strong> usuarios y hay <strong>{seats.used}</strong> activos (incluye al administrador). Los usuarios
+            que ya tienes se mantienen, pero no se pueden agregar ni restaurar más hasta que mejores tu plan o desactives a alguien.
+          </div>
+        )}
 
         {loading ? (
           <div className="py-12 flex justify-center">

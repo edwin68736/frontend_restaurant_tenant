@@ -504,6 +504,8 @@ export type AdvancedTotals = {
   modLinks: { created: number; removed: number }
   comboGroups: { created: number; updated: number; deactivated: number }
   failed: { row: number; name: string; error: string }[]
+  /** Platos nuevos omitidos porque el plan llegó a su tope de productos. */
+  limitSkipped: number
 }
 
 export type AdvancedProgress = { done: number; total: number; current?: string }
@@ -517,6 +519,7 @@ function emptyTotals(): AdvancedTotals {
     modLinks: { created: 0, removed: 0 },
     comboGroups: { created: 0, updated: 0, deactivated: 0 },
     failed: [],
+    limitSkipped: 0,
   }
 }
 
@@ -537,6 +540,7 @@ function addResult(t: AdvancedTotals, r: BulkImportAdvancedResultPayload) {
   t.comboGroups.created += r.combo_groups_created ?? 0
   t.comboGroups.updated += r.combo_groups_updated ?? 0
   t.comboGroups.deactivated += r.combo_groups_deactivated ?? 0
+  t.limitSkipped += r.limit_skipped ?? 0
   t.failed.push(...(r.failed ?? []))
 }
 
