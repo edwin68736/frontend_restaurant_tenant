@@ -1,11 +1,12 @@
 import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Eye, EyeOff, RefreshCw, SearchCheck } from 'lucide-react'
+import { Plus, Pencil, Trash2, Eye, EyeOff, RefreshCw } from 'lucide-react'
 import { clsx } from 'clsx'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
 import { companyService } from '@/services/company.service'
 import { consultaService } from '@/services/consulta.service'
+import { ConsultaButton, ManualNameToggle, nameInputClass } from '@/components/contacts/ContactLookupControls'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { SearchInput } from '@/components/SearchInput'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
@@ -46,6 +47,8 @@ export default function ClientesPage() {
   const [form, setForm] = useState<CreateContactInput>(emptyForm())
   const [saving, setSaving] = useState(false)
   const [consultando, setConsultando] = useState(false)
+  /** Con RUC/DNI la razón social viene de la consulta (bloqueada); este interruptor permite escribirla a mano. */
+  const [manualName, setManualName] = useState(false)
   const [tenantRuc, setTenantRuc] = useState('')
   const [showInactiveOnly, setShowInactiveOnly] = useState(false)
   const [togglingActiveId, setTogglingActiveId] = useState<number | null>(null)
@@ -83,12 +86,14 @@ export default function ClientesPage() {
 
   const openNew = () => {
     setEditing(null)
+    setManualName(false)
     setForm(emptyForm())
     setShow(true)
   }
 
   const openEdit = (c: Contact) => {
     setEditing(c)
+    setManualName(false)
     setForm({
       type: 'customer',
       doc_type: toContactDocCode(c.doc_type),
@@ -105,9 +110,11 @@ export default function ClientesPage() {
 
   const setF = (k: keyof CreateContactInput, v: string) => setForm((f) => ({ ...f, [k]: v }))
 
+  const nameLocked = contactDocSupportsConsulta(form.doc_type) && !manualName
+
   const handleSave = async () => {
     if (!form.business_name?.trim() || !form.doc_number?.trim()) {
-      toast.error('Nombre o razón social y número de documento son requeridos')
+      toast.error(nameLocked && form.doc_number?.trim() ? 'Consulte el documento para traer la razón social, o active «Escribir manualmente»' : 'Nombre o razón social y número de documento son requeridos')
       return
     }
     setSaving(true)
@@ -422,7 +429,10 @@ export default function ClientesPage() {
                   <label className="block text-xs font-medium text-stone-600 mb-1">Tipo de documento</label>
                   <SearchableSelect
                     value={toContactDocCode(form.doc_type)}
-                    onChange={(v) => setF('doc_type', String(v ?? ''))}
+                    onChange={(v) => {
+                      setManualName(false)
+                      setForm((f) => ({ ...f, doc_type: String(v ?? ''), ...(contactDocSupportsConsulta(f.doc_type) ? { business_name: '' } : {}) }))
+                    }}
                     options={contactDocSelectOptions()}
                     searchable={false}
                     className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
@@ -435,18 +445,14 @@ export default function ClientesPage() {
                       <input
                         className="flex-1 min-w-0 px-3 py-2 border-0 text-sm"
                         value={form.doc_number}
-                        onChange={(e) => setF('doc_number', e.target.value)}
+                        onChange={(e) => {
+                          // Cambiar el número invalida el nombre traído antes: se vuelve a consultar (salvo escritura manual).
+                          setF('doc_number', e.target.value)
+                          if (nameLocked && form.business_name) setF('business_name', '')
+                        }}
                         placeholder={toContactDocCode(form.doc_type) === '6' ? 'RUC 11 dígitos' : 'DNI 8 dígitos'}
                       />
-                      <button
-                        type="button"
-                        onClick={handleConsulta}
-                        disabled={consultando || !form.doc_number?.trim()}
-                        className="px-3 py-2 border-l border-stone-200 text-sm text-rest-600 hover:bg-rest-50 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <SearchCheck size={14} className={consultando ? 'animate-pulse' : ''} />
-                        {consultando ? '...' : 'Consultar'}
-                      </button>
+                      <ConsultaButton onClick={handleConsulta} disabled={consultando || !form.doc_number?.trim()} loading={consultando} />
                     </div>
                   ) : (
                     <input
@@ -460,10 +466,15 @@ export default function ClientesPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-stone-600 mb-1">Razón social / Nombre *</label>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="block text-xs font-medium text-stone-600">Razón social / Nombre *</label>
+                    {contactDocSupportsConsulta(form.doc_type) && <ManualNameToggle checked={manualName} onChange={setManualName} />}
+                  </div>
                   <input
-                    className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
+                    className={nameInputClass(nameLocked)}
                     value={form.business_name}
+                    readOnly={nameLocked}
+                    placeholder={nameLocked ? 'Se completa al consultar el documento' : ''}
                     onChange={(e) => setF('business_name', e.target.value)}
                   />
                 </div>

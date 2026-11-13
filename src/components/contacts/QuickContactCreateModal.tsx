@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { X } from 'lucide-react'
+import { ConsultaButton, ManualNameToggle, nameInputClass } from '@/components/contacts/ContactLookupControls'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
@@ -48,6 +49,8 @@ export function QuickContactCreateModal({
   const [form, setForm] = useState(() => emptyForm(defaultDocType))
   const [consultaLoading, setConsultaLoading] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
+  /** Con RUC/DNI la razón social viene de la consulta (bloqueada); este interruptor permite escribirla a mano. */
+  const [manualName, setManualName] = useState(false)
 
   /** Evita reconsultar mientras el modal sigue abierto; se reinicia al cerrar. */
   const autoConsultedRef = useRef(false)
@@ -62,6 +65,8 @@ export function QuickContactCreateModal({
       doc_number: defaultDocNumber?.trim() || '',
       business_name: defaultBusinessName?.trim() || '',
     })
+    // Si llega un nombre escrito en el buscador (sin documento), se deja editable.
+    setManualName(Boolean(defaultBusinessName?.trim()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultDocType, defaultDocNumber, defaultBusinessName])
 
@@ -75,6 +80,8 @@ export function QuickContactCreateModal({
     void runConsulta(code, num)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultDocType, defaultDocNumber])
+
+  const nameLocked = contactDocSupportsConsulta(form.doc_type) && !manualName
 
   const handleConsulta = () => runConsulta(toContactDocCode(form.doc_type), form.doc_number)
 
@@ -150,13 +157,15 @@ export function QuickContactCreateModal({
             <div className="min-w-[9.5rem] shrink-0">
               <SearchableSelect
                 value={toContactDocCode(form.doc_type)}
-                onChange={(v) =>
+                onChange={(v) => {
+                  setManualName(false)
                   setForm((q) => ({
                     ...q,
                     doc_type: String(v ?? '6'),
                     doc_number: '',
+                    business_name: contactDocSupportsConsulta(q.doc_type) ? '' : q.business_name,
                   }))
-                }
+                }}
                 options={contactDocSelectOptions()}
                 searchable={false}
                 className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2"
@@ -169,29 +178,33 @@ export function QuickContactCreateModal({
                 setForm((q) => ({
                   ...q,
                   doc_number: sanitizeContactDocNumber(q.doc_type, e.target.value),
+                  // Cambiar el número invalida el nombre traído antes: se vuelve a consultar (salvo escritura manual).
+                  ...(nameLocked ? { business_name: '' } : {}),
                 }))
               }
               placeholder={contactDocNumberPlaceholder(form.doc_type)}
               className="flex-1 min-w-[6rem] border border-stone-200 rounded-xl px-3 py-2 text-sm"
             />
             {contactDocSupportsConsulta(form.doc_type) && (
-              <button
-                type="button"
+              <ConsultaButton
                 onClick={() => void handleConsulta()}
                 disabled={consultaLoading || form.doc_number.length < contactDocConsultMinLength(form.doc_type)}
-                className="px-3 py-2 bg-stone-100 text-stone-700 rounded-xl text-sm font-medium hover:bg-stone-200 disabled:opacity-50"
-              >
-                {consultaLoading ? '...' : 'Consultar'}
-              </button>
+                loading={consultaLoading}
+                className="rounded-xl"
+              />
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-stone-600 mb-1">Razón social / Nombre</label>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <label className="block text-xs font-medium text-stone-600">Razón social / Nombre</label>
+              {contactDocSupportsConsulta(form.doc_type) && <ManualNameToggle checked={manualName} onChange={setManualName} />}
+            </div>
             <input
               value={form.business_name}
+              readOnly={nameLocked}
               onChange={(e) => setForm((q) => ({ ...q, business_name: e.target.value }))}
-              className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Obligatorio"
+              className={nameInputClass(nameLocked)}
+              placeholder={nameLocked ? 'Se completa al consultar el documento' : 'Obligatorio'}
             />
           </div>
           <div>
