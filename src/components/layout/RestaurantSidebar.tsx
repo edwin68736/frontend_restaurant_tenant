@@ -94,7 +94,7 @@ function MiniFlyoutCard({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >
-      <p className="px-3 pb-1.5 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-stone-400">{title}</p>
+      <p className="-mt-2 mb-1 rounded-t-2xl bg-rest-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">{title}</p>
       {items.map((it) => {
         const Icon = it.icon
         const active = pathActive(pathname, it.to)
