@@ -49,5 +49,5 @@ export function ManualNameToggle({ checked, onChange }: { checked: boolean; onCh
 export function nameInputClass(locked: boolean, base = 'w-full border rounded-xl px-3 py-2 text-sm'): string {
   return locked
     ? `${base} border-stone-200 bg-stone-50 text-stone-700 cursor-not-allowed focus:outline-none`
-    : `${base} border-stone-200 focus:outline-none focus:ring-2 focus:ring-rest-500 focus:border-rest-500`
+    : `${base} border-stone-200`
 }
