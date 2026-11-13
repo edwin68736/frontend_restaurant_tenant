@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
 import { Settings, X } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -39,23 +40,108 @@ function navEntryClasses(isActive: boolean, mini: boolean) {
   )
 }
 
+type FlyoutPos = { top: number; left: number }
+
+/**
+ * Flotante del sidebar en modo mini: al pasar el mouse por un icono muestra el nombre de la sección y sus accesos, sin tener que
+ * expandir el sidebar. Cierra con una pequeña espera para poder llevar el mouse del icono al flotante.
+ */
+function useMiniFlyout() {
+  const [pos, setPos] = useState<FlyoutPos | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancel = () => {
+    if (timer.current) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+  }
+  const scheduleClose = () => {
+    cancel()
+    timer.current = setTimeout(() => setPos(null), 160)
+  }
+  useEffect(() => cancel, [])
+  const openAt = (el: HTMLElement, itemCount: number) => {
+    cancel()
+    const rect = el.getBoundingClientRect()
+    const estimated = 44 + itemCount * 36
+    setPos({ top: Math.max(8, Math.min(rect.top, window.innerHeight - estimated - 8)), left: rect.right + 8 })
+  }
+  return { pos, close: () => setPos(null), cancel, scheduleClose, openAt }
+}
+
+function MiniFlyoutCard({
+  pos,
+  title,
+  items,
+  pathname,
+  onNavigate,
+  onEnter,
+  onLeave,
+}: {
+  pos: FlyoutPos
+  title: string
+  items: NavItem[]
+  pathname: string
+  onNavigate: () => void
+  onEnter: () => void
+  onLeave: () => void
+}) {
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div
+      className="fixed z-50 min-w-[210px] max-h-[calc(100vh-1rem)] overflow-y-auto rounded-2xl border border-stone-200 bg-white py-2 text-stone-800 shadow-xl ring-1 ring-black/5"
+      style={{ top: pos.top, left: pos.left }}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+    >
+      <p className="px-3 pb-1.5 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-stone-400">{title}</p>
+      {items.map((it) => {
+        const Icon = it.icon
+        const active = pathActive(pathname, it.to)
+        return (
+          <NavLink
+            key={it.to}
+            to={it.to}
+            onClick={onNavigate}
+            className={clsx(
+              'flex items-center gap-2 px-3 py-2 text-sm min-w-0',
+              active ? 'bg-rest-600 text-white' : 'text-stone-700 hover:bg-stone-50 hover:text-stone-900',
+            )}
+          >
+            <Icon size={16} strokeWidth={2} className="shrink-0" />
+            <span className="truncate min-w-0">{it.label}</span>
+          </NavLink>
+        )
+      })}
+    </div>,
+    document.body,
+  )
+}
+
 function NavEntry({
   item,
   collapsed,
   onClose,
   mini,
+  onHoverEnter,
+  onHoverLeave,
 }: {
   item: NavItem
   collapsed: boolean
   onClose: () => void
   mini?: boolean
+  onHoverEnter?: (el: HTMLElement) => void
+  onHoverLeave?: () => void
 }) {
   const Icon = item.icon
   return (
     <NavLink
       to={item.to}
       onClick={onClose}
-      title={item.label}
+      aria-label={collapsed ? item.label : undefined}
+      title={collapsed ? undefined : item.label}
+      onMouseEnter={onHoverEnter ? (e) => onHoverEnter(e.currentTarget) : undefined}
+      onMouseLeave={onHoverLeave}
       className={({ isActive }) => navEntryClasses(isActive, !!mini)}
     >
       <Icon size={collapsed ? 20 : 18} strokeWidth={2} className="shrink-0" />
@@ -78,13 +164,36 @@ function NavGroupSection({
   mini?: boolean
 }) {
   const hasActive = group.items.some((item) => pathActive(pathname, item.to))
+  const fly = useMiniFlyout()
 
   if (collapsed) {
     return (
       <div className="space-y-1">
         {group.items.map((item) => (
-          <NavEntry key={item.to} item={item} collapsed mini={mini} onClose={onClose} />
+          <NavEntry
+            key={item.to}
+            item={item}
+            collapsed
+            mini={mini}
+            onClose={onClose}
+            onHoverEnter={(el) => fly.openAt(el, group.items.length)}
+            onHoverLeave={fly.scheduleClose}
+          />
         ))}
+        {fly.pos ? (
+          <MiniFlyoutCard
+            pos={fly.pos}
+            title={group.label || (group.items[0]?.label ?? '')}
+            items={group.items}
+            pathname={pathname}
+            onNavigate={() => {
+              fly.close()
+              onClose()
+            }}
+            onEnter={fly.cancel}
+            onLeave={fly.scheduleClose}
+          />
+        ) : null}
       </div>
     )
   }
@@ -138,6 +247,7 @@ export default function RestaurantSidebar({
   )
 
   const showSettings = canAccessAppSettings(restaurantPermissions, employeeType)
+  const settingsFly = useMiniFlyout()
   const showPlanInSidebar = !embedded && !isTauriDesktop()
 
   const sidebarClass = clsx(
@@ -229,7 +339,10 @@ export default function RestaurantSidebar({
           <NavLink
             to="/ajustes"
             onClick={onClose}
-            title="Impresoras y ajustes"
+            title={isCollapsed ? undefined : 'Impresoras y ajustes'}
+            aria-label={isCollapsed ? 'Impresoras y ajustes' : undefined}
+            onMouseEnter={isMini ? (e) => settingsFly.openAt(e.currentTarget, 1) : undefined}
+            onMouseLeave={isMini ? settingsFly.scheduleClose : undefined}
             className={({ isActive }) => navEntryClasses(isActive, isMini)}
           >
             <Settings size={isCollapsed ? 20 : 18} strokeWidth={2} className="shrink-0" />
@@ -237,6 +350,20 @@ export default function RestaurantSidebar({
               <span>{isDesktop ? 'Impresoras y ajustes' : 'Configuración'}</span>
             ) : null}
           </NavLink>
+          {isMini && settingsFly.pos ? (
+            <MiniFlyoutCard
+              pos={settingsFly.pos}
+              title="Equipo"
+              items={[{ to: '/ajustes', label: 'Impresoras y ajustes', icon: Settings } as NavItem]}
+              pathname={pathname}
+              onNavigate={() => {
+                settingsFly.close()
+                onClose()
+              }}
+              onEnter={settingsFly.cancel}
+              onLeave={settingsFly.scheduleClose}
+            />
+          ) : null}
         </div>
       ) : null}
     </aside>
