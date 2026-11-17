@@ -16,7 +16,7 @@ export function getMinIssueDatePeru(): string {
 export function clampIssueDatePeru(value: string): string {
   const d = String(value ?? '').slice(0, 10)
   const today = getTodayPeru()
-  if (!/^d{4}-d{2}-d{2}$/.test(d)) return today
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return today
   const min = getMinIssueDatePeru()
   return d < min ? min : d > today ? today : d
 }
