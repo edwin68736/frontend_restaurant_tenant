@@ -3,14 +3,18 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { productsService, type CategoryWithCount } from '@/services/products.service'
 import { companyService } from '@/services/company.service'
+import { useAuth } from '@/contexts/AuthContext'
+import { useBranch } from '@/contexts/BranchContext'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { sortCategories } from '@/utils/sortCategories'
 
-const emptyForm = () => ({
+const emptyForm = (branchId = '') => ({
   name: '',
   description: '',
   sort_order: 1,
+  /** '' = todas las sucursales; id en texto = solo esa sucursal. */
+  branch_id: branchId,
 })
 
 type Props = {
@@ -29,6 +33,12 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
   // Sucursales del tenant: con más de una se muestra de qué sucursal es cada categoría (vacío = todas).
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const multiBranch = branches.length > 1
+  // Quien administra el catálogo global gestiona todas las categorías; el resto, solo las de SU sucursal activa (el backend
+  // lo exige igual).
+  const { canManageGlobalCatalog } = useAuth()
+  const { activeBranchId } = useBranch()
+  const canManageRow = (c: CategoryWithCount) =>
+    canManageGlobalCatalog || (c.branch_id != null && c.branch_id === activeBranchId)
   useEffect(() => {
     companyService.listBranches().then((b) => setBranches(b ?? [])).catch(() => {})
   }, [])
@@ -52,7 +62,10 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
       categories.length > 0
         ? Math.max(...categories.map((c) => c.sort_order ?? 0), 0) + 1
         : 1
-    setForm({ ...emptyForm(), sort_order: nextOrder })
+    setForm({
+      ...emptyForm(!canManageGlobalCatalog && activeBranchId > 0 ? String(activeBranchId) : ''),
+      sort_order: nextOrder,
+    })
     setModal('create')
   }
 
@@ -62,6 +75,7 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
       name: cat.name,
       description: cat.description ?? '',
       sort_order: cat.sort_order ?? 0,
+      branch_id: cat.branch_id != null ? String(cat.branch_id) : '',
     })
     setModal('edit')
   }
@@ -72,6 +86,8 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
       return
     }
     const order = Math.max(0, Math.floor(Number(form.sort_order) || 0))
+    // Con una sola sucursal no hay ámbito que elegir (la categoría es de todas, como siempre).
+    const branchId = multiBranch ? (form.branch_id === '' ? null : Number(form.branch_id)) : undefined
     setSaving(true)
     try {
       if (modal === 'edit' && editing) {
@@ -79,10 +95,12 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
           name: form.name.trim(),
           description: form.description.trim(),
           sort_order: order,
+          // Solo quien administra el catálogo global puede cambiar el ámbito; el resto lo conserva.
+          ...(canManageGlobalCatalog && branchId !== undefined ? { branch_id: branchId } : {}),
         })
         toast.success('Categoría actualizada')
       } else {
-        await productsService.createCategory(form.name.trim(), form.description.trim(), order)
+        await productsService.createCategory(form.name.trim(), form.description.trim(), order, branchId)
         toast.success('Categoría creada')
       }
       setModal(null)
@@ -172,6 +190,7 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
                     <td className="px-3 py-2 text-right tabular-nums">{cat.product_count ?? 0}</td>
                     <td className="px-3 py-2">
                       <div className="flex justify-end gap-1">
+                        {canManageRow(cat) && (
                         <button
                           type="button"
                           onClick={() => openEdit(cat)}
@@ -180,6 +199,8 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
                         >
                           <Pencil size={14} />
                         </button>
+                        )}
+                        {canManageRow(cat) && (
                         <button
                           type="button"
                           onClick={() => setDeleteTarget(cat)}
@@ -194,6 +215,7 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
                         >
                           <Trash2 size={14} />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -221,6 +243,31 @@ export function ProductCategoriesPanel({ onCategoriesChange }: Props) {
                 placeholder="Ej. Bebidas"
               />
             </div>
+            {multiBranch && (
+              <div>
+                <label className="block text-sm font-medium text-stone-700 mb-1">Disponible en</label>
+                <select
+                  value={form.branch_id}
+                  onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
+                  disabled={!canManageGlobalCatalog}
+                  className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white disabled:bg-stone-50"
+                >
+                  {canManageGlobalCatalog && <option value="">Todas las sucursales</option>}
+                  {branches
+                    .filter((b) => canManageGlobalCatalog || b.id === activeBranchId)
+                    .map((b) => (
+                      <option key={b.id} value={String(b.id)}>
+                        Solo {b.name}
+                      </option>
+                    ))}
+                </select>
+                <p className="text-xs text-stone-500 mt-1">
+                  {canManageGlobalCatalog
+                    ? 'Una categoría de una sola sucursal solo admite productos que se vendan únicamente allí. Si ya tiene productos de otras sucursales no se podrá limitar.'
+                    : 'Tu usuario administra las categorías de su sucursal.'}
+                </p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-stone-700 mb-1">Descripción</label>
               <input

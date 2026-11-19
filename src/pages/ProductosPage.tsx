@@ -730,13 +730,13 @@ export default function ProductosPage() {
       }
       subtitle={
         activeTab === 'categories'
-          ? 'Gestiona el orden y las categorías del catálogo (compartidas entre sucursales).'
+          ? 'Gestiona el orden y las categorías del catálogo: para todas las sucursales o solo para una.'
           : activeTab === 'prep_areas'
             ? 'Define áreas para comandas, cocina e impresoras por estación.'
             : activeTab === 'combos'
               ? 'Vende varios productos juntos a un precio fijo, con opciones a elegir por el cliente.'
               : activeBranch
-              ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías son compartidas en todas las sucursales.`
+              ? `Catálogo de la sucursal ${activeBranch.name}. Las categorías pueden ser de todas las sucursales o solo de una.`
               : 'Seleccione una sucursal activa para administrar el catálogo.'
       }
       subtitleClassName="hidden sm:block"

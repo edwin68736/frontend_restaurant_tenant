@@ -496,18 +496,21 @@ export const productsService = {
       .get<{ data: CategoryWithCount[] }>('/api/categories', { params: { with_counts: 'true' } })
       .then((r) => r.data.data ?? []),
 
-  createCategory: (name: string, description?: string, sortOrder?: number) =>
+  /** branchId: solo esa sucursal; omitido/null = todas las sucursales. */
+  createCategory: (name: string, description?: string, sortOrder?: number, branchId?: number | null) =>
     api
       .post<{ data: Category }>('/api/categories', {
         name,
         description: description ?? '',
         sort_order: sortOrder,
+        ...(branchId != null ? { branch_id: branchId } : {}),
       })
       .then((r) => r.data.data!),
 
   updateCategory: (
     id: number,
-    data: { name: string; description?: string; sort_order: number },
+    // branch_id: omitido = no cambiar el ámbito; null = todas las sucursales; número = solo esa sucursal.
+    data: { name: string; description?: string; sort_order: number; branch_id?: number | null },
   ) =>
     api.put<{ data: Category }>(`/api/categories/${id}`, data).then((r) => r.data.data!),
 
