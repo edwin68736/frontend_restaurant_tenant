@@ -320,7 +320,7 @@ export default function ProductosPage() {
 
   const loadCategories = () => {
     productsService
-      .listCategories()
+      .listCategories(activeBranchId)
       .then((rows) => setCategories(sortCategories(rows)))
       .catch(() => setCategories([]))
   }

@@ -106,6 +106,8 @@ export interface Category {
   parent_id?: number | null
   sort_order?: number
   active?: boolean
+  /** Sucursal de la categoría. null/ausente = todas las sucursales; con valor, solo esa sucursal. */
+  branch_id?: number | null
 }
 
 export interface CategoryWithCount extends Category {
@@ -481,8 +483,11 @@ export const productsService = {
         total: r.data.total ?? 0,
       })),
 
-  listCategories: () =>
-    api.get<{ data: Category[] }>('/api/categories').then((r) => r.data.data ?? []),
+  /** branchId: solo las categorías visibles en esa sucursal (las de todas + las suyas). El administrador sin él las ve todas. */
+  listCategories: (branchId?: number) =>
+    api
+      .get<{ data: Category[] }>('/api/categories', { params: branchId ? { branch_id: branchId } : undefined })
+      .then((r) => r.data.data ?? []),
 
   listUnits: () => api.get<{ data: Unit[] }>('/api/units').then((r) => r.data.data ?? []),
 

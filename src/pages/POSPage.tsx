@@ -325,7 +325,7 @@ export default function POSPage() {
 
   const loadPosMeta = useCallback(() => {
     if (!activeBranchId) return
-    productsService.listCategories().then((rows) => setCategories(sortCategories(rows)))
+    productsService.listCategories(activeBranchId).then((rows) => setCategories(sortCategories(rows)))
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
     contactsService
       .list('', 'customer')

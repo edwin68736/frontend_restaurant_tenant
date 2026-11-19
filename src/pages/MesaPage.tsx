@@ -228,7 +228,7 @@ export default function MesaPage() {
 
   const loadMesaMeta = useCallback(() => {
     if (!activeBranchId) return
-    productsService.listCategories().then((rows) => setCategories(sortCategories(rows))).catch(() => [])
+    productsService.listCategories(activeBranchId).then((rows) => setCategories(sortCategories(rows))).catch(() => [])
     companyService.getSunat().then(setSunat).catch(() => setSunat(null))
     contactsService
       .list('', 'customer')
