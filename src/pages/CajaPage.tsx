@@ -2215,7 +2215,8 @@ export default function CajaPage() {
                 </button>
               </div>
 
-              <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50/60 px-4 py-3 sm:grid-cols-3 sm:px-5">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="sticky top-0 z-10 grid grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50 px-4 py-3 sm:grid-cols-3 sm:px-5 [@media(max-height:640px)]:static">
                 <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Monto inicial</p>
                   <p className="mt-0.5 text-lg font-bold text-stone-800 tabular-nums">S/ {Number(session.opening_balance).toFixed(2)}</p>
@@ -2255,7 +2256,7 @@ export default function CajaPage() {
               </div>
 
               {closeWithArqueo && (
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="px-4 py-4 sm:px-5">
                   <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                     <ArqueoDenominationSection
                       title="Billetes"
@@ -2281,6 +2282,7 @@ export default function CajaPage() {
                   className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm"
                   placeholder="Arqueo, observaciones"
                 />
+              </div>
               </div>
 
               <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-white px-4 py-4 sm:px-5">
@@ -2411,7 +2413,8 @@ export default function CajaPage() {
                 </button>
               </div>
 
-              <div className="grid shrink-0 grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50/60 px-4 py-3 sm:grid-cols-3 sm:px-5">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="sticky top-0 z-10 grid grid-cols-1 gap-2 border-b border-stone-100 bg-stone-50 px-4 py-3 sm:grid-cols-3 sm:px-5 [@media(max-height:640px)]:static">
                 <div className="rounded-xl border border-stone-200 bg-white px-3 py-2.5">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-stone-500">Total contado</p>
                   <p className="mt-0.5 text-lg font-bold text-stone-900 tabular-nums">S/ {arqueoTotal.toFixed(2)}</p>
@@ -2431,7 +2434,7 @@ export default function CajaPage() {
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+              <div className="px-4 py-4 sm:px-5">
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   <ArqueoDenominationSection
                     title="Billetes"
@@ -2446,6 +2449,7 @@ export default function CajaPage() {
                     onChangeQty={(key, qty) => setArqueoDraft((a) => ({ ...a, [key]: qty }))}
                   />
                 </div>
+              </div>
               </div>
 
               <div className="flex shrink-0 gap-2 border-t border-stone-200 bg-white px-4 py-4 sm:px-5">

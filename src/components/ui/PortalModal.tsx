@@ -46,10 +46,10 @@ export function PortalModal({
     >
       <div
         className={clsx(
-          // Pantallas de poca altura: el panel hace scroll y las tarjetas simples (sin flex propio, con overflow-hidden)
+          // Pantallas de poca altura: el panel hace scroll y las tarjetas simples (sin flex propio ni scroll propio, con overflow-hidden)
           // no se encogen; antes se encogían y recortaban el contenido, y el botón Guardar quedaba inalcanzable.
           // Las tarjetas flex con scroll interno (cuerpo con overflow-y-auto) siguen encogiéndose como siempre.
-          'my-auto flex w-full min-h-0 flex-col overflow-y-auto overscroll-contain [&>div:not(.flex)]:shrink-0',
+          'my-auto flex w-full min-h-0 flex-col overflow-y-auto overscroll-contain [&>div:not(.flex):not(.overflow-y-auto)]:shrink-0',
           MAX_H_MODAL_PANEL,
           className,
         )}
