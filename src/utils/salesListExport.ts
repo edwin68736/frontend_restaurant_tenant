@@ -12,6 +12,8 @@ export type SalesExportRow = {
   total: number
   estado?: string
   estadoSunat?: string
+  convertido: string
+  notaOrigen: string
 }
 
 function toExportRows(sales: Sale[], opts?: { includeBilling?: boolean }): SalesExportRow[] {
@@ -22,7 +24,14 @@ function toExportRows(sales: Sale[], opts?: { includeBilling?: boolean }): Sales
     total: Number(s.total) || 0,
     estado: s.status === 'cancelled' ? 'Anulada' : 'Activa',
     estadoSunat: opts?.includeBilling ? billingStatusDisplayLabel(s.billing_status) : undefined,
+    convertido: s.is_converted ? 'Sí' : 'No',
+    notaOrigen: s.converted_from_number ?? '',
   }))
+}
+
+/** Total vigente de lo convertido desde una nota de venta (ya contado al vender la nota): mismo criterio que salesActiveTotal. */
+export function salesConvertedTotal(sales: Sale[]): number {
+  return salesActiveTotal(sales.filter((s) => s.is_converted))
 }
 
 /** Total vigente: sin anuladas ni notas de crédito/débito (mismo criterio que las tarjetas del reporte). */
@@ -50,6 +59,7 @@ function excelColumns(includeBilling: boolean): ExcelExportColumn<SalesExportRow
     { key: 'estado', label: 'Estado' },
   ]
   if (includeBilling) base.push({ key: 'estadoSunat', label: 'Estado SUNAT' })
+  base.push({ key: 'convertido', label: 'Convertido' }, { key: 'notaOrigen', label: 'Nota de venta origen' })
   return base
 }
 
@@ -57,7 +67,7 @@ function pdfColumns(includeBilling: boolean): PdfExportColumn<SalesExportRow>[] 
   const base = excelColumns(includeBilling)
   return base.map((c, i) => ({
     ...c,
-    width: [28, 45, 50, 25, 22, 28][i] ?? 30,
+    width: [28, 45, 50, 25, 22, 28, 22, 40][i] ?? 30,
   }))
 }
 
@@ -67,9 +77,14 @@ export async function exportSalesListExcel(
   filename: string,
   opts?: { includeBilling?: boolean },
 ): Promise<void> {
-  await exportTableToExcel(title, excelColumns(!!opts?.includeBilling), toExportRows(sales, opts), filename, {
-    total: salesActiveTotal(sales),
-  })
+  await exportTableToExcel(
+    title,
+    excelColumns(!!opts?.includeBilling),
+    toExportRows(sales, opts),
+    filename,
+    { total: salesActiveTotal(sales) },
+    [{ label: 'De los cuales convertidos desde nota de venta', values: { total: salesConvertedTotal(sales) } }],
+  )
 }
 
 export function exportSalesListPdf(

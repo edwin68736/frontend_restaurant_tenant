@@ -15,6 +15,8 @@ export async function exportTableToExcel<T extends object>(
   filename?: string,
   /** Fila final TOTAL: suma por clave de columna (solo las columnas indicadas). */
   totals?: Record<string, number>,
+  /** Filas informativas debajo del TOTAL (p. ej. «De los cuales convertidos»): etiqueta en la primera columna y valores por clave de columna. */
+  extraTotalRows?: { label: string; values: Record<string, number> }[],
 ): Promise<void> {
   const headers: CellValue[] = columns.map((c) => c.label)
   const body: CellValue[][] = data.map((row) =>
@@ -37,6 +39,15 @@ export async function exportTableToExcel<T extends object>(
         return i === 0 ? 'TOTAL' : ''
       }),
     )
+    for (const extra of extraTotalRows ?? []) {
+      rows.push(
+        columns.map((col, i) => {
+          const v = extra.values[String(col.key)]
+          if (v !== undefined) return Math.round(v * 100) / 100
+          return i === 0 ? extra.label : ''
+        }),
+      )
+    }
   }
   const bytes = await writeXlsx({
     sheets: [{ name: sheetName.slice(0, 31), rows }],

@@ -85,6 +85,7 @@ export function useTableReportRunner<T extends object>(definition: TableReportDe
         all,
         `${definition.id}-${String(filters.from ?? filters.date_from ?? 'reporte')}.xlsx`,
         definition.excelTotals?.(all),
+        definition.excelExtraTotals?.(all),
       )
       toast.success('Excel exportado')
     } catch {

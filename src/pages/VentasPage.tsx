@@ -1632,6 +1632,14 @@ export default function VentasPage() {
                           <span className="font-bold text-stone-800 text-xs sm:text-sm ml-0.5 sm:ml-1 break-all sm:break-normal">
                             {formatSaleDocumentNumber(s)}
                           </span>
+                          {s.is_converted && (
+                            <span
+                              className="mt-0.5 block text-[9px] px-1.5 py-0.5 rounded-full font-medium w-fit bg-amber-100 text-amber-800"
+                              title="Comprobante emitido desde una nota de venta: ya se contó al vender la nota"
+                            >
+                              Convertido{s.converted_from_number ? ` · ${s.converted_from_number}` : ''}
+                            </span>
+                          )}
                           {tab === 'facturacion' && (
                             <span
                               className={clsx(
@@ -1821,6 +1829,11 @@ export default function VentasPage() {
                           <p className="mt-0.5 text-base sm:text-lg font-bold text-rest-700 tabular-nums">
                             {formatSoles(listSummary.sum_active)}
                           </p>
+                          {(listSummary.count_converted ?? 0) > 0 && (
+                            <p className="mt-1 text-[10px] sm:text-xs font-medium text-amber-700">
+                              De los cuales convertidos desde nota de venta: {formatSoles(listSummary.sum_converted ?? 0)} ({listSummary.count_converted})
+                            </p>
+                          )}
                           {listSummary.count_cancelled > 0 && (
                             <p className="mt-1 text-[10px] sm:text-xs font-normal text-stone-500">
                               Activas: {formatSoles(listSummary.sum_active)}

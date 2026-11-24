@@ -42,6 +42,10 @@ export interface Sale {
   note_type_reason?: string
   /** Método principal (legacy); si hay `payments`, preferir esa lista. */
   payment_method?: string
+  /** Comprobante emitido desde una nota de venta: su importe ya se contó al vender la nota. */
+  is_converted?: boolean
+  /** Número de la nota de venta de origen (p. ej. NV001-00000206). */
+  converted_from_number?: string
 }
 
 export interface SaleItem {
@@ -114,6 +118,9 @@ export interface SaleListSummary {
   sum_active: number
   count_cancelled: number
   count_active: number
+  /** De lo vigente: lo que corresponde a comprobantes emitidos desde una nota de venta. */
+  sum_converted?: number
+  count_converted?: number
 }
 
 export const emptySaleListSummary = (): SaleListSummary => ({
@@ -124,6 +131,8 @@ export const emptySaleListSummary = (): SaleListSummary => ({
   sum_active: 0,
   count_cancelled: 0,
   count_active: 0,
+  sum_converted: 0,
+  count_converted: 0,
 })
 
 function parseSaleListSummary(raw: unknown): SaleListSummary {
@@ -136,6 +145,8 @@ function parseSaleListSummary(raw: unknown): SaleListSummary {
     sum_active: Number(s.sum_active) || 0,
     count_cancelled: Number(s.count_cancelled) || 0,
     count_active: Number(s.count_active) || 0,
+    sum_converted: Number(s.sum_converted) || 0,
+    count_converted: Number(s.count_converted) || 0,
   }
 }
 

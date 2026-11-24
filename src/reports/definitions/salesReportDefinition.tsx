@@ -43,6 +43,9 @@ const COLS: ExportColumn<Sale>[] = [
     label: 'Estado',
     format: (v) => (String(v) === 'cancelled' ? 'Anulada' : 'Activa'),
   },
+  // Comprobante emitido desde una nota de venta: ya se contó al vender la nota, el usuario puede descontarlo.
+  { key: 'is_converted', label: 'Convertido', format: (_, r) => (r.is_converted ? 'Sí' : 'No') },
+  { key: 'converted_from_number', label: 'Nota de venta origen', format: (_, r) => r.converted_from_number || '' },
   {
     key: 'billing_status',
     label: 'SUNAT',
@@ -145,12 +148,17 @@ function SalesSummary({
   const s = summary as SaleListSummary | null
   if (!s) return null
   return (
-    <ReportSummaryRow desktopCols={4}>
+    <ReportSummaryRow desktopCols={5}>
       {[
         { label: 'Ventas activas', value: fmtMoney(s.sum_active), hint: `${s.count_active ?? 0} comprobantes` },
         { label: 'Anuladas', value: fmtMoney(s.sum_cancelled), hint: `${s.count_cancelled ?? 0} comprobantes` },
         { label: 'Subtotal', value: fmtMoney(s.sum_subtotal) },
         { label: 'Total general', value: fmtMoney(s.sum_total) },
+        {
+          label: 'De los cuales convertidos',
+          value: fmtMoney(s.sum_converted ?? 0),
+          hint: `${s.count_converted ?? 0} desde nota de venta (ya contadas)`,
+        },
       ].map((card) => (
         <ReportSummaryCard key={card.label} label={card.label} value={card.value} hint={card.hint} />
       ))}
@@ -204,6 +212,18 @@ export const salesReportDefinition: TableReportDefinition<Sale> = {
     )
     const sum = (k: 'subtotal' | 'tax_amount' | 'total') => vigentes.reduce((a, r) => a + (Number(r[k]) || 0), 0)
     return { subtotal: sum('subtotal'), tax_amount: sum('tax_amount'), total: sum('total') }
+  },
+  excelExtraTotals: (rows) => {
+    const conv = rows.filter(
+      (r) => r.is_converted && r.status !== 'cancelled' && r.doc_type !== 'NOTA_CREDITO' && r.doc_type !== 'NOTA_DEBITO',
+    )
+    const sum = (k: 'subtotal' | 'tax_amount' | 'total') => conv.reduce((a, r) => a + (Number(r[k]) || 0), 0)
+    return [
+      {
+        label: 'De los cuales convertidos desde nota de venta',
+        values: { subtotal: sum('subtotal'), tax_amount: sum('tax_amount'), total: sum('total') },
+      },
+    ]
   },
   initialFilters: () => {
     const { from, to } = getCurrentMonthRange()
