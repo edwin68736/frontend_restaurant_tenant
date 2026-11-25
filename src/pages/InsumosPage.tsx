@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Boxes, History, Pencil, Plus } from 'lucide-react'
+import { ArrowUpDown, Boxes, History, Pencil, Plus } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PageShell } from '@/components/layout/PageShell'
 import { SearchInput } from '@/components/SearchInput'
@@ -12,17 +12,19 @@ import { apiError, formatCost, formatQty, isLowStock } from '@/utils/supplies'
 import { SupplyFormModal } from '@/components/supplies/SupplyFormModal'
 import { SupplyUnitsModal } from '@/components/supplies/SupplyUnitsModal'
 import { SupplyMovementsModal } from '@/components/supplies/SupplyMovementsModal'
+import { SupplyEntryModal } from '@/components/supplies/SupplyEntryModal'
 import { SUPPLY_BTN_GHOST, SUPPLY_BTN_PRIMARY, SUPPLY_INPUT } from '@/components/supplies/SupplyModalShell'
 
 const PAGE_SIZE = 30
 
-type ModalState = { kind: 'form'; supply: Supply | null } | { kind: 'units'; supply: Supply } | { kind: 'movements'; supply: Supply }
+type ModalState = { kind: 'form'; supply: Supply | null } | { kind: 'units'; supply: Supply } | { kind: 'movements'; supply: Supply } | { kind: 'entry'; supply: Supply }
 
 export default function InsumosPage() {
   const { hasPerm } = useAuth()
   const { activeBranchId } = useBranch()
   const canManage = hasPerm('sp.m')
   const canViewCost = hasPerm('rc.c')
+  const canPurchase = hasPerm('sp.p')
 
   const search = useDebouncedSearch()
   // null = aún no llega al mínimo de letras: se mantiene la lista sin filtrar.
@@ -109,7 +111,7 @@ export default function InsumosPage() {
                 {s.unit_cost != null && (
                   <>
                     <span>Promedio {s.avg_cost != null ? formatCost(s.avg_cost) : '—'}</span>
-                    <span>Último {formatCost(s.unit_cost)}</span>
+                    <span>Último {s.unit_cost > 0 ? formatCost(s.unit_cost) : '—'}</span>
                   </>
                 )}
                 {isLowStock(s) && <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">Stock bajo</span>}
@@ -119,6 +121,11 @@ export default function InsumosPage() {
                 {canManage && (
                   <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1 !px-2.5 !py-1.5 text-xs')} onClick={() => setModal({ kind: 'form', supply: s })}>
                     <Pencil size={13} /> Editar
+                  </button>
+                )}
+                {canPurchase && s.active && (
+                  <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1 !px-2.5 !py-1.5 text-xs')} onClick={() => setModal({ kind: 'entry', supply: s })}>
+                    <ArrowUpDown size={13} /> Ingreso / merma
                   </button>
                 )}
                 <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1 !px-2.5 !py-1.5 text-xs')} onClick={() => setModal({ kind: 'units', supply: s })}>
@@ -154,7 +161,27 @@ export default function InsumosPage() {
         />
       )}
       {modal?.kind === 'units' && <SupplyUnitsModal supply={modal.supply} units={units} canManage={canManage} onClose={() => setModal(null)} />}
-      {modal?.kind === 'movements' && <SupplyMovementsModal supply={modal.supply} branchId={activeBranchId} onClose={() => setModal(null)} />}
+      {modal?.kind === 'movements' && (
+        <SupplyMovementsModal
+          supply={modal.supply}
+          branchId={activeBranchId}
+          canManage={canManage}
+          canViewCost={canViewCost}
+          onClose={() => setModal(null)}
+          onChanged={load}
+        />
+      )}
+      {modal?.kind === 'entry' && (
+        <SupplyEntryModal
+          supply={modal.supply}
+          canViewCost={canViewCost}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null)
+            load()
+          }}
+        />
+      )}
     </PageShell>
   )
 }

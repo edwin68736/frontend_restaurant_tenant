@@ -17,6 +17,7 @@ export type RestaurantFeature =
   | 'clientes'
   | 'repartidores'
   | 'insumos'
+  | 'compras_insumos'
 
 /** Mapeo feature UI → permiso corto backend. */
 const FEATURE_PERM: Record<RestaurantFeature, string> = {
@@ -36,6 +37,7 @@ const FEATURE_PERM: Record<RestaurantFeature, string> = {
   clientes: 'o.ch',
   repartidores: 'd.v',
   insumos: 'sp.v', // además exige el módulo activado (ver useNavAccess)
+  compras_insumos: 'sp.p',
 }
 
 export function featureAllowed(permissions: string[] | null | undefined, feature: RestaurantFeature): boolean {
@@ -292,6 +294,7 @@ function featureToRoute(feature: RestaurantFeature): string {
     clientes: '/clientes',
     repartidores: '/repartidores',
     insumos: '/insumos',
+    compras_insumos: '/compras-insumos',
   }
   return map[feature] ?? '/comandas'
 }
