@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Supply } from '@/services/supplies.service'
-import { buildSupplyInput, emptySupplyForm, isLowStock, parseAmount, supplyToForm } from './supplies'
+import { buildSupplyInput, emptySupplyForm, formatCost, isLowStock, parseAmount, supplyToForm } from './supplies'
 import { canAccessFeature } from './restaurantPermissions'
 
 const supply: Supply = {
@@ -45,6 +45,11 @@ describe('insumos: cuerpo de la petición', () => {
     expect(parseAmount('')).toBe(0)
     expect(parseAmount('-1')).toBeNull()
     expect(parseAmount('abc')).toBeNull()
+  })
+
+  it('muestra costos pequeños sin truncarlos', () => {
+    expect(formatCost(0.0035)).toBe('S/ 0.0035')
+    expect(formatCost(3)).toBe('S/ 3.00')
   })
 
   it('stock bajo solo con mínimo definido', () => {

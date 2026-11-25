@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useDebouncedSearch } from '@/hooks/useDebouncedSearch'
 import { suppliesService, type MeasureUnit, type Supply } from '@/services/supplies.service'
-import { apiError, formatQty, isLowStock } from '@/utils/supplies'
+import { apiError, formatCost, formatQty, isLowStock } from '@/utils/supplies'
 import { SupplyFormModal } from '@/components/supplies/SupplyFormModal'
 import { SupplyUnitsModal } from '@/components/supplies/SupplyUnitsModal'
 import { SupplyMovementsModal } from '@/components/supplies/SupplyMovementsModal'
@@ -106,7 +106,12 @@ export default function InsumosPage() {
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
                 <span>Mínimo {formatQty(s.min_stock)}</span>
-                {s.unit_cost != null && <span>Costo S/ {s.unit_cost.toFixed(2)}</span>}
+                {s.unit_cost != null && (
+                  <>
+                    <span>Promedio {s.avg_cost != null ? formatCost(s.avg_cost) : '—'}</span>
+                    <span>Último {formatCost(s.unit_cost)}</span>
+                  </>
+                )}
                 {isLowStock(s) && <span className="rounded-full bg-red-50 px-2 py-0.5 font-medium text-red-700">Stock bajo</span>}
                 {!s.active && <span className="rounded-full bg-stone-100 px-2 py-0.5">Inactivo</span>}
               </div>

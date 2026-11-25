@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { suppliesService, type Supply, type SupplyMovement } from '@/services/supplies.service'
-import { apiError, formatQty } from '@/utils/supplies'
+import { apiError, formatCost, formatQty } from '@/utils/supplies'
 import { SUPPLY_BTN_GHOST, SupplyModalShell } from './SupplyModalShell'
 
 const PAGE_SIZE = 50
@@ -72,7 +72,8 @@ export function SupplyMovementsModal({ supply, branchId, onClose }: Props) {
               <div className="shrink-0 text-right">
                 <p className="text-sm font-semibold text-stone-800">{formatQty(m.quantity)}</p>
                 <p className="text-xs text-stone-500">saldo {formatQty(m.balance)}</p>
-                {m.unit_cost != null && m.unit_cost > 0 && <p className="text-xs text-stone-500">S/ {m.unit_cost.toFixed(2)}</p>}
+                {m.cost_unknown && <p className="text-xs text-amber-700">sin costo</p>}
+                {m.unit_cost != null && m.unit_cost > 0 && <p className="text-xs text-stone-500">{formatCost(m.unit_cost)}</p>}
               </div>
             </li>
           ))}

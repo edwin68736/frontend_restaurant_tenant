@@ -101,7 +101,7 @@ export function SupplyFormModal({ supply, units, canViewCost, onClose, onSaved }
           <label>
             <span className={SUPPLY_LABEL}>Costo de 1 {baseUnit ? baseUnit.code : 'unidad base'} (S/)</span>
             <input className={SUPPLY_INPUT} inputMode="decimal" value={form.unit_cost} placeholder="0.00" onChange={(e) => set({ unit_cost: e.target.value })} />
-            <span className="mt-1 block text-[11px] text-stone-500">La siguiente compra lo reemplaza.</span>
+            <span className="mt-1 block text-[11px] text-stone-500">Es el último costo: no cambia el promedio y la siguiente compra lo reemplaza.</span>
           </label>
         )}
         <label>

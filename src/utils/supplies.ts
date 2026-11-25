@@ -72,6 +72,11 @@ export function formatQty(n: number): string {
   return Number(n).toLocaleString('es-PE', { maximumFractionDigits: 3 })
 }
 
+/** Costo por unidad base: entre 2 y 4 decimales (un gramo puede costar 0.0035). */
+export function formatCost(n: number): string {
+  return `S/ ${Number(n).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+}
+
 export function apiError(e: unknown, fallback: string): string {
   return (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? fallback
 }

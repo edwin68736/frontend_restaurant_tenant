@@ -16,8 +16,10 @@ export type Supply = {
   expiry_date?: string
   stock_total: number
   stock_by_branch: SupplyBranchStock[] | null
-  /** Solo llega con permiso de ver costos. Es el costo por unidad base. */
+  /** Último costo por unidad base. Solo llega con permiso de ver costos. */
   unit_cost?: number
+  /** Costo promedio de la sucursal consultada; falta mientras no haya una entrada con costo. */
+  avg_cost?: number
 }
 
 export type SupplyInput = {
@@ -67,6 +69,8 @@ export type SupplyMovement = {
   notes: string
   created_at: string
   unit_cost?: number
+  /** Salió sin que hubiera un costo conocido. */
+  cost_unknown?: boolean
 }
 
 const BASE = '/api/restaurant/supplies'
