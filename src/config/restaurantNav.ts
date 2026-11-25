@@ -12,6 +12,7 @@ import {
   BarChart3,
   LayoutDashboard,
   Home,
+  Package,
 } from 'lucide-react'
 
 export type NavFeature =
@@ -29,6 +30,7 @@ export type NavFeature =
   | 'dashboard'
   | 'clientes'
   | 'repartidores'
+  | 'insumos'
 
 export type NavItem = {
   to: string
@@ -69,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, feature: 'dashboard' },
       { to: '/productos', label: 'Productos', icon: UtensilsCrossed, feature: 'productos' },
+      { to: '/insumos', label: 'Insumos', icon: Package, feature: 'insumos' },
       { to: '/mesas', label: 'Configurar mesas', icon: Layers, feature: 'mesas' },
       { to: '/clientes', label: 'Clientes', icon: Users, feature: 'clientes' },
       { to: '/repartidores', label: 'Repartidores', icon: Bike, feature: 'repartidores' },

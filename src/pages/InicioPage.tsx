@@ -15,6 +15,7 @@ import { PageShell } from '@/components/layout/PageShell'
 import { MiTurnoBlock } from '@/components/inicio/MiTurnoBlock'
 import { ResumenHoyBlock, showsResumenHoy } from '@/components/inicio/ResumenHoyBlock'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavAccess } from '@/hooks/useNavAccess'
 import { useBranch } from '@/contexts/BranchContext'
 import { useCashSession } from '@/contexts/CashSessionContext'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
@@ -36,12 +37,12 @@ function roleGroupOf(employeeType: string, isAdmin: boolean): RoleGroup {
 
 /** Orden de los accesos por rol: los primeros son las tareas del día y salen destacados. */
 const ORDER: Record<RoleGroup, string[]> = {
-  admin: ['/dashboard', '/pos', '/salas', '/comandas', '/ventas', '/caja', '/reportes', '/productos', '/clientes', '/repartidores', '/mesas'],
+  admin: ['/dashboard', '/pos', '/salas', '/comandas', '/ventas', '/caja', '/reportes', '/productos', '/insumos', '/clientes', '/repartidores', '/mesas'],
   cashier: ['/pos', '/caja', '/ventas', '/salas', '/comandas', '/clientes'],
   waiter: ['/salas', '/comandas', '/pos'],
   cook: ['/comandas'],
   driver: ['/repartidores', '/comandas'],
-  other: ['/pos', '/salas', '/comandas', '/ventas', '/caja', '/dashboard', '/reportes', '/productos', '/clientes', '/repartidores', '/mesas'],
+  other: ['/pos', '/salas', '/comandas', '/ventas', '/caja', '/dashboard', '/reportes', '/productos', '/insumos', '/clientes', '/repartidores', '/mesas'],
 }
 
 const DESCRIPTION: Record<string, string> = {
@@ -53,6 +54,7 @@ const DESCRIPTION: Record<string, string> = {
   '/caja': 'Abrir y cerrar turno, movimientos',
   '/reportes': 'Reportes de ventas y operación',
   '/productos': 'Carta, precios y stock',
+  '/insumos': 'Materia prima y su stock',
   '/clientes': 'Directorio de clientes',
   '/repartidores': 'Pedidos para delivery',
   '/mesas': 'Configurar salas y mesas',
@@ -68,6 +70,7 @@ const ACCENT: Record<string, string> = {
   '/caja': 'from-teal-500 to-emerald-600',
   '/reportes': 'from-fuchsia-500 to-purple-600',
   '/productos': 'from-rose-500 to-pink-600',
+  '/insumos': 'from-amber-600 to-orange-700',
   '/clientes': 'from-blue-500 to-indigo-600',
   '/repartidores': 'from-violet-500 to-purple-600',
   '/mesas': 'from-stone-500 to-stone-700',
@@ -88,7 +91,8 @@ function firstName(name: string | undefined): string {
 }
 
 export default function InicioPage() {
-  const { user, employeeType, restaurantPermissions, canAccess, hasPerm } = useAuth()
+  const { user, employeeType, restaurantPermissions, hasPerm } = useAuth()
+  const canAccess = useNavAccess()
   const { activeBranch, isAllBranches } = useBranch()
   const { session, loading: cashLoading, canOperateCash, setOpenModal } = useCashSession()
   const { hub } = useSubscriptionStatus()

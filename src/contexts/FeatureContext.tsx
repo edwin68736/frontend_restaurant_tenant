@@ -19,6 +19,8 @@ export type TenantFeatures = {
 type FeatureContextValue = {
   schemaVersion: number
   features: TenantFeatures
+  /** false hasta la primera respuesta del servidor: evita redirigir antes de saber qué módulos hay. */
+  ready: boolean
   hasFeature: (key: keyof TenantFeatures) => boolean
   refresh: () => Promise<void>
 }
@@ -35,6 +37,7 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
   const [schemaVersion, setSchemaVersion] = useState(30)
   const [features, setFeatures] = useState<TenantFeatures>(defaultFeatures)
+  const [ready, setReady] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -46,6 +49,8 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
       setFeatures({ ...defaultFeatures, ...data.features })
     } catch {
       setFeatures(defaultFeatures)
+    } finally {
+      setReady(true)
     }
   }, [])
 
@@ -59,8 +64,8 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   )
 
   const value = useMemo(
-    () => ({ schemaVersion, features, hasFeature, refresh }),
-    [schemaVersion, features, hasFeature, refresh],
+    () => ({ schemaVersion, features, ready, hasFeature, refresh }),
+    [schemaVersion, features, ready, hasFeature, refresh],
   )
 
   return <FeatureContext.Provider value={value}>{children}</FeatureContext.Provider>
