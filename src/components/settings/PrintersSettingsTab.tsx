@@ -22,7 +22,16 @@ import { ComandaPrintSettings } from './printers/ComandaPrintSettings'
 import { ComandasPrinterSettings } from './printers/ComandasPrinterSettings'
 import { LogoPrintSizeSettings } from './printers/LogoPrintSizeSettings'
 
+type PrinterSection = 'comandas' | 'precuenta' | 'documentos'
+
+const SECTIONS: { id: PrinterSection; label: string }[] = [
+  { id: 'comandas', label: 'Comandas' },
+  { id: 'precuenta', label: 'Precuenta' },
+  { id: 'documentos', label: 'Documentos' },
+]
+
 export function PrintersSettingsTab() {
+  const [section, setSection] = useState<PrinterSection>('comandas')
   const [printers, setPrinters] = useState<string[]>([])
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [settings, setSettings] = useState<StoredPrinterSettings>(() => loadStoredPrinterSettings())
@@ -155,90 +164,116 @@ export function PrintersSettingsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-6 items-start">
-        <PrinterColumn
-          icon={<ChefHat size={18} />}
-          title="Comandas"
-          description="Cocina, bar y demás áreas de preparación."
-        >
-          <ComandasPrinterSettings
-            comandasDefault={settings.comandasDefault}
-            comandasByArea={settings.comandasByArea}
-            printerOptions={printerOptions}
-            paperOptions={paperOptions}
-            loadingPrinters={loadingPrinters}
-            onRefreshPrinters={refreshPrinters}
-            onDefaultChange={(patch) =>
-              setSettings((prev) => ({
-                ...prev,
-                comandasDefault: { ...prev.comandasDefault, ...patch },
-              }))
-            }
-            onAreaChange={(areaKey, patch) =>
-              setSettings((prev) => ({
-                ...prev,
-                comandasByArea: {
-                  ...prev.comandasByArea,
-                  [areaKey]: normalizeSlot({ ...prev.comandasByArea[areaKey], ...patch }),
-                },
-              }))
-            }
-            onAreaClear={(areaKey) =>
-              setSettings((prev) => {
-                const next = { ...prev.comandasByArea }
-                delete next[areaKey]
-                return { ...prev, comandasByArea: next }
-              })
-            }
-            onTestDefault={() => void onTestDefault()}
-            onTestArea={(areaKey) => void onTestArea(areaKey)}
-            testingDefault={Boolean(testing.comandas)}
-            testingArea={testingArea}
-          />
-          <ComandaPrintSettings />
-        </PrinterColumn>
+      <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setSection(s.id)}
+            aria-pressed={section === s.id}
+            className={`shrink-0 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap ${
+              section === s.id
+                ? 'bg-rest-600 text-white'
+                : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
 
-        <PrinterColumn
-          icon={<Receipt size={18} />}
-          title="Precuenta"
-          description="Ticket de precuenta que se entrega antes de cobrar."
-        >
-          <PrinterKindCard
-            kind="precuenta"
-            cfg={settings.precuenta}
-            printerOptions={printerOptions}
-            paperOptions={paperOptions}
-            loadingPrinters={loadingPrinters}
-            onRefreshPrinters={refreshPrinters}
-            onChange={(patch) =>
-              setSettings((prev) => ({ ...prev, precuenta: { ...prev.precuenta, ...patch } }))
-            }
-            onTest={() => void onTestKind('precuenta')}
-            testing={Boolean(testing.precuenta)}
-          />
-        </PrinterColumn>
+      {/* Las tres secciones quedan montadas (solo se oculta la inactiva) para no perder lo desplegado ni la
+          normalización de la conexión que cada tarjeta hace al montar. */}
+      <div className="max-w-4xl">
+        <div hidden={section !== 'comandas'}>
+          <PrinterColumn
+            icon={<ChefHat size={18} />}
+            title="Comandas"
+            description="Cocina, bar y demás áreas de preparación."
+          >
+            <ComandasPrinterSettings
+              comandasDefault={settings.comandasDefault}
+              comandasByArea={settings.comandasByArea}
+              printerOptions={printerOptions}
+              paperOptions={paperOptions}
+              loadingPrinters={loadingPrinters}
+              onRefreshPrinters={refreshPrinters}
+              onDefaultChange={(patch) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  comandasDefault: { ...prev.comandasDefault, ...patch },
+                }))
+              }
+              onAreaChange={(areaKey, patch) =>
+                setSettings((prev) => ({
+                  ...prev,
+                  comandasByArea: {
+                    ...prev.comandasByArea,
+                    [areaKey]: normalizeSlot({ ...prev.comandasByArea[areaKey], ...patch }),
+                  },
+                }))
+              }
+              onAreaClear={(areaKey) =>
+                setSettings((prev) => {
+                  const next = { ...prev.comandasByArea }
+                  delete next[areaKey]
+                  return { ...prev, comandasByArea: next }
+                })
+              }
+              onTestDefault={() => void onTestDefault()}
+              onTestArea={(areaKey) => void onTestArea(areaKey)}
+              testingDefault={Boolean(testing.comandas)}
+              testingArea={testingArea}
+            />
+            <ComandaPrintSettings />
+          </PrinterColumn>
+        </div>
 
-        <PrinterColumn
-          icon={<FileText size={18} />}
-          title="Documentos"
-          description="Boleta, factura y nota de venta."
-        >
-          <PrinterKindCard
-            kind="documentos"
-            cfg={settings.documentos}
-            printerOptions={printerOptions}
-            paperOptions={paperOptions}
-            loadingPrinters={loadingPrinters}
-            onRefreshPrinters={refreshPrinters}
-            onChange={(patch) =>
-              setSettings((prev) => ({ ...prev, documentos: { ...prev.documentos, ...patch } }))
-            }
-            onTest={() => void onTestKind('documentos')}
-            testing={Boolean(testing.documentos)}
-          />
-          <NotaVentaPrintSettings />
-          <LogoPrintSizeSettings />
-        </PrinterColumn>
+        <div hidden={section !== 'precuenta'}>
+          <PrinterColumn
+            icon={<Receipt size={18} />}
+            title="Precuenta"
+            description="Ticket de precuenta que se entrega antes de cobrar."
+          >
+            <PrinterKindCard
+              kind="precuenta"
+              cfg={settings.precuenta}
+              printerOptions={printerOptions}
+              paperOptions={paperOptions}
+              loadingPrinters={loadingPrinters}
+              onRefreshPrinters={refreshPrinters}
+              onChange={(patch) =>
+                setSettings((prev) => ({ ...prev, precuenta: { ...prev.precuenta, ...patch } }))
+              }
+              onTest={() => void onTestKind('precuenta')}
+              testing={Boolean(testing.precuenta)}
+            />
+          </PrinterColumn>
+        </div>
+
+        <div hidden={section !== 'documentos'}>
+          <PrinterColumn
+            icon={<FileText size={18} />}
+            title="Documentos"
+            description="Boleta, factura y nota de venta."
+          >
+            <PrinterKindCard
+              kind="documentos"
+              cfg={settings.documentos}
+              printerOptions={printerOptions}
+              paperOptions={paperOptions}
+              loadingPrinters={loadingPrinters}
+              onRefreshPrinters={refreshPrinters}
+              onChange={(patch) =>
+                setSettings((prev) => ({ ...prev, documentos: { ...prev.documentos, ...patch } }))
+              }
+              onTest={() => void onTestKind('documentos')}
+              testing={Boolean(testing.documentos)}
+            />
+            <NotaVentaPrintSettings />
+            <LogoPrintSizeSettings />
+          </PrinterColumn>
+        </div>
       </div>
 
       {!caps.windowsUsb && !caps.bluetooth && caps.network && (

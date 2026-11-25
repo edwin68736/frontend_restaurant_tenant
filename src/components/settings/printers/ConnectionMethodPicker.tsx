@@ -19,7 +19,7 @@ export function ConnectionMethodPicker({ modes, value, onChange }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs font-medium text-stone-600">Método de conexión</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-2">
         {modes.map((mode) => {
           const Icon = ICONS[mode]
           const active = value === mode
