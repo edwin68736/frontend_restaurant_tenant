@@ -24,6 +24,7 @@ vi.mock('@/contexts/BranchContext', () => ({
   useOnBranchChange: () => {},
 }))
 vi.mock('@/hooks/useInventoryAccess', () => ({ useInventoryAccess: () => inventory.enabled }))
+vi.mock('@/hooks/useNavAccess', () => ({ useNavAccess: () => () => false })) // acceso a Recetas desde cada plato
 
 const product = {
   id: 10,

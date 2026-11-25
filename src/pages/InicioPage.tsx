@@ -37,12 +37,12 @@ function roleGroupOf(employeeType: string, isAdmin: boolean): RoleGroup {
 
 /** Orden de los accesos por rol: los primeros son las tareas del día y salen destacados. */
 const ORDER: Record<RoleGroup, string[]> = {
-  admin: ['/dashboard', '/pos', '/salas', '/comandas', '/ventas', '/caja', '/reportes', '/productos', '/insumos', '/compras-insumos', '/clientes', '/repartidores', '/mesas'],
+  admin: ['/dashboard', '/pos', '/salas', '/comandas', '/ventas', '/caja', '/reportes', '/productos', '/recetas', '/insumos', '/compras-insumos', '/clientes', '/repartidores', '/mesas'],
   cashier: ['/pos', '/caja', '/ventas', '/salas', '/comandas', '/clientes'],
   waiter: ['/salas', '/comandas', '/pos'],
-  cook: ['/comandas'],
+  cook: ['/comandas', '/recetas'],
   driver: ['/repartidores', '/comandas'],
-  other: ['/pos', '/salas', '/comandas', '/ventas', '/caja', '/dashboard', '/reportes', '/productos', '/insumos', '/compras-insumos', '/clientes', '/repartidores', '/mesas'],
+  other: ['/pos', '/salas', '/comandas', '/ventas', '/caja', '/dashboard', '/reportes', '/productos', '/recetas', '/insumos', '/compras-insumos', '/clientes', '/repartidores', '/mesas'],
 }
 
 const DESCRIPTION: Record<string, string> = {
@@ -54,6 +54,7 @@ const DESCRIPTION: Record<string, string> = {
   '/caja': 'Abrir y cerrar turno, movimientos',
   '/reportes': 'Reportes de ventas y operación',
   '/productos': 'Carta, precios y stock',
+  '/recetas': 'Ingredientes, costo y porciones',
   '/insumos': 'Materia prima y su stock',
   '/compras-insumos': 'Compras y proveedores',
   '/clientes': 'Directorio de clientes',
@@ -71,6 +72,7 @@ const ACCENT: Record<string, string> = {
   '/caja': 'from-teal-500 to-emerald-600',
   '/reportes': 'from-fuchsia-500 to-purple-600',
   '/productos': 'from-rose-500 to-pink-600',
+  '/recetas': 'from-emerald-600 to-teal-700',
   '/insumos': 'from-amber-600 to-orange-700',
   '/compras-insumos': 'from-lime-600 to-green-700',
   '/clientes': 'from-blue-500 to-indigo-600',

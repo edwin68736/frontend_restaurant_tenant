@@ -5,7 +5,7 @@ import type { RestaurantFeature } from '@/utils/restaurantPermissions'
 
 /**
  * Acceso a una pantalla del menú: permiso del usuario Y, en las que dependen de un módulo que el negocio debe tener activado
- * (insumos), la capacidad que anuncia el servidor. Usar esto, no `canAccess`, para armar menús y proteger rutas.
+ * (insumos y recetas), la capacidad que anuncia el servidor. Usar esto, no `canAccess`, para armar menús y proteger rutas.
  */
 export function useNavAccess() {
   const { canAccess, hasModule } = useAuth()
@@ -13,7 +13,7 @@ export function useNavAccess() {
   return useCallback(
     (feature: RestaurantFeature) => {
       if (!canAccess(feature)) return false
-      if (feature === 'insumos') return hasFeature('restaurant_recipes')
+      if (feature === 'insumos' || feature === 'recetas') return hasFeature('restaurant_recipes')
       // Las compras además exigen que el negocio tenga el módulo de compras.
       if (feature === 'compras_insumos') return hasFeature('restaurant_recipes') && hasModule('purchases')
       return true
