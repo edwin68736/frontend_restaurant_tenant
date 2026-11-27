@@ -6,6 +6,8 @@ import { formatPct, formatPrice } from '@/utils/recipes'
 /** Números de un plato ya calculados por el servidor. */
 export function CostSummary({ dish }: { dish: Dish }) {
   const c = dish.costing
+  // Un combo visto sin permiso de costos no trae nada que mostrar: sin esto queda un recuadro vacío.
+  if (dish.available == null && !dish.incomplete && !c) return null
   return (
     <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-sm">
       {dish.available != null && (
