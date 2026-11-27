@@ -5,6 +5,7 @@ const FONT_SIZE = 9
 const FONT_SIZE_HEADER = 10
 const MARGIN = 14
 const ROW_HEIGHT = 6
+const LINE_HEIGHT = 4
 const A4_WIDTH = 210
 const A4_HEIGHT = 297
 
@@ -12,6 +13,8 @@ export interface ExportColumn<T = Record<string, unknown>> {
   key: keyof T | string
   label: string
   width?: number
+  /** El texto largo baja de línea; sin esto se corta a la primera. */
+  wrap?: boolean
   format?: (val: unknown, row: T) => string | number
 }
 
@@ -51,7 +54,14 @@ export async function exportTableToPdf<T extends object>(
   doc.setFontSize(FONT_SIZE)
 
   data.forEach((row) => {
-    if (y > pageHeight - MARGIN - ROW_HEIGHT) {
+    const cells: string[][] = columns.map((col, i) => {
+      const raw = row[col.key as keyof T]
+      const text = col.format ? String(col.format(raw, row)) : String(raw ?? '')
+      const lines: string[] = doc.splitTextToSize(text, colWidths[i] - 2)
+      return col.wrap ? lines : lines.slice(0, 1)
+    })
+    const extra = (Math.max(1, ...cells.map((c) => c.length)) - 1) * LINE_HEIGHT
+    if (y + extra > pageHeight - MARGIN - ROW_HEIGHT) {
       doc.addPage('a4', 'landscape')
       y = MARGIN
       x = MARGIN
@@ -66,15 +76,11 @@ export async function exportTableToPdf<T extends object>(
       doc.setFontSize(FONT_SIZE)
     }
     x = MARGIN
-    columns.forEach((col, i) => {
-      const raw = row[col.key as keyof T]
-      const text = col.format ? String(col.format(raw, row)) : String(raw ?? '')
-      const maxW = colWidths[i] - 2
-      const str = doc.splitTextToSize(text, maxW)[0] ?? ''
-      doc.text(str, x, y)
+    cells.forEach((lines, i) => {
+      lines.forEach((line, n) => doc.text(line, x, y + n * LINE_HEIGHT))
       x += colWidths[i]
     })
-    y += ROW_HEIGHT
+    y += ROW_HEIGHT + extra
   })
 
   await downloadJsPdf(doc, filename ?? `${title.replace(/\s+/g, '-')}.pdf`)

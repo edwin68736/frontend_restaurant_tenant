@@ -1,14 +1,32 @@
-import { NavLink } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { clsx } from 'clsx'
+import { useFeatures } from '@/contexts/FeatureContext'
 import { RESTAURANT_REPORTS_NAV } from '@/reports/registry'
 
 export function ReportsSubNav() {
+  const { hasFeature } = useFeatures()
+  const items = RESTAURANT_REPORTS_NAV.filter((item) => !item.feature || hasFeature(item.feature))
+  const ref = useRef<HTMLElement>(null)
+  const { pathname } = useLocation()
+
+  // En pantallas angostas las pestañas se deslizan: la activa queda a la vista.
+  useEffect(() => {
+    const nav = ref.current
+    const active = nav?.querySelector('[aria-current="page"]')
+    if (!nav || !active) return
+    const n = nav.getBoundingClientRect()
+    const a = active.getBoundingClientRect()
+    nav.scrollLeft += a.left - n.left - (n.width - a.width) / 2
+  }, [pathname, items.length])
+
   return (
     <nav
-      className="flex w-full lg:w-auto items-center gap-1.5 overflow-x-auto flex-nowrap pb-0.5 -mx-0.5 px-0.5 lg:mx-0 lg:px-0 lg:justify-end scrollbar-thin"
+      ref={ref}
+      className="flex w-full items-center gap-1.5 overflow-x-auto flex-nowrap lg:flex-wrap pb-0.5 -mx-0.5 px-0.5 lg:mx-0 lg:px-0 scrollbar-thin"
       aria-label="Tipos de reporte"
     >
-      {RESTAURANT_REPORTS_NAV.map((item) => (
+      {items.map((item) => (
         <NavLink
           key={item.path}
           to={`/reportes/${item.path}`}

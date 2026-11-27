@@ -6,6 +6,8 @@ export interface ExportColumn<T = Record<string, unknown>> {
   label: string
   format?: (val: unknown, row: T) => string | number
   excelNumber?: boolean
+  /** Solo PDF: el texto largo baja de línea en vez de cortarse. */
+  wrap?: boolean
 }
 
 export async function exportTableToExcel<T extends object>(
