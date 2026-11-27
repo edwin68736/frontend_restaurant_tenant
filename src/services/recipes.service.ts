@@ -80,6 +80,36 @@ export type PriceChange = {
   created_at: string
 }
 
+export type StockPolicy = 'allow' | 'block'
+
+/** Descuento de insumos al cobrar: lo enciende el administrador del restaurante. */
+export type ConsumptionSettings = { consume: boolean; stock_policy: StockPolicy }
+
+export type ChecklistDish = { product_id: number; presentation_id: number; name: string }
+export type ChecklistSupply = { supply_id: number; name: string; unit: string; stock: number }
+export type Checklist = {
+  dishes_with_recipe: number
+  dishes_without_recipe: ChecklistDish[]
+  combos_incomplete: ChecklistDish[]
+  supplies_without_stock: ChecklistSupply[]
+  supplies_without_cost: ChecklistSupply[]
+  own_stock_replaced: ChecklistDish[]
+}
+
+/** Plato (o presentación) que descuenta por receta; portions null = no se sabe para cuántas alcanza. */
+export type DishStock = {
+  product_id: number
+  presentation_id: number
+  portions: number | null
+  limiting?: string
+  combo?: boolean
+  all_presentations: boolean
+}
+export type Availability = { active: boolean; stock_policy: StockPolicy; dishes: DishStock[] }
+
+export type Shortage = { supply_id: number; name: string; unit: string; required: number; available: number; dishes: string[] }
+export type SupplyCheck = { active: boolean; stock_policy: StockPolicy; shortages: Shortage[] }
+
 const BASE = '/api/restaurant/recipes'
 const params = (branchId?: number) => ({ branch_id: branchId || undefined })
 
@@ -105,6 +135,20 @@ export const recipesService = {
 
   priceHistory: (productId: number, branchId?: number) =>
     api.get<{ data: PriceChange[] }>(`${BASE}/${productId}/price-history`, { params: params(branchId) }).then((r) => r.data.data ?? []),
+
+  consumption: () => api.get<{ data: ConsumptionSettings }>('/api/restaurant/recipe-consumption').then((r) => r.data.data),
+
+  saveConsumption: (body: ConsumptionSettings) =>
+    api.put<{ data: ConsumptionSettings }>('/api/restaurant/recipe-consumption', body).then((r) => r.data.data),
+
+  checklist: (branchId?: number) =>
+    api.get<{ data: Checklist }>('/api/restaurant/recipe-consumption/checklist', { params: params(branchId) }).then((r) => r.data.data),
+
+  availability: (branchId?: number) =>
+    api.get<{ data: Availability }>('/api/restaurant/recipe-availability', { params: params(branchId) }).then((r) => r.data.data),
+
+  check: (body: { session_id: number; items: unknown[] }, branchId?: number) =>
+    api.post<{ data: SupplyCheck }>('/api/restaurant/recipe-check', body, { params: params(branchId) }).then((r) => r.data.data),
 
   settings: () => api.get<{ data: RecipeSettings }>('/api/restaurant/recipe-settings').then((r) => r.data.data),
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Settings2 } from 'lucide-react'
+import { PackageMinus, Settings2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PageShell } from '@/components/layout/PageShell'
 import { SearchInput } from '@/components/SearchInput'
@@ -11,6 +11,7 @@ import { recipesService, type Dish } from '@/services/recipes.service'
 import { apiError, formatCost } from '@/utils/supplies'
 import { dishCategories, dishKey, dishTitle, filterDishes, formatPct, formatPrice, type RecipeStatus } from '@/utils/recipes'
 import { SUPPLY_BTN_GHOST, SUPPLY_INPUT } from '@/components/supplies/SupplyModalShell'
+import { ConsumptionModal } from '@/components/recipes/ConsumptionModal'
 import { RecipeModal } from '@/components/recipes/RecipeModal'
 import { RecipeSettingsModal } from '@/components/recipes/RecipeSettingsModal'
 
@@ -20,6 +21,9 @@ export default function RecetasPage() {
   const { hasPerm } = useAuth()
   const { activeBranchId, activeBranch } = useBranch()
   const canManage = hasPerm('rc.m')
+  // El descuento de insumos al cobrar lo decide quien administra el restaurante.
+  const canSetConsumption = hasPerm('s.m')
+  const [consumptionOpen, setConsumptionOpen] = useState(false)
   const [params, setParams] = useSearchParams()
 
   const [dishes, setDishes] = useState<Dish[]>([])
@@ -69,10 +73,19 @@ export default function RecetasPage() {
       title="Recetas"
       subtitle={canViewCost ? 'Costo, precio sugerido y para cuántas porciones alcanza cada plato.' : 'Ingredientes y para cuántas porciones alcanza cada plato.'}
       actions={
-        canViewCost ? (
-          <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1.5')} onClick={() => setSettingsOpen(true)}>
-            <Settings2 size={16} /> Precio sugerido
-          </button>
+        canViewCost || canSetConsumption ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {canSetConsumption && (
+              <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1.5')} onClick={() => setConsumptionOpen(true)}>
+                <PackageMinus size={16} /> Descuento al cobrar
+              </button>
+            )}
+            {canViewCost && (
+              <button type="button" className={clsx(SUPPLY_BTN_GHOST, 'flex items-center gap-1.5')} onClick={() => setSettingsOpen(true)}>
+                <Settings2 size={16} /> Precio sugerido
+              </button>
+            )}
+          </div>
         ) : undefined
       }
     >
@@ -164,6 +177,9 @@ export default function RecetasPage() {
           onClose={() => setOpen(null)}
           onChanged={load}
         />
+      )}
+      {consumptionOpen && (
+        <ConsumptionModal branchId={activeBranchId} branchName={activeBranch?.name ?? ''} onClose={() => setConsumptionOpen(false)} />
       )}
       {settingsOpen && (
         <RecipeSettingsModal

@@ -7,6 +7,8 @@ import { formatAmountDisplay } from '@/utils/money'
 type Props = {
   product: Product
   stockQuantity?: number
+  /** Solo si el plato descuenta insumos (ver utils/recipeStock): reemplaza a su stock. */
+  recipePortions?: number | null
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
 }
 
@@ -15,9 +17,9 @@ type Props = {
  * verde. Cambia la disposición (miniatura + nombre + precio en una línea), no el lenguaje
  * visual, para que alternar vista no se sienta otra app.
  */
-export function PosProductListRow({ product, stockQuantity, onClick }: Props) {
+export function PosProductListRow({ product, stockQuantity, recipePortions, onClick }: Props) {
   const imgUrl = getProductImageUrl(product.image_url)
-  const showStock = Boolean(product.manage_stock)
+  const showStock = recipePortions === undefined && Boolean(product.manage_stock)
 
   return (
     <button
@@ -46,6 +48,11 @@ export function PosProductListRow({ product, stockQuantity, onClick }: Props) {
 
       <div className="min-w-0 flex-1">
         <p className="line-clamp-2 text-sm font-bold leading-snug text-stone-900">{product.name}</p>
+        {recipePortions != null && (
+          <p className={`mt-0.5 text-[11px] ${recipePortions === 0 ? 'font-semibold text-red-600' : 'text-stone-400'}`}>
+            Porciones: {recipePortions}
+          </p>
+        )}
         {showStock && (
           <p className="mt-0.5 text-[11px] text-stone-400">
             Stock: {stockQuantity !== undefined ? formatAmountDisplay(stockQuantity) : '—'}
