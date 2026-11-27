@@ -21,9 +21,11 @@ import {
   ImagePlus,
   ScanBarcode,
   UtensilsCrossed,
+  BookOpen,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { SearchInput } from '@/components/SearchInput'
+import { useNavAccess } from '@/hooks/useNavAccess'
 import { useDebouncedApiSearch } from '@/hooks/useDebouncedApiSearch'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { StockAdjustmentModal } from '@/components/products/StockAdjustmentModal'
@@ -174,6 +176,7 @@ const emptyForm = (unitId: number | null = null): CreateProductInput => ({
 
 export default function ProductosPage() {
   const navigate = useNavigate()
+  const canSeeRecipes = useNavAccess()('recetas')
   const { canAccess, canManageGlobalCatalog } = useAuth()
   const { activeBranchId, activeBranch } = useBranch()
   const { readOnly } = useBranchWriteGuard()
@@ -1112,6 +1115,16 @@ export default function ProductosPage() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="flex justify-end items-center gap-1">
+                        {canSeeRecipes && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/recetas?plato=${p.id}`)}
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shrink-0"
+                            title="Receta"
+                          >
+                            <BookOpen size={16} />
+                          </button>
+                        )}
                         {canEditCatalog ? (<>
                         <button
                           type="button"

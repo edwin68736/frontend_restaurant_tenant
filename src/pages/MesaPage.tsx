@@ -5,6 +5,10 @@ import { clsx } from 'clsx'
 import { ArrowLeft, X, Trash2, FileText, ShoppingCart, Plus, Printer, ChevronRight, Receipt } from 'lucide-react'
 import { SplitBillModal } from '@/components/restaurant/SplitBillModal'
 import { SearchInput } from '@/components/SearchInput'
+import { SupplyShortageNotice } from '@/components/pos/SupplyShortageNotice'
+import { useRecipeStock } from '@/hooks/useRecipeStock'
+import { useSupplyCheck } from '@/hooks/useSupplyCheck'
+import { cardPortions } from '@/utils/recipeStock'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { PosProductListRow } from '@/components/pos/PosProductListRow'
 import { PosProductViewModeToggle } from '@/components/pos/PosProductViewModeToggle'
@@ -292,6 +296,10 @@ export default function MesaPage() {
 
   const search = productSearch.inputValue
   const setSearch = productSearch.setInputValue
+
+  // Descuento de insumos: porciones en las tarjetas y aviso bajo el pedido (solo si el negocio lo tiene encendido).
+  const { availability: recipeStock, refresh: refreshRecipeStock } = useRecipeStock(activeBranchId)
+  const supplyCheck = useSupplyCheck(!!recipeStock?.active, cart, id || null, activeBranchId)
 
   useEffect(() => {
     const root = productsScrollRef.current
@@ -763,6 +771,7 @@ export default function MesaPage() {
         })),
       })
       toast.success(willCloseSession ? 'Venta generada. Mesa cerrada.' : 'Cobro parcial registrado. La mesa sigue abierta.')
+      refreshRecipeStock()
       setCheckoutOpen(false)
       setSplitSelection(null)
       setReceiptClosesTable(willCloseSession)
@@ -1103,6 +1112,7 @@ export default function MesaPage() {
 
   const renderCartTotals = () => (
     <div className="px-3 py-2 border-t border-stone-200 bg-stone-50/30 shrink-0">
+      <SupplyShortageNotice check={supplyCheck} />
       {sessionTotal > 0 && (
         <p className="text-xs text-stone-500 mb-1 tabular-nums">En mesa: {formatSoles(sessionTotal)}</p>
       )}
@@ -1331,6 +1341,7 @@ export default function MesaPage() {
                 const props = {
                   product: p,
                   stockQuantity: stockByProductId[String(p.id)],
+                  recipePortions: cardPortions(recipeStock, p.id),
                   onClick: onPick,
                 }
                 return productViewMode === 'list' ? (
@@ -2004,6 +2015,7 @@ export default function MesaPage() {
           setConfigureProduct(null)
         }}
         onConfirm={onConfiguredProduct}
+        recipeStock={recipeStock}
       />
     </div>
   )

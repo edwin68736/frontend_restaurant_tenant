@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import { NavLink } from 'react-router-dom'
 import { clsx } from 'clsx'
-import { useAuth } from '@/contexts/AuthContext'
+import { useNavAccess } from '@/hooks/useNavAccess'
 import { NAV_GROUPS } from '@/config/restaurantNav'
 import { navBottomTabClasses } from '@/utils/restaurantUiColors'
 import { FIXED_BOTTOM_NAV_SAFE } from '@/utils/safeAreaClasses'
 
 /** Navegación inferior móvil: POS, Comandas, Mesas (operaciones diarias). */
 export default function MobileBottomNav() {
-  const { canAccess } = useAuth()
+  const canAccess = useNavAccess()
 
   const items = useMemo(() => {
     // Inicio + operaciones diarias (en móvil no hay header con navegación).

@@ -7,12 +7,14 @@ import { formatAmountDisplay } from '@/utils/money'
 type Props = {
   product: Product
   stockQuantity?: number
+  /** Solo si el plato descuenta insumos (ver utils/recipeStock): reemplaza a su stock. */
+  recipePortions?: number | null
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
 }
 
-export function PosProductGridCard({ product, stockQuantity, onClick }: Props) {
+export function PosProductGridCard({ product, stockQuantity, recipePortions, onClick }: Props) {
   const imgUrl = getProductImageUrl(product.image_url)
-  const showStock = Boolean(product.manage_stock)
+  const showStock = recipePortions === undefined && Boolean(product.manage_stock)
 
   return (
     <button
@@ -40,6 +42,11 @@ export function PosProductGridCard({ product, stockQuantity, onClick }: Props) {
       </div>
       <div className="px-3 pb-3 pt-2">
         <p className="line-clamp-2 text-xs font-bold leading-snug text-stone-900 sm:text-sm">{product.name}</p>
+        {recipePortions != null && (
+          <p className={`mt-1 text-[10px] sm:text-xs ${recipePortions === 0 ? 'font-semibold text-red-600' : 'text-stone-400'}`}>
+            Porciones: {recipePortions}
+          </p>
+        )}
         {showStock && (
           <p className="mt-1 text-[10px] text-stone-400 sm:text-xs">
             Stock:{' '}

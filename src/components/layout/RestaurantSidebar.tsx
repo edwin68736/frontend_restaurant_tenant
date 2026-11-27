@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { Settings, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavAccess } from '@/hooks/useNavAccess'
 import { useTenantDisplay } from '@/hooks/useTenantDisplay'
 import { NAV_GROUPS, type NavGroup, type NavItem } from '@/config/restaurantNav'
 import { canAccessAppSettings } from '@/utils/restaurantPermissions'
@@ -224,7 +225,8 @@ export default function RestaurantSidebar({
   embedded = false,
   collapsed = false,
 }: Props) {
-  const { canAccess, restaurantPermissions, employeeType } = useAuth()
+  const { restaurantPermissions, employeeType } = useAuth()
+  const canAccess = useNavAccess()
   const { pathname } = useLocation()
   const { title: tenantTitle, ruc: tenantRuc } = useTenantDisplay()
 

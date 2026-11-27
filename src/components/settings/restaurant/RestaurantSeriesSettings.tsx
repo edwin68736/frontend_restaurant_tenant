@@ -315,7 +315,7 @@ export function RestaurantSeriesSettings() {
                             {!isDefaultEligibleSeries(s) ? (
                               <span className="text-xs text-stone-300">—</span>
                             ) : s.is_default ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
                                 <Star size={11} className="fill-current" />
                                 Por defecto
                               </span>
@@ -334,7 +334,7 @@ export function RestaurantSeriesSettings() {
                           </td>
                           <td className="px-4 py-3">
                             {s.locked ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
                                 <Lock size={11} />
                                 En uso
                               </span>

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { clsx } from 'clsx'
 import { Menu, PanelLeft, PanelLeftClose } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavAccess } from '@/hooks/useNavAccess'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { NAV_GROUPS } from '@/config/restaurantNav'
 import { canAccessAppSettings } from '@/utils/restaurantPermissions'
@@ -25,7 +26,8 @@ const SIDEBAR_TOGGLE_CLASS =
   'inline-flex items-center justify-center text-rest-600 hover:bg-rest-50 hover:text-rest-700 transition-colors shrink-0 touch-manipulation'
 
 export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
-  const { canAccess, restaurantPermissions, employeeType } = useAuth()
+  const { restaurantPermissions, employeeType } = useAuth()
+  const canAccess = useNavAccess()
   const { title: tenantTitle, ruc: tenantRuc } = useTenantDisplay()
   // Mismo hub que ya carga SubscriptionHeaderBadge (vía contexto) — pedirlo de nuevo acá
   // duplicaría la request, a diferencia de UserDropdown que sí hace su propio fetch porque no
@@ -105,7 +107,9 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
       </div>
 
       {operations.length > 0 ? (
-        <div className="pointer-events-none absolute inset-0 hidden lg:flex items-center justify-center">
+        // Centrado sobre toda la cabecera solo cuando sobra ancho (2xl); antes de eso ocupa el hueco libre
+        // entre ambos lados, para que los botones de la derecha no tapen el menú.
+        <div className="hidden lg:flex flex-1 min-w-0 items-center justify-center 2xl:pointer-events-none 2xl:absolute 2xl:inset-0">
           <TopNavigation groups={visibleGroups} variant="desktop" className="pointer-events-auto" />
         </div>
       ) : null}
@@ -121,11 +125,11 @@ export default function RestaurantHeader({ onMenuClick, sidebarCollapsed, onTogg
             onClick={() => void openExternalUrl(supportHref)}
             title="Soporte por WhatsApp"
             aria-label="Soporte por WhatsApp"
-            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs xl:text-sm font-semibold transition-colors shrink-0 touch-manipulation"
+            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 2xl:px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs xl:text-sm font-semibold transition-colors shrink-0 touch-manipulation"
           >
             <WhatsAppGlyph className="w-4 h-4" />
-            {/* Solo ícono hasta xl: a ~1024 px el texto tapaba la navegación central. */}
-            <span className="hidden xl:inline">Soporte</span>
+            {/* Solo ícono hasta 2xl: en laptops (1280–1366 px) el texto tapaba la navegación central. */}
+            <span className="hidden 2xl:inline">Soporte</span>
           </button>
         )}
         <CashSessionBadge />

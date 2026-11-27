@@ -17,6 +17,10 @@ import {
   Plus,
 } from 'lucide-react'
 import { SearchInput } from '@/components/SearchInput'
+import { SupplyShortageNotice } from '@/components/pos/SupplyShortageNotice'
+import { useRecipeStock } from '@/hooks/useRecipeStock'
+import { useSupplyCheck } from '@/hooks/useSupplyCheck'
+import { cardPortions } from '@/utils/recipeStock'
 import { PosProductGridCard } from '@/components/pos/PosProductGridCard'
 import { PosProductListRow } from '@/components/pos/PosProductListRow'
 import { PosProductViewModeToggle } from '@/components/pos/PosProductViewModeToggle'
@@ -383,6 +387,10 @@ export default function POSPage() {
 
   const search = productSearch.inputValue
   const setSearch = productSearch.setInputValue
+
+  // Descuento de insumos: porciones en las tarjetas y aviso bajo el carrito (solo si el negocio lo tiene encendido).
+  const { availability: recipeStock, refresh: refreshRecipeStock } = useRecipeStock(activeBranchId)
+  const supplyCheck = useSupplyCheck(!!recipeStock?.active, cart, activeSessionId, activeBranchId)
 
   useEffect(() => {
     const root = productsScrollRef.current
@@ -1465,6 +1473,7 @@ export default function POSPage() {
         })
       }
       toast.success('Venta registrada')
+      refreshRecipeStock()
       setCart([])
       setActiveSessionId(null)
       setSessionDetail(null)
@@ -1688,6 +1697,7 @@ export default function POSPage() {
                   const props = {
                     product: p,
                     stockQuantity: stockByProductId[String(p.id)],
+                    recipePortions: cardPortions(recipeStock, p.id),
                     onClick: onPick,
                   }
                   return productViewMode === 'list' ? (
@@ -1728,6 +1738,7 @@ export default function POSPage() {
                 )}
                 {renderCartLineItems()}
               </ul>
+              <SupplyShortageNotice check={supplyCheck} />
               <div className="px-3 py-2 border-t border-stone-200 bg-stone-50/30 shrink-0">
                 <div className="flex justify-between items-baseline font-bold text-stone-800 text-base">
                   <span>Total</span>
@@ -1774,6 +1785,7 @@ export default function POSPage() {
             )}
             {renderCartLineItems()}
           </ul>
+          <SupplyShortageNotice check={supplyCheck} />
           <div className="border-t border-stone-200 pt-3">
             <div className="flex justify-between items-baseline font-bold text-stone-800 text-lg">
               <span>Total</span>
@@ -2375,6 +2387,7 @@ export default function POSPage() {
           setConfigureProduct(null)
         }}
         onConfirm={onConfiguredProduct}
+        recipeStock={recipeStock}
       />
 
       <PosBarcodeScannerModal

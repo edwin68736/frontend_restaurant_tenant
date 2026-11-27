@@ -14,6 +14,11 @@ import { defaultRouteForPermissions } from '@/utils/restaurantPermissions'
 import { canAccessAppSettings } from '@/utils/restaurantPermissions'
 import NoAccessPage from '@/pages/NoAccessPage'
 import ProductosPage from '@/pages/ProductosPage'
+import InsumosPage from '@/pages/InsumosPage'
+import RecetasPage from '@/pages/RecetasPage'
+import ComprasInsumosPage from '@/pages/ComprasInsumosPage'
+import { useNavAccess } from '@/hooks/useNavAccess'
+import { useFeatures } from '@/contexts/FeatureContext'
 import ModificadoresPage from '@/pages/ModificadoresPage'
 import MesasPage from '@/pages/MesasPage'
 import POSPage from '@/pages/POSPage'
@@ -70,8 +75,11 @@ function DefaultEntryRedirect() {
   return <Navigate to={isBound ? '/home' : '/ruc'} replace />
 }
 
-function RequireFeature({ feature, children }: { feature: 'inicio' | 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'reportes' | 'dashboard' | 'clientes' | 'repartidores'; children: React.ReactNode }) {
-  const { canAccess } = useAuth()
+function RequireFeature({ feature, children }: { feature: 'inicio' | 'productos' | 'modificadores' | 'mesas' | 'pos' | 'salas' | 'mesa' | 'comandas' | 'ventas' | 'caja' | 'reportes' | 'dashboard' | 'clientes' | 'repartidores' | 'insumos' | 'compras_insumos' | 'recetas'; children: React.ReactNode }) {
+  const canAccess = useNavAccess()
+  const { ready } = useFeatures()
+  // Las pantallas que dependen de un módulo esperan la respuesta del servidor antes de decidir.
+  if ((feature === 'insumos' || feature === 'compras_insumos' || feature === 'recetas') && !ready) return null
   if (!canAccess(feature)) return <Navigate to="/" replace />
   return <>{children}</>
 }
@@ -124,6 +132,9 @@ export default function App() {
           <Route index element={<DefaultRedirect />} />
           <Route path="inicio" element={<RequireFeature feature="inicio"><InicioPage /></RequireFeature>} />
           <Route path="productos" element={<RequireFeature feature="productos"><ProductosPage /></RequireFeature>} />
+          <Route path="recetas" element={<RequireFeature feature="recetas"><RequireOperationalBranch><RecetasPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="insumos" element={<RequireFeature feature="insumos"><RequireOperationalBranch><InsumosPage /></RequireOperationalBranch></RequireFeature>} />
+          <Route path="compras-insumos" element={<RequireFeature feature="compras_insumos"><RequireOperationalBranch><ComprasInsumosPage /></RequireOperationalBranch></RequireFeature>} />
           <Route path="modificadores" element={<RequireFeature feature="modificadores"><RequireOperationalBranch><ModificadoresPage /></RequireOperationalBranch></RequireFeature>} />
           <Route path="mesas" element={<RequireFeature feature="mesas"><RequireOperationalBranch><MesasPage /></RequireOperationalBranch></RequireFeature>} />
           <Route path="pos" element={<RequireFeature feature="pos"><RequireOperationalBranch><POSPage /></RequireOperationalBranch></RequireFeature>} />

@@ -17,7 +17,7 @@ function stockNum(v: unknown): number {
 
 const COLS: ExportColumn<ProductReportRow>[] = [
   { key: 'code', label: 'Código' },
-  { key: 'name', label: 'Producto' },
+  { key: 'name', label: 'Producto', format: (v, row) => (row.is_supply ? `${String(v)} (Insumo)` : String(v)) },
   { key: 'category_name', label: 'Categoría', format: (v) => String(v ?? '—') },
   { key: 'unit', label: 'Unidad', format: (v) => String(v ?? '—') },
   {
@@ -110,6 +110,7 @@ function buildParams(filters: Record<string, unknown>, page?: number, perPage?: 
   const params: Parameters<typeof productsService.listReport>[0] = {
     active_only: true,
     manage_stock_only: true,
+    supplies: 'include',
   }
   if (filters.q) params.q = String(filters.q)
   if (filters.category_id) params.category_id = Number(filters.category_id)

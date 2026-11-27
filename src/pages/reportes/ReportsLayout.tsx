@@ -13,10 +13,13 @@ export default function ReportsLayout() {
       title={title}
       subtitle="Análisis del restaurante con exportación PDF y Excel"
       subtitleClassName="hidden lg:block"
-      actions={<ReportsSubNav />}
       className="flex-1 min-h-0 h-full"
       fill
     >
+      {/* En su propia fila: con las pestañas al lado, el título quedaba aplastado. */}
+      <div className="shrink-0 mb-2 lg:mb-3">
+        <ReportsSubNav />
+      </div>
       <div className="flex-1 min-h-0 flex flex-col">
         <Outlet />
       </div>

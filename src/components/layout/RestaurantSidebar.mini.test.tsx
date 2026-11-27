@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ canAccess: () => true, restaurantPermissions: [], employeeType: 'admin' }),
 }))
+vi.mock('@/hooks/useNavAccess', () => ({ useNavAccess: () => () => true }))
 vi.mock('@/hooks/useTenantDisplay', () => ({ useTenantDisplay: () => ({ title: 'Demo', ruc: '1' }) }))
 vi.mock('@/utils/restaurantPermissions', () => ({ canAccessAppSettings: () => true }))
 vi.mock('./SidebarTutorialsLink', () => ({ default: () => null }))

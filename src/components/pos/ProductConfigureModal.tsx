@@ -39,14 +39,18 @@ import {
   toggleExtraSelection,
   validateModifierSelection,
 } from '@/utils/productModifiers'
+import type { Availability } from '@/services/recipes.service'
+import { presentationPortions } from '@/utils/recipeStock'
 
 type Props = {
   product: Product | null
   onClose: () => void
   onConfirm: (line: CatalogCartLine) => void
+  /** Platos que descuentan insumos: su presentación muestra porciones y no se bloquea por stock propio. */
+  recipeStock?: Availability | null
 }
 
-export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
+export function ProductConfigureModal({ product, onClose, onConfirm, recipeStock = null }: Props) {
   const [loading, setLoading] = useState(false)
   const [optionsLoaded, setOptionsLoaded] = useState(false)
   const [modifierGroupIds, setModifierGroupIds] = useState<number[]>([])
@@ -244,7 +248,9 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       return
     }
     const chosen = selected.find((m) => m.type === 'variant')
-    if (chosen) {
+    const byRecipe =
+      !!chosen && !!product && presentationPortions(recipeStock, product.id, Number(chosen.option_id)) !== undefined
+    if (chosen && !byRecipe) {
       const stock = presentationStock[Number(chosen.option_id)]
       if (stock !== undefined && stock <= 0) {
         toast.error(`«${chosen.option_name}» está agotada en esta sucursal`)
@@ -252,7 +258,7 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
       }
     }
     degradedRef.current = true
-    const chosenStock = chosen ? presentationStock[Number(chosen.option_id)] : undefined
+    const chosenStock = chosen && !byRecipe ? presentationStock[Number(chosen.option_id)] : undefined
     onConfirmRef.current(
       createCatalogCartLine(productWithPres, {
         quantity: 1,
@@ -459,7 +465,9 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
                           (pres.id ? s.option_id === pres.id : s.option_name === pres.name.trim()),
                       )
                       const salePrice = Number(pres.sale_price) || 0
-                      const stock = pres.id ? presentationStock[pres.id] : undefined
+                      const portions =
+                        pres.id && product ? presentationPortions(recipeStock, product.id, pres.id) : undefined
+                      const stock = portions === undefined && pres.id ? presentationStock[pres.id] : undefined
                       const soldOut = stock !== undefined && stock <= 0
                       return (
                         <button
@@ -484,6 +492,15 @@ export function ProductConfigureModal({ product, onClose, onConfirm }: Props) {
                           {salePrice > 0 ? (
                             <span className="block text-[11px] font-normal opacity-90 tabular-nums">
                               S/ {formatAmountDisplay(salePrice)}
+                            </span>
+                          ) : null}
+                          {portions != null ? (
+                            <span
+                              className={`block text-[10px] font-semibold tabular-nums ${
+                                portions === 0 ? 'text-red-500' : active ? 'text-sky-100' : 'text-stone-500'
+                              }`}
+                            >
+                              Porciones: {portions}
                             </span>
                           ) : null}
                           {stock !== undefined ? (

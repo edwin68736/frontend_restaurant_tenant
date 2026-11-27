@@ -37,6 +37,8 @@ export interface TableReportDefinition<T extends object = Record<string, unknown
   path: string
   title: string
   subtitle?: string
+  /** Solo se ofrece cuando el negocio tiene esta función activa. */
+  feature?: 'restaurant_recipes'
   paginationMode: ReportPaginationMode
   defaultPerPage?: number
   columns: ExportColumn<T>[]
@@ -61,6 +63,7 @@ export interface CustomReportDefinition {
   path: string
   title: string
   subtitle?: string
+  feature?: 'restaurant_recipes'
   View: React.ComponentType
 }
 

@@ -141,6 +141,8 @@ export interface PreparationAreaWithCount extends PreparationArea {
 export interface ProductReportRow extends Product {
   /** Stock mínimo configurado; con stock_total define la alerta «bajo mínimo». */
   min_stock?: number
+  /** Insumo (materia prima): solo llega si se piden con supplies. */
+  is_supply?: boolean
   stock_total?: number
   stock_by_branch?: { branch_id: number; branch_name: string; quantity: number }[]
   serials?: string[]
@@ -460,6 +462,8 @@ export const productsService = {
     per_page?: number
     stock_less_than?: number
     preparation_area?: string
+    /** include: agrega los insumos (el servidor lo ignora sin permiso o sin el módulo). */
+    supplies?: 'include'
   }) =>
     api
       .get<{ data: ProductReportRow[]; total?: number }>('/api/products', {
@@ -472,6 +476,7 @@ export const productsService = {
           per_page: params.per_page,
           stock_less_than: params.stock_less_than,
           preparation_area: params.preparation_area,
+          supplies: params.supplies,
           restaurant_only: true,
           no_manage_stock_only: params.no_manage_stock_only ? 'true' : undefined,
           manage_stock_only: params.manage_stock_only ? 'true' : undefined,
