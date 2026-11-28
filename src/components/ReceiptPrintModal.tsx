@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, X } from 'lucide-react'
+import { Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, Unlock, X } from 'lucide-react'
 import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
@@ -14,8 +14,10 @@ import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
   getConfiguredPrinter,
   isNativePrintAvailable,
+  openCashDrawer,
   printDocumentAuto,
 } from '@/services/printers.service'
+import { useNavAccess } from '@/hooks/useNavAccess'
 
 type PdfFormat = 'ticket' | 'a4'
 
@@ -67,6 +69,9 @@ export function ReceiptPrintModal({
 
   const printerCfg = getConfiguredPrinter('documentos')
   const canNativePrint = isNativePrintAvailable()
+  const canAccess = useNavAccess()
+  // Solo en la app instalada y para quien tiene acceso a Caja, donde está este mismo botón.
+  const canOpenDrawer = canNativePrint && canAccess('caja')
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
@@ -220,6 +225,24 @@ export function ReceiptPrintModal({
     }
   }
 
+  /** Abre la gaveta sin imprimir nada: la misma función del botón de Caja. */
+  const handleOpenDrawer = async () => {
+    if (!printerCfg && !getConfiguredPrinter('precuenta')) {
+      toast.error('Configura la impresora de documentos o precuenta para abrir la gaveta')
+      return
+    }
+    setBusy('drawer')
+    try {
+      const msg = await openCashDrawer()
+      toast.success(msg || 'Gaveta abierta')
+    } catch (e) {
+      console.error('[venta] abrir gaveta', e)
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir la gaveta')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const handleShareWhatsApp = async () => {
     if (!printData) return
     setBusy('share')
@@ -323,7 +346,7 @@ export function ReceiptPrintModal({
                       onClick={() => void handleDirectPrint()}
                       title="Volver a imprimir"
                       aria-label="Volver a imprimir"
-                      className={clsx(ACTION_ICON_BTN, 'col-span-2 bg-stone-700')}
+                      className={clsx(ACTION_ICON_BTN, !canOpenDrawer && 'col-span-2', 'bg-stone-700')}
                     >
                       {busy === 'print' ? (
                         <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
@@ -331,6 +354,24 @@ export function ReceiptPrintModal({
                         <Printer className={ACTION_ICON} strokeWidth={2.25} />
                       )}
                       <span className={ACTION_LABEL}>Reimprimir</span>
+                    </button>
+                  )}
+
+                  {canOpenDrawer && (
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={() => void handleOpenDrawer()}
+                      title="Abrir gaveta de dinero"
+                      aria-label="Abrir gaveta"
+                      className={clsx(ACTION_ICON_BTN, 'bg-teal-700 hover:bg-teal-800')}
+                    >
+                      {busy === 'drawer' ? (
+                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                      ) : (
+                        <Unlock className={ACTION_ICON} strokeWidth={2.25} />
+                      )}
+                      <span className={ACTION_LABEL}>Abrir gaveta</span>
                     </button>
                   )}
 
